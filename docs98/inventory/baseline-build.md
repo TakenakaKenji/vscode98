@@ -10,6 +10,8 @@ Taken at `32bbe1b8` (1.142.0) on the Linux dev machine (Fedora, 4 cores, 23 GB R
 | Install deps | `npm ci` | Exit 0; `node_modules` ≈ 1.6 GB; installs root, `remote/`, `build/`, extensions. 15 npm-audit warnings (not failures) |
 | Transpile client | `npm run transpile-client` | **~25 s wall, 460 MB peak RSS**, 10,039 TS files → `out/` (269 MB incl. 2,299 copied resources) |
 | Download Electron | `npm run electron` | ~56 s; lands in `.build/electron/code-oss` |
+| Compile built-in extensions | `npm run gulp compile-extensions` | **~32 s wall, 290 MB peak RSS**; fixes the extension activation errors seen in the first launch |
+| codicon font | `cp node_modules/@vscode/codicons/dist/codicon.ttf src/vs/base/browser/ui/codicons/codicon/ ` and `out/…/codicon/` | Normally done by the full gulp compile; the transpile-only path skips it. Both copies are gitignored |
 
 Not yet run: `npm run compile` (full type-check + gulp), a windowed launch, tests.
 
@@ -26,7 +28,7 @@ Command used (from repo root, `VSCODE_DEV=1 NODE_ENV=development`):
 
 Caveats:
 - First renderer log line came ~16 s after the main process started, in **unbundled dev mode** (10k module files, no GPU, no compile cache). It is **not** a valid startup-time baseline. Memory was not measured.
-- Built-in extensions failed to activate (`extensions/*/out` not compiled, e.g. `git-base`, `emmet`, `merge-conflict`); `codicon.ttf` was not found in `out/`. These are build gaps, not platform problems. `npm run gulp compile-extensions` should fix them.
+- On that first launch built-in extensions failed to activate (`extensions/*/out` not compiled) and `codicon.ttf` was missing from `out/`. Both were build gaps, not platform problems, and are fixed by the extension compile + font copy above.
 - The launch created `~/.vscode-oss-shared/` in the home directory (shared storage), outside the temp profile.
 - A real windowed launch on Wayland (vs headless) has not been tried.
 

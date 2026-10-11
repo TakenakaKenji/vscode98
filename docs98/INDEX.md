@@ -25,7 +25,9 @@ Start here. Every doc in `docs98/` is listed below with a one-line summary. Upda
 | [inventory/native-modules.md](inventory/native-modules.md) | Native (C/C++) npm modules and what each does |
 | [inventory/js-language-level.md](inventory/js-language-level.md) | ECMAScript level emitted/required, and engine implications |
 | [inventory/baseline-build.md](inventory/baseline-build.md) | How stock VS Code was built on the dev machine, timings, what the emitted JS looks like |
-| `inventory/scripts/` | The scan scripts that produced the numbers (`scan_imports.py`, `scan_electron.py`, `scan_web_and_lang.sh`) |
+| [inventory/runtime-trace.md](inventory/runtime-trace.md) | **Measured** startup trace of the renderer: which DOM/Web/CSS features are actually used (180 DOM members, 227 CSS properties) |
+| `inventory/data/` | Raw JSON from traces |
+| `inventory/scripts/` | The scan scripts that produced the numbers (`scan_imports.py`, `scan_electron.py`, `scan_web_and_lang.sh`, `trace_renderer.mjs`) |
 
 ## Key facts to remember (quick reference)
 
@@ -33,6 +35,7 @@ Start here. Every doc in `docs98/` is listed below with a one-line summary. Upda
 - Only 25 Node built-ins are imported in `src/vs`; hardest are `child_process`, `net`/`http`/`https`/`tls`.
 - 471 CSS files (~92k lines); flexbox in 287, custom properties in 408, grid in 39.
 - WebAssembly (`vscode-oniguruma`, tree-sitter) is required for syntax highlighting.
+- **Runtime trace (measured):** startup uses only ~180 distinct DOM/Web members and 227 distinct standard CSS properties; layout is block/inline/flex/absolute only (no grid/fixed/sticky live); editor input is a `<textarea>`; renderer heap ~123 MB.
 - Build targets are ES2024 (no downleveling today).
 - Open proposals: D-003 (custom host), D-004/5/6 (engine, render, IPC), D-008 (scope out AI/cloud features) in [05-decisions.md](05-decisions.md).
 

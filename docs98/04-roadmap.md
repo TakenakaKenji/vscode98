@@ -14,8 +14,8 @@ Status values: `not started`, `in progress`, `done`, `blocked`.
 | Inventory pass 1: native modules | done (needs `npm ci` to verify) → [inventory/native-modules.md](inventory/native-modules.md) |
 | Inventory pass 1: JS language level | done (needs a real build to verify) → [inventory/js-language-level.md](inventory/js-language-level.md) |
 | Inventory pass 2: built-in `extensions/`, `build/`, finer CSS inventory | not started (see [inventory/README.md](inventory/README.md)) |
-| Inventory pass 3: runtime tracing of a real VS Code session | not started (needs a build, `npm ci`) |
-| Baseline: build stock VS Code on this machine | in progress: `npm ci`, transpile, Electron download done; launch/measure/bundle pending → [inventory/baseline-build.md](inventory/baseline-build.md) |
+| Inventory pass 3: runtime tracing of a real VS Code session | in progress: renderer startup slice done → [inventory/runtime-trace.md](inventory/runtime-trace.md); scenarios, bundle, and main/ext-host processes pending |
+| Baseline: build stock VS Code on this machine | in progress: `npm ci`, transpile, extensions compile, Electron download, headless launch done; production bundle/memory baseline pending → [inventory/baseline-build.md](inventory/baseline-build.md) |
 | Deepen git history / fetch upstream tags | not started |
 | Windows build/test environment (VM or machine) | not started |
 

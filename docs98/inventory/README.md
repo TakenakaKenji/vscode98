@@ -24,6 +24,8 @@ bash docs98/inventory/scripts/scan_web_and_lang.sh                              
 
 ## Headline findings
 
+> Where the static counts below disagree with [runtime-trace.md](runtime-trace.md), prefer the runtime trace: it is measured, while the static counts are file-level greps.
+
 1. **The Electron surface is small and well-contained.**
    - Only ~52 files import `electron`; 47 of them are in `electron-main`, 3 in `electron-browser`, 1 in `electron-utility`.
    - The renderer touches Electron only through **one preload bridge** (`src/vs/base/parts/sandbox/electron-browser/preload.ts`) that exposes `ipcRenderer`, `ipcMessagePort`, `webFrame`, `webUtils`, a limited `process`, and `context` as `globalThis.vscode`. That bridge is the natural seam for our host. → [electron-apis.md](electron-apis.md)
@@ -39,6 +41,6 @@ bash docs98/inventory/scripts/scan_web_and_lang.sh                              
 - Built-in `extensions/` (106 dirs): what Node APIs and bundled modules each uses; which ship their own language servers/binaries.
 - `build/`: bundling, NLS, packaging steps that assume Node 22/24 or Electron.
 - Actual CSS property/value inventory (distinct properties, selectors) instead of per-feature file counts.
-- Runtime tracing: start real VS Code and record which DOM/Node APIs are *executed* at startup and for common tasks (more reliable than static grep).
+- Runtime tracing: **renderer startup slice done** ([runtime-trace.md](runtime-trace.md)); still to do: scripted editing/search/terminal/webview scenarios, production bundle, and main/shared/extension-host processes.
 - Extension ecosystem: top Marketplace extensions' use of Node APIs and native binaries.
 - Size/perf baseline: memory use and startup time of stock VS Code, for budgeting.
