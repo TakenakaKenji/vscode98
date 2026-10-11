@@ -48,7 +48,9 @@ So the build currently emits **modern JS with no downleveling**, on the assumpti
 - **Performance** is the open risk, not conformance. VS Code's startup executes a lot of JS; a bytecode interpreter will be much slower than V8's JIT. Measure in Phase 1.
 - Intl/Unicode data (`Intl.Segmenter`, `Intl.Collator`, `normalize`, `localeCompare` in ~190 files) means the engine needs ICU-like data or substitutes.
 
-## To verify
+## Verified against a real transpile
 
-- Actual compiled output of the workbench (no `out/` exists yet; needs `npm ci` and a build) — to measure bundle size and check the truly emitted syntax.
+`npm run transpile-client` was run (see [baseline-build.md](baseline-build.md)). The emitted JS keeps modern syntax unlowered: ES modules, `?.` in 4,474 files, `??` in 3,067, `async/await` in 4,447, class `static {}` blocks in 1,344. So the target engine must support these or the build must lower them.
+
+## To verify
 - Which features come from third-party deps (e.g. `@xterm/xterm`, `vscode-textmate`) rather than `src/vs`.

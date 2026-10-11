@@ -24,6 +24,7 @@ Start here. Every doc in `docs98/` is listed below with a one-line summary. Upda
 | [inventory/electron-apis.md](inventory/electron-apis.md) | Electron APIs used, by process type |
 | [inventory/native-modules.md](inventory/native-modules.md) | Native (C/C++) npm modules and what each does |
 | [inventory/js-language-level.md](inventory/js-language-level.md) | ECMAScript level emitted/required, and engine implications |
+| [inventory/baseline-build.md](inventory/baseline-build.md) | How stock VS Code was built on the dev machine, timings, what the emitted JS looks like |
 | `inventory/scripts/` | The scan scripts that produced the numbers (`scan_imports.py`, `scan_electron.py`, `scan_web_and_lang.sh`) |
 
 ## Key facts to remember (quick reference)

@@ -15,7 +15,7 @@ Status values: `not started`, `in progress`, `done`, `blocked`.
 | Inventory pass 1: JS language level | done (needs a real build to verify) → [inventory/js-language-level.md](inventory/js-language-level.md) |
 | Inventory pass 2: built-in `extensions/`, `build/`, finer CSS inventory | not started (see [inventory/README.md](inventory/README.md)) |
 | Inventory pass 3: runtime tracing of a real VS Code session | not started (needs a build, `npm ci`) |
-| Baseline: build stock VS Code on this machine, measure startup + memory | not started |
+| Baseline: build stock VS Code on this machine | in progress: `npm ci`, transpile, Electron download done; launch/measure/bundle pending → [inventory/baseline-build.md](inventory/baseline-build.md) |
 | Deepen git history / fetch upstream tags | not started |
 | Windows build/test environment (VM or machine) | not started |
 
