@@ -1,6 +1,6 @@
 # Checkpoint — Resume Here
 
-**Last updated:** 2026-10-11, after commit `f0029157` (pushed to `origin/main`, the fork `TakenakaKenji/vscode98`).
+**Last updated:** 2026-10-11, after the process-side trace (this session's commit follows `a9788173`, which is the last one pushed to `origin/main`, the fork `TakenakaKenji/vscode98`; check `git status` / `git log origin/main..` for anything unpushed).
 Update this file at the end of each working session (what's done, what's next, what to watch for).
 
 ## Where we are
@@ -14,17 +14,19 @@ Goal recap ([01-goal-and-scope.md](01-goal-and-scope.md)): full VS Code feature 
 - Static inventory of Electron, Node, DOM/CSS/Web, native modules, JS level ([inventory/README.md](inventory/README.md)).
 - Built stock VS Code on the Fedora dev machine and ran it headless ([inventory/baseline-build.md](inventory/baseline-build.md)).
 - **Measured renderer traces:** startup ([runtime-trace.md](inventory/runtime-trace.md)), 9 feature scenarios ([runtime-trace-scenarios.md](inventory/runtime-trace-scenarios.md)), markdown webview ([runtime-trace-webview.md](inventory/runtime-trace-webview.md)).
+- **Measured process-side trace:** Node + Electron API usage of the main process and 5 utility processes during the same scenarios ([runtime-trace-processes.md](inventory/runtime-trace-processes.md)).
 
 ### Key measured facts (details in the linked docs)
 - Electron is imported in ~52 files (47 in `electron-main`); the renderer reaches it via one preload bridge (`src/vs/base/parts/sandbox/electron-browser/preload.ts`).
 - ~312 distinct DOM/Web members were called across startup + 9 scenarios; 227 distinct standard CSS properties; layout is block/inline/flex/absolute (no grid, no sticky live).
 - Editor input is a `<textarea>` (no contentEditable) but needs the full legacy keyboard event model; Canvas 2D and `OffscreenCanvas` are used (no WebGL); legacy WebKit APIs are used (`caretRangeFromPoint`, `wheelDelta*`).
 - WebAssembly is required (syntax highlighting).
+- Process side: the app calls only 118 distinct Node functions (~13 modules) and 75 Electron methods/events; renderer↔main IPC is one multiplexed `vscode:message` channel plus ~3 MessagePort handoffs; the renderer's files are served through the `vscode-file://` protocol (`net.fetch`); programs launched: `rg`, `git`, `tsserver`, shells.
 - Webviews = iframe-in-iframe on a `vscode-webview:` origin + service worker; need a real HTML engine (incl. table layout, `@layer`, web fonts).
 - Emitted JS is ES2024 ES modules, not downleveled.
 
 ### Not done yet (open)
-- **Process-side traces:** which Node built-ins, `process.*`, and Electron APIs the main, shared, and extension-host processes call at runtime. *This was the next step offered and deferred by the owner.*
+- **Language-server children not traced** (`tsserver`, JSON server, worker forked by the extension host): the hook didn't reach them. Fix idea in [runtime-trace-processes.md](inventory/runtime-trace-processes.md) (wrap `child_process.fork/spawn` to add `--require`). Also `webContents`/`session` instance methods are unmeasured.
 - Inventory pass 2: built-in `extensions/`, `build/`, finer CSS inventory.
 - Production bundle (non-dev) build and baseline memory/startup numbers.
 - Other webview types (notebooks, custom editors, simple browser); API counters inside webview frames.
@@ -34,7 +36,7 @@ Goal recap ([01-goal-and-scope.md](01-goal-and-scope.md)): full VS Code feature 
 - Phase 1 feasibility spikes ([04-roadmap.md](04-roadmap.md)): JS engine (QuickJS-ng or other), minimal DOM/layout/GDI render, Node shim, downleveled build. **Decisions D-003 to D-006 are still `proposed`** ([05-decisions.md](05-decisions.md)).
 
 ## Suggested next steps (in order)
-1. **Process-side runtime trace.** Instrument Node `require`/built-ins and `process.*` in the main, shared, and extension-host processes, run the same scenarios, and write `inventory/runtime-trace-processes.md`. Electron's utility processes can be inspected with `--inspect-brk-extensions` / `--inspect-brk-sharedprocess` style flags (see `src/vs/platform/environment/node/argv.ts`); alternatively wrap `Module._load` via a preload. Approach not yet tried.
+1. **Finish the process-side trace:** trace language-server children (tsserver etc.) and `webContents`/`session` instance methods (see gaps above). Optional, since the main picture is already clear.
 2. Production bundle build + memory/startup baseline.
 3. Decide the Phase 1 spike order (suggested: JS engine + WASM on the emitted bundle first, since it gates everything).
 4. Set up a Windows 7 VM/machine for real testing before writing host code.
@@ -55,6 +57,7 @@ npm run gulp compile-extension-media  # ~10 s, REQUIRED for webviews
 npm run electron                      # downloads Electron to .build/electron
 cp node_modules/@vscode/codicons/dist/codicon.ttf src/vs/base/browser/ui/codicons/codicon/ && cp node_modules/@vscode/codicons/dist/codicon.ttf out/vs/base/browser/ui/codicons/codicon/
 # re-run traces (headless, throwaway profile and workspace copy):
+PROC_TRACE=1 bash docs98/inventory/scripts/run_scenarios.sh /some/workdir 9333       # + per-process Node/Electron trace (then analyze_proc_trace.py)
 bash docs98/inventory/scripts/run_scenarios.sh /some/workdir 9333                      # 9 scenarios
 bash docs98/inventory/scripts/run_scenarios.sh /some/workdir 9333 trace_webview.mjs    # markdown webview
 ```
@@ -67,6 +70,9 @@ bash docs98/inventory/scripts/run_scenarios.sh /some/workdir 9333 trace_webview.
 - Dev mode (unbundled `out/`) inflates module-loading counts (`new Blob`, `CSS.escape`, 400 stylesheets). Don't treat those as host requirements.
 - `scripts/` contains scan scripts that read the repo; the traces use CDP over `--remote-debugging-port=9333` and need `chrome-remote-interface` from the repo's `node_modules`.
 - The repo ships its own `.claude/CLAUDE.md` with upstream's coding guidelines (tabs, no `any`, etc.). Follow it when editing upstream TypeScript. Project docs live in `docs98/`, not in upstream files.
+- `PROC_TRACE=1` temporarily prepends an import to the generated `out/bootstrap-fork.js` and restores it on exit. If a run is killed hard, run `npm run transpile-client` (or restore `out/bootstrap-fork.js`) to be safe. The hook is inert unless `VSCODE98_TRACE_DIR` is set.
+- Electron main ignores `NODE_OPTIONS=--require` (use `-r file` on the command line); utility processes ignore `execArgv --require`.
+- A bare `new BrowserWindow` in a minimal Electron test app segfaults in headless mode even without the hook; test hooks against the real VS Code, not toy apps.
 - Scratch outputs of the traces were written to a temporary scratchpad and are **not** preserved; the committed copies are in `docs98/inventory/data/`.
 
 ## Open questions for the owner

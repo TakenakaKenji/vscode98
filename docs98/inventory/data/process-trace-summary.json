@@ -1,0 +1,1829 @@
+{
+ "processes": [
+  {
+   "name": "main",
+   "type": "browser",
+   "pid": 11533,
+   "uptimeSec": 136,
+   "nativeAddons": [
+    "keymapping.node",
+    "spdlog.node",
+    "vscode-sqlite3.node"
+   ],
+   "keys": 417,
+   "appCalledKeys": 315
+  },
+  {
+   "name": "agentHostMain",
+   "type": "utility",
+   "pid": 11777,
+   "uptimeSec": 113,
+   "nativeAddons": [
+    "bufferutil.node",
+    "spdlog.node",
+    "vscode-sqlite3.node"
+   ],
+   "keys": 346,
+   "appCalledKeys": 298
+  },
+  {
+   "name": "sharedProcessMain",
+   "type": "utility",
+   "pid": 11792,
+   "uptimeSec": 113,
+   "nativeAddons": [],
+   "keys": 97,
+   "appCalledKeys": 54
+  },
+  {
+   "name": "watcherMain",
+   "type": "utility",
+   "pid": 11793,
+   "uptimeSec": 112,
+   "nativeAddons": [
+    "watcher.node"
+   ],
+   "keys": 60,
+   "appCalledKeys": 33
+  },
+  {
+   "name": "extensionHostProcess",
+   "type": "utility",
+   "pid": 11827,
+   "uptimeSec": 111,
+   "nativeAddons": [
+    "spdlog.node"
+   ],
+   "keys": 266,
+   "appCalledKeys": 219
+  },
+  {
+   "name": "ptyHostMain",
+   "type": "utility",
+   "pid": 12169,
+   "uptimeSec": 63,
+   "nativeAddons": [
+    "pty.node",
+    "spdlog.node"
+   ],
+   "keys": 201,
+   "appCalledKeys": 67
+  }
+ ],
+ "nodeBuiltins": {
+  "original-fs.promises": {
+   "readdir()": {
+    "calls": 5196,
+    "processes": [
+     "sharedProcessMain",
+     "watcherMain"
+    ]
+   },
+   "lstat()": {
+    "calls": 4705,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "sharedProcessMain",
+     "watcherMain"
+    ]
+   },
+   "stat()": {
+    "calls": 2473,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main",
+     "ptyHostMain",
+     "sharedProcessMain",
+     "watcherMain"
+    ]
+   },
+   "mkdir()": {
+    "calls": 171,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "writeFile()": {
+    "calls": 67,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "rm()": {
+    "calls": 11,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "rename()": {
+    "calls": 10,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "readFile()": {
+    "calls": 9,
+    "processes": [
+     "agentHostMain",
+     "main",
+     "sharedProcessMain"
+    ]
+   },
+   "chmod()": {
+    "calls": 5,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "access()": {
+    "calls": 5,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "ptyHostMain",
+     "watcherMain"
+    ]
+   },
+   "open()": {
+    "calls": 2,
+    "processes": [
+     "agentHostMain",
+     "sharedProcessMain"
+    ]
+   },
+   "realpath()": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "mkdtemp()": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   }
+  },
+  "fs": {
+   "Stats#.isFile()": {
+    "calls": 1669,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "existsSync()": {
+    "calls": 1641,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "Stats#.isSymbolicLink()": {
+    "calls": 1180,
+    "processes": [
+     "main"
+    ]
+   },
+   "Dirent#.isSymbolicLink()": {
+    "calls": 853,
+    "processes": [
+     "main"
+    ]
+   },
+   "Dirent#.isFile()": {
+    "calls": 851,
+    "processes": [
+     "main"
+    ]
+   },
+   "Stats#.isDirectory()": {
+    "calls": 659,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main",
+     "ptyHostMain"
+    ]
+   },
+   "readFile()": {
+    "calls": 636,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "Dirent#.isDirectory()": {
+    "calls": 574,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "open()": {
+    "calls": 555,
+    "processes": [
+     "main"
+    ]
+   },
+   "close()": {
+    "calls": 515,
+    "processes": [
+     "main",
+     "watcherMain"
+    ]
+   },
+   "read()": {
+    "calls": 126,
+    "processes": [
+     "main"
+    ]
+   },
+   "write()": {
+    "calls": 90,
+    "processes": [
+     "main",
+     "ptyHostMain"
+    ]
+   },
+   "fdatasync()": {
+    "calls": 62,
+    "processes": [
+     "main"
+    ]
+   },
+   "exists()": {
+    "calls": 37,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   },
+   "writeFileSync()": {
+    "calls": 7,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   },
+   "accessSync()": {
+    "calls": 4,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main",
+     "ptyHostMain"
+    ]
+   },
+   "writeFile()": {
+    "calls": 3,
+    "processes": [
+     "main"
+    ]
+   },
+   "lstat()": {
+    "calls": 2,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   },
+   "readdirSync()": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "mkdirSync()": {
+    "calls": 1,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   }
+  },
+  "url": {
+   "pathToFileURL()": {
+    "calls": 8606,
+    "processes": [
+     "agentHostMain",
+     "main"
+    ]
+   },
+   "fileURLToPath()": {
+    "calls": 5,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "parse()": {
+    "calls": 2,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "format()": {
+    "calls": 2,
+    "processes": [
+     "agentHostMain"
+    ]
+   }
+  },
+  "util": {
+   "promisify()": {
+    "calls": 6455,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main",
+     "ptyHostMain",
+     "sharedProcessMain",
+     "watcherMain"
+    ]
+   },
+   "debuglog()": {
+    "calls": 27,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "deprecate()": {
+    "calls": 3,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess"
+    ]
+   },
+   "inherits()": {
+    "calls": 3,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   }
+  },
+  "fs.promises": {
+   "lstat()": {
+    "calls": 1565,
+    "processes": [
+     "main"
+    ]
+   },
+   "stat()": {
+    "calls": 525,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "readdir()": {
+    "calls": 147,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "readFile()": {
+    "calls": 70,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess"
+    ]
+   },
+   "open()": {
+    "calls": 54,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "realpath()": {
+    "calls": 30,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   },
+   "access()": {
+    "calls": 13,
+    "processes": [
+     "agentHostMain",
+     "main"
+    ]
+   },
+   "rename()": {
+    "calls": 5,
+    "processes": [
+     "main"
+    ]
+   },
+   "unlink()": {
+    "calls": 1,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   }
+  },
+  "original-fs": {
+   "open()": {
+    "calls": 978,
+    "processes": [
+     "sharedProcessMain"
+    ]
+   },
+   "close()": {
+    "calls": 945,
+    "processes": [
+     "sharedProcessMain"
+    ]
+   },
+   "realpathSync()": {
+    "calls": 377,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   },
+   "watchFile()": {
+    "calls": 38,
+    "processes": [
+     "agentHostMain",
+     "main",
+     "watcherMain"
+    ]
+   },
+   "watch()": {
+    "calls": 30,
+    "processes": [
+     "main",
+     "sharedProcessMain",
+     "watcherMain"
+    ]
+   },
+   "readFileSync()": {
+    "calls": 4,
+    "processes": [
+     "agentHostMain",
+     "main"
+    ]
+   },
+   "write()": {
+    "calls": 4,
+    "processes": [
+     "sharedProcessMain"
+    ]
+   },
+   "fdatasync()": {
+    "calls": 4,
+    "processes": [
+     "sharedProcessMain"
+    ]
+   },
+   "existsSync()": {
+    "calls": 2,
+    "processes": [
+     "agentHostMain",
+     "main"
+    ]
+   },
+   "writeFile()": {
+    "calls": 2,
+    "processes": [
+     "sharedProcessMain"
+    ]
+   },
+   "unlinkSync()": {
+    "calls": 1,
+    "processes": [
+     "main"
+    ]
+   }
+  },
+  "net": {
+   "Stream#.removeListener()": {
+    "calls": 267,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   },
+   "Stream#.on(data)": {
+    "calls": 180,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main",
+     "ptyHostMain"
+    ]
+   },
+   "Stream#.setEncoding()": {
+    "calls": 43,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "ptyHostMain"
+    ]
+   },
+   "Stream#.on(close)": {
+    "calls": 31,
+    "processes": [
+     "ptyHostMain"
+    ]
+   },
+   "Stream#.write()": {
+    "calls": 15,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "Stream#.end()": {
+    "calls": 12,
+    "processes": [
+     "agentHostMain",
+     "main"
+    ]
+   },
+   "Stream#.on(error)": {
+    "calls": 8,
+    "processes": [
+     "agentHostMain",
+     "ptyHostMain"
+    ]
+   },
+   "Server#.listen()": {
+    "calls": 5,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "createServer()": {
+    "calls": 2,
+    "processes": [
+     "main"
+    ]
+   },
+   "Socket#.connect()": {
+    "calls": 2,
+    "processes": [
+     "main"
+    ]
+   },
+   "Stream#.removeAllListeners()": {
+    "calls": 2,
+    "processes": [
+     "main"
+    ]
+   },
+   "Socket#.unref()": {
+    "calls": 2,
+    "processes": [
+     "agentHostMain",
+     "main"
+    ]
+   },
+   "createConnection()": {
+    "calls": 1,
+    "processes": [
+     "main"
+    ]
+   },
+   "Server#.address()": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "Stream#.off()": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "Stream#.on(exit)": {
+    "calls": 1,
+    "processes": [
+     "ptyHostMain"
+    ]
+   }
+  },
+  "crypto": {
+   "createHash()": {
+    "calls": 122,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "getHashes()": {
+    "calls": 4,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess"
+    ]
+   },
+   "randomBytes()": {
+    "calls": 3,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "randomUUID()": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   }
+  },
+  "child_process": {
+   "spawn(git)": {
+    "calls": 49,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   },
+   "spawn(rg)": {
+    "calls": 11,
+    "processes": [
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "exec(which)": {
+    "calls": 5,
+    "processes": [
+     "ptyHostMain"
+    ]
+   },
+   "exec(ps)": {
+    "calls": 5,
+    "processes": [
+     "ptyHostMain"
+    ]
+   },
+   "exec(cpuUsage.sh\")": {
+    "calls": 5,
+    "processes": [
+     "ptyHostMain"
+    ]
+   },
+   "ChildProcess#.kill()": {
+    "calls": 3,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess"
+    ]
+   },
+   "fork(tsserver.js)": {
+    "calls": 2,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   },
+   "spawn(claude)": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "spawn(copilot-runtime)": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "spawn(codex)": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "fork(jsonServerMain)": {
+    "calls": 1,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   },
+   "fork(workerMain)": {
+    "calls": 1,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   }
+  },
+  "os": {
+   "homedir()": {
+    "calls": 14,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main",
+     "ptyHostMain",
+     "sharedProcessMain",
+     "watcherMain"
+    ]
+   },
+   "platform()": {
+    "calls": 11,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "tmpdir()": {
+    "calls": 10,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main",
+     "ptyHostMain",
+     "sharedProcessMain"
+    ]
+   },
+   "release()": {
+    "calls": 10,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "arch()": {
+    "calls": 10,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "totalmem()": {
+    "calls": 7,
+    "processes": [
+     "agentHostMain",
+     "main",
+     "ptyHostMain"
+    ]
+   },
+   "networkInterfaces()": {
+    "calls": 3,
+    "processes": [
+     "agentHostMain",
+     "main"
+    ]
+   },
+   "hostname()": {
+    "calls": 3,
+    "processes": [
+     "agentHostMain",
+     "main"
+    ]
+   },
+   "type()": {
+    "calls": 1,
+    "processes": [
+     "main"
+    ]
+   },
+   "cpus()": {
+    "calls": 1,
+    "processes": [
+     "main"
+    ]
+   },
+   "freemem()": {
+    "calls": 1,
+    "processes": [
+     "main"
+    ]
+   },
+   "loadavg()": {
+    "calls": 1,
+    "processes": [
+     "main"
+    ]
+   },
+   "availableParallelism()": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "version()": {
+    "calls": 1,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   }
+  },
+  "module": {
+   "createRequire()": {
+    "calls": 31,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main",
+     "ptyHostMain",
+     "sharedProcessMain",
+     "watcherMain"
+    ]
+   },
+   "registerHooks()": {
+    "calls": 7,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main",
+     "ptyHostMain",
+     "sharedProcessMain",
+     "watcherMain"
+    ]
+   }
+  },
+  "tty": {
+   "isatty()": {
+    "calls": 15,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess"
+    ]
+   }
+  },
+  "readline": {
+   "createInterface()": {
+    "calls": 4,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "sharedProcessMain"
+    ]
+   },
+   "Interface#.close()": {
+    "calls": 2,
+    "processes": [
+     "agentHostMain"
+    ]
+   }
+  },
+  "stream": {
+   "EventEmitter.getMaxListeners()": {
+    "calls": 4,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess"
+    ]
+   },
+   "EventEmitter.setMaxListeners()": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   }
+  },
+  "http": {
+   "createServer()": {
+    "calls": 3,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess"
+    ]
+   },
+   "Server#.closeAllConnections()": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "Server#.close()": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   }
+  },
+  "worker_threads": {
+   "markAsUncloneable()": {
+    "calls": 2,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess"
+    ]
+   }
+  }
+ },
+ "nodeInternalOnlyCalls": {
+  "module": 16310,
+  "fs": 32133,
+  "original-fs": 2920,
+  "stream": 441359,
+  "net": 2692,
+  "util": 2,
+  "child_process": 97,
+  "crypto": 1,
+  "worker_threads": 68832,
+  "readline": 11,
+  "dns": 1,
+  "http": 1
+ },
+ "processMembers": {
+  "arch (get)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "argv (get)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "config (get)": [
+   "agentHostMain",
+   "extensionHostProcess"
+  ],
+  "cwd()": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main"
+  ],
+  "dlopen()": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "watcherMain"
+  ],
+  "emitWarning()": [
+   "agentHostMain"
+  ],
+  "execArgv (get)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "execPath (get)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main"
+  ],
+  "getgid()": [
+   "extensionHostProcess"
+  ],
+  "getuid()": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main"
+  ],
+  "kill()": [
+   "watcherMain"
+  ],
+  "nextTick()": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "on(SIGPIPE)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "on(exit)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "on(rejectionHandled)": [
+   "agentHostMain",
+   "extensionHostProcess"
+  ],
+  "on(uncaughtException)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "on(unhandledRejection)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "on(warning)": [
+   "extensionHostProcess"
+  ],
+  "once(exit)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain"
+  ],
+  "pid (get)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "platform (get)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "ppid (get)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "release (get)": [
+   "agentHostMain",
+   "extensionHostProcess"
+  ],
+  "removeListener(warning)": [
+   "extensionHostProcess"
+  ],
+  "title (get)": [
+   "agentHostMain",
+   "extensionHostProcess"
+  ],
+  "version (get)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "versions (get)": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ]
+ },
+ "envVarNamesRead": {
+  "ALL_PROXY": [
+   "agentHostMain"
+  ],
+  "APPDATA": [
+   "main"
+  ],
+  "CI": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "COLORTERM": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "DEBUG": [
+   "agentHostMain",
+   "extensionHostProcess"
+  ],
+  "DISPLAY": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "EDITOR": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "ELECTRON_ENABLE_LOGGING": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "ELECTRON_RUN_AS_NODE": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "HOME": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "HTTPS_PROXY": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main"
+  ],
+  "HTTP_PROXY": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main"
+  ],
+  "LANG": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "NODE_ENV": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "NODE_OPTIONS": [
+   "main"
+  ],
+  "NO_PROXY": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main"
+  ],
+  "PATH": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "PATHEXT": [
+   "extensionHostProcess"
+  ],
+  "PROCESSOR_ARCHITECTURE": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain"
+  ],
+  "PWD": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "SHELL": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "TERM": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "TERM_PROGRAM": [
+   "agentHostMain"
+  ],
+  "USER": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "VSCODE_AGENT_HOST_CAPI_URL_OVERRIDE": [
+   "agentHostMain"
+  ],
+  "VSCODE_AGENT_HOST_CLAUDE_AGENT_ENABLED": [
+   "agentHostMain",
+   "main"
+  ],
+  "VSCODE_AGENT_HOST_CLAUDE_SDK_ROOT": [
+   "agentHostMain"
+  ],
+  "VSCODE_AGENT_HOST_CODEX_AGENT_ENABLED": [
+   "agentHostMain",
+   "main"
+  ],
+  "VSCODE_AGENT_HOST_CODEX_APP_SERVER_ARGS": [
+   "agentHostMain"
+  ],
+  "VSCODE_AGENT_HOST_CODEX_SDK_ROOT": [
+   "agentHostMain"
+  ],
+  "VSCODE_AGENT_HOST_DEV_DEVICE_ID": [
+   "agentHostMain"
+  ],
+  "VSCODE_AGENT_HOST_LAUNCH_KIND": [
+   "agentHostMain"
+  ],
+  "VSCODE_AGENT_HOST_MACHINE_ID": [
+   "agentHostMain"
+  ],
+  "VSCODE_AGENT_HOST_PORT": [
+   "agentHostMain"
+  ],
+  "VSCODE_AGENT_HOST_SESSION_RELEASE_RETRY_MS": [
+   "agentHostMain"
+  ],
+  "VSCODE_AGENT_HOST_SESSION_RESIDENCY_LIMIT": [
+   "agentHostMain"
+  ],
+  "VSCODE_AGENT_HOST_SOCKET_PATH": [
+   "agentHostMain"
+  ],
+  "VSCODE_AGENT_HOST_SQM_ID": [
+   "agentHostMain"
+  ],
+  "VSCODE_AGENT_HOST_TELEMETRY_LEVEL": [
+   "agentHostMain"
+  ],
+  "VSCODE_AGENT_PLUGINS": [
+   "main"
+  ],
+  "VSCODE_APPDATA": [
+   "agentHostMain",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain"
+  ],
+  "VSCODE_ASAR_TRACE": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "VSCODE_CLI": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "VSCODE_CODE_CACHE_PATH": [
+   "main"
+  ],
+  "VSCODE_CRASH_REPORTER_PROCESS_TYPE": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "VSCODE_CWD": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "VSCODE_DEV": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "VSCODE_DEV_DEBUG_OBSERVABLES": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "sharedProcessMain"
+  ],
+  "VSCODE_DEV_INJECT_NODE_MODULE_LOOKUP_PATH": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "VSCODE_DEV_SERVER_URL": [
+   "main"
+  ],
+  "VSCODE_ESM_ENTRYPOINT": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "VSCODE_EXTENSIONS": [
+   "agentHostMain"
+  ],
+  "VSCODE_EXTHOST_IPC_HOOK": [
+   "extensionHostProcess"
+  ],
+  "VSCODE_EXTHOST_WILL_SEND_SOCKET": [
+   "extensionHostProcess"
+  ],
+  "VSCODE_GENERATE_NODE_COMPILE_CACHE": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain"
+  ],
+  "VSCODE_GIT_ASKPASS_MAIN": [
+   "agentHostMain"
+  ],
+  "VSCODE_HANDLES_SIGPIPE": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "VSCODE_HANDLES_UNCAUGHT_ERRORS": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "VSCODE_IPC_HOOK": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "VSCODE_L10N_BUNDLE_LOCATION": [
+   "extensionHostProcess"
+  ],
+  "VSCODE_LATENCY": [
+   "ptyHostMain"
+  ],
+  "VSCODE_MEASURE_NODE_COMPILE_CACHE": [
+   "main"
+  ],
+  "VSCODE_NLS_CONFIG": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "VSCODE_NODE_COMPILE_CACHE_MEASUREMENTS": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "ptyHostMain",
+   "sharedProcessMain"
+  ],
+  "VSCODE_NODE_COMPILE_CACHE_ROOT": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain"
+  ],
+  "VSCODE_PARENT_PID": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "ptyHostMain",
+   "sharedProcessMain",
+   "watcherMain"
+  ],
+  "VSCODE_PID": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain"
+  ],
+  "VSCODE_PIPE_LOGGING": [
+   "agentHostMain",
+   "ptyHostMain"
+  ],
+  "VSCODE_PORTABLE": [
+   "agentHostMain",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain"
+  ],
+  "VSCODE_RECONNECT_GRACE_TIME": [
+   "ptyHostMain"
+  ],
+  "VSCODE_RECONNECT_SCROLLBACK": [
+   "ptyHostMain"
+  ],
+  "VSCODE_RECONNECT_SHORT_GRACE_TIME": [
+   "ptyHostMain"
+  ],
+  "VSCODE_SKIP_BUILTIN_EXTENSIONS": [
+   "sharedProcessMain"
+  ],
+  "VSCODE_STARTUP_DELAY": [
+   "ptyHostMain"
+  ],
+  "VSCODE_VERBOSE_LOGGING": [
+   "agentHostMain",
+   "ptyHostMain"
+  ],
+  "VSCODE_WILL_SEND_MESSAGE_PORT": [
+   "extensionHostProcess"
+  ],
+  "XDG_CONFIG_HOME": [
+   "agentHostMain",
+   "main",
+   "ptyHostMain"
+  ],
+  "XDG_DATA_HOME": [
+   "agentHostMain"
+  ],
+  "XDG_RUNTIME_DIR": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain"
+  ],
+  "XDG_SESSION_TYPE": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain"
+  ]
+ },
+ "envVarNamesReadTotal": 237,
+ "envVarNamesReadOtherByPrefix": {
+  "CLAUDE": 16,
+  "XDG": 13,
+  "COPILOT": 10,
+  "": 9,
+  "OTEL": 6,
+  "KONSOLE": 5,
+  "NODE": 4,
+  "KDE": 4,
+  "SNAP": 2,
+  "npm": 2,
+  "IMSETTINGS": 2,
+  "SSH": 2,
+  "MEMORY": 2,
+  "XKB": 2,
+  "DEBUGINFOD": 2,
+  "CHROME": 2,
+  "WSL": 2,
+  "DEBUG": 2,
+  "TSS": 2,
+  "WATCH": 1,
+  "BUILD": 1,
+  "GITHUB": 1,
+  "PROCESSOR": 1,
+  "FORCE": 1,
+  "GRACEFUL": 1,
+  "TEST": 1,
+  "SESSION": 1,
+  "COREPACK": 1,
+  "WINDOWID": 1,
+  "HISTCONTROL": 1,
+  "AI": 1,
+  "HOSTNAME": 1,
+  "HISTSIZE": 1,
+  "ICEAUTHORITY": 1,
+  "LANGUAGE": 1,
+  "VSCODE98": 1,
+  "SHELL": 1,
+  "XMODIFIERS": 1,
+  "DESKTOP": 1,
+  "GTK": 1,
+  "GDK": 1,
+  "GPG": 1,
+  "PROC": 1,
+  "LOGNAME": 1,
+  "SYSTEMD": 1,
+  "XAUTHORITY": 1,
+  "NoDefaultCurrentDirectoryInExePath": 1,
+  "CLAUDECODE": 1,
+  "GTK2": 1,
+  "LS": 1,
+  "WAYLAND": 1,
+  "PROFILEHOME": 1,
+  "INVOCATION": 1,
+  "MANAGERPID": 1,
+  "LESSOPEN": 1,
+  "COLORFGBG": 1,
+  "QT": 1,
+  "PAM": 1,
+  "SHLVL": 1,
+  "GIT": 1,
+  "MANAGERPIDFDID": 1,
+  "KDEDIRS": 1,
+  "JOURNAL": 1,
+  "DBUS": 1,
+  "MAIL": 1,
+  "OLDPWD": 1,
+  "FC": 1,
+  "https": 1,
+  "http": 1,
+  "no": 1,
+  "DEV": 1,
+  "hasOwnProperty": 1,
+  "windir": 1,
+  "TESTING": 1,
+  "WS": 1,
+  "PREBUILDS": 1,
+  "LIBC": 1,
+  "ARM": 1,
+  "BUFFERUTIL": 1,
+  "CODEX": 1,
+  "USERDNSDOMAIN": 1,
+  "CURSOR": 1,
+  "VisualStudioVersion": 1,
+  "TERMINAL": 1,
+  "TMUX": 1,
+  "STY": 1,
+  "all": 1
+ },
+ "envVarNamesSet": {
+  "ELECTRON_RUN_AS_NODE": [
+   "extensionHostProcess"
+  ],
+  "VSCODE_CODE_CACHE_PATH": [
+   "main"
+  ],
+  "VSCODE_CWD": [
+   "main"
+  ],
+  "VSCODE_IPC_HOOK": [
+   "main"
+  ],
+  "VSCODE_L10N_BUNDLE_LOCATION": [
+   "extensionHostProcess"
+  ],
+  "VSCODE_NLS_CONFIG": [
+   "main"
+  ],
+  "VSCODE_NODE_COMPILE_CACHE_ROOT": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "main",
+   "ptyHostMain",
+   "sharedProcessMain"
+  ],
+  "VSCODE_PID": [
+   "main"
+  ]
+ },
+ "envVarNamesSetTotal": 11,
+ "electronApis": {
+  "electron.net.fetch()": 8601,
+  "electron.BrowserWindow.getAllWindows()": 8420,
+  "electron.BaseWindow#.setTitleBarOverlay()": 9,
+  "electron.BaseWindow#.isDestroyed()": 9,
+  "electron.app.on(child-process-gone)": 6,
+  "electron.BrowserWindow.getFocusedWindow()": 6,
+  "electron.BaseWindow#.on(closed)": 6,
+  "electron.clipboard.writeText()": 6,
+  "electron.app.on(browser-window-blur)": 3,
+  "electron.BaseWindow#.isVisible()": 3,
+  "electron.BaseWindow#.setBackgroundColor()": 3,
+  "electron.Menu.setApplicationMenu()": 2,
+  "electron.app.on(open-file)": 2,
+  "electron.app.on(open-url)": 2,
+  "electron.app.getGPUFeatureStatus()": 2,
+  "electron.app.on(browser-window-focus)": 2,
+  "electron.powerMonitor.on(suspend)": 2,
+  "electron.powerMonitor.on(resume)": 2,
+  "electron.Menu.getApplicationMenu()": 2,
+  "electron.BaseWindow#.on(focus)": 2,
+  "electron.BaseWindow#.on(close)": 2,
+  "electron.BaseWindow#.on(maximize)": 2,
+  "electron.BaseWindow#.isFullScreen()": 2,
+  "electron.BaseWindow#.isSimpleFullScreen()": 2,
+  "electron.BrowserWindow.fromWebContents()": 2,
+  "electron.app.setVersion()": 1,
+  "electron.app.setDesktopName()": 1,
+  "electron.app.setAppPath()": 1,
+  "electron.app.setPath()": 1,
+  "electron.crashReporter.start()": 1,
+  "electron.protocol.registerSchemesAsPrivileged()": 1,
+  "electron.app.on(will-finish-launching)": 1,
+  "electron.app.getPreferredSystemLanguages()": 1,
+  "electron.app.once(ready)": 1,
+  "electron.app.getLocale()": 1,
+  "electron.app.on(gpu-info-update)": 1,
+  "electron.app.on(accessibility-support-changed)": 1,
+  "electron.app.on(activate)": 1,
+  "electron.app.on(web-contents-created)": 1,
+  "electron.app.on(new-window-for-tab)": 1,
+  "electron.app.on(browser-window-created)": 1,
+  "electron.nativeTheme.on(updated)": 1,
+  "electron.app.on(login)": 1,
+  "electron.powerMonitor.on(on-ac)": 1,
+  "electron.powerMonitor.on(on-battery)": 1,
+  "electron.powerMonitor.on(thermal-state-change)": 1,
+  "electron.powerMonitor.on(speed-limit-change)": 1,
+  "electron.powerMonitor.on(shutdown)": 1,
+  "electron.powerMonitor.on(lock-screen)": 1,
+  "electron.powerMonitor.on(unlock-screen)": 1,
+  "electron.protocol.handle(vscode-webview)": 1,
+  "electron.app.addListener(before-quit)": 1,
+  "electron.app.addListener(window-all-closed)": 1,
+  "electron.app.once(will-quit)": 1,
+  "electron.BaseWindow#.on(unmaximize)": 1,
+  "electron.BaseWindow#.on(enter-full-screen)": 1,
+  "electron.BaseWindow#.on(leave-full-screen)": 1,
+  "electron.BaseWindow#.on(always-on-top-changed)": 1,
+  "electron.BaseWindow#.on(system-context-menu)": 1,
+  "electron.BaseWindow#.setMenuBarVisibility()": 1,
+  "electron.BaseWindow#.on(unresponsive)": 1,
+  "electron.BaseWindow#.on(responsive)": 1,
+  "electron.BaseWindow#.setTitle()": 1,
+  "electron.BaseWindow#.getNativeWindowHandle()": 1,
+  "electron.BaseWindow#.isMaximized()": 1,
+  "electron.BrowserWindow#.loadURL()": 1,
+  "electron.protocol.handle(vscode-remote-resource)": 1,
+  "electron.app.on(network-process-launched)": 1,
+  "electron.app.on(network-process-gone)": 1,
+  "electron.ipcMain.removeListener()": 1,
+  "electron.BaseWindow#.isAlwaysOnTop()": 1,
+  "electron.BaseWindow#.getSize()": 1,
+  "electron.BaseWindow#.getMinimumSize()": 1,
+  "electron.safeStorage.isEncryptionAvailable()": 1,
+  "electron.clipboard.readText()": 1
+ },
+ "ipcChannelsRegistered": {
+  "vscode:5b19ad60-1ded-441e-912a-2fc16b487b7a": "handle",
+  "vscode:agentHostOTelPolicy": "on",
+  "vscode:contextmenu": "on",
+  "vscode:createAgentHostMessageChannel": "on",
+  "vscode:createPtyHostMessageChannel": "on",
+  "vscode:createSharedProcessChannelConnection": "on",
+  "vscode:createSharedProcessRawConnection": "on",
+  "vscode:disconnect": "on",
+  "vscode:fetchShellEnv": "handle",
+  "vscode:hello": "on",
+  "vscode:message": "on",
+  "vscode:notifyZoomLevel": "handle",
+  "vscode:openDevTools": "on",
+  "vscode:registerAuxiliaryWindow": "handle",
+  "vscode:reloadWindow": "on",
+  "vscode:restartAgentHost": "on",
+  "vscode:toggleDevTools": "on"
+ },
+ "ipcChannelsReceived": {
+  "vscode:message": 2558,
+  "vscode:5b19ad60-1ded-441e-912a-2fc16b487b7a": 2,
+  "vscode:fetchShellEnv": 2,
+  "vscode:agentHostOTelPolicy": 2,
+  "vscode:hello": 1,
+  "vscode:createAgentHostMessageChannel": 1,
+  "vscode:createSharedProcessChannelConnection": 1,
+  "vscode:createPtyHostMessageChannel": 1
+ },
+ "perProcess": {
+  "main": {
+   "distinctAppCalledNodeFunctions": {
+    "fs": 15,
+    "os": 12,
+    "net": 8,
+    "fs.promises": 5,
+    "original-fs": 5,
+    "original-fs.promises": 3,
+    "url": 2,
+    "util": 2,
+    "module": 2,
+    "child_process": 1,
+    "crypto": 1
+   },
+   "electronApiKeysCalled": 92,
+   "childProcesses": [
+    "spawn(rg)"
+   ]
+  },
+  "agentHostMain": {
+   "distinctAppCalledNodeFunctions": {
+    "original-fs.promises": 12,
+    "net": 9,
+    "os": 9,
+    "fs": 7,
+    "fs.promises": 5,
+    "url": 4,
+    "child_process": 4,
+    "crypto": 4,
+    "http": 3,
+    "util": 3,
+    "original-fs": 3,
+    "readline": 2,
+    "stream": 2,
+    "module": 2,
+    "worker_threads": 1,
+    "tty": 1
+   },
+   "electronApiKeysCalled": 0,
+   "childProcesses": [
+    "spawn(claude)",
+    "spawn(codex)",
+    "spawn(copilot-runtime)"
+   ]
+  },
+  "sharedProcessMain": {
+   "distinctAppCalledNodeFunctions": {
+    "original-fs": 6,
+    "original-fs.promises": 5,
+    "os": 2,
+    "module": 2,
+    "readline": 1,
+    "util": 1
+   },
+   "electronApiKeysCalled": 0,
+   "childProcesses": []
+  },
+  "watcherMain": {
+   "distinctAppCalledNodeFunctions": {
+    "original-fs.promises": 4,
+    "original-fs": 2,
+    "module": 2,
+    "fs": 1,
+    "os": 1,
+    "util": 1
+   },
+   "electronApiKeysCalled": 0,
+   "childProcesses": []
+  },
+  "extensionHostProcess": {
+   "distinctAppCalledNodeFunctions": {
+    "fs": 10,
+    "child_process": 6,
+    "os": 6,
+    "fs.promises": 5,
+    "net": 4,
+    "original-fs.promises": 4,
+    "util": 4,
+    "module": 2,
+    "crypto": 2,
+    "readline": 1,
+    "stream": 1,
+    "worker_threads": 1,
+    "http": 1,
+    "url": 1,
+    "original-fs": 1,
+    "tty": 1
+   },
+   "electronApiKeysCalled": 0,
+   "childProcesses": [
+    "fork(jsonServerMain)",
+    "fork(tsserver.js)",
+    "fork(workerMain)",
+    "spawn(git)",
+    "spawn(rg)"
+   ]
+  },
+  "ptyHostMain": {
+   "distinctAppCalledNodeFunctions": {
+    "net": 5,
+    "os": 3,
+    "fs": 3,
+    "child_process": 3,
+    "module": 2,
+    "original-fs.promises": 2,
+    "util": 1
+   },
+   "electronApiKeysCalled": 0,
+   "childProcesses": [
+    "exec(cpuUsage.sh\")",
+    "exec(ps)",
+    "exec(which)"
+   ]
+  }
+ }
+}
