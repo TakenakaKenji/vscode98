@@ -1,0 +1,536 @@
+{
+ "takenAt": "2026-10-11T21:15:22.586Z",
+ "samples": [
+  {
+   "t": 3000,
+   "mainPage": {
+    "iframeCount": 1,
+    "iframe": {
+     "src": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/index.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3&parentId=1&origin=d",
+     "sandbox": "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-downloads",
+     "allow": "cross-origin-isolated; autoplay; local-network-access; clipboard-read; clipboard-write",
+     "rect": [
+      353,
+      87,
+      786,
+      780
+     ],
+     "visibility": "visible",
+     "display": "inline",
+     "opacity": "1",
+     "pointerEvents": "auto"
+    },
+    "wrapperClass": "webview ready",
+    "wrapperVisibility": "visible",
+    "wrapperDisplay": "inline",
+    "wrapperOpacity": "1",
+    "activeTab": "README.md"
+   },
+   "targets": [
+    {
+     "type": "service_worker",
+     "url": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/service-worker.js?v=6&vscode-resource-base-authori",
+     "attached": false
+    },
+    {
+     "type": "worker",
+     "url": "",
+     "attached": false
+    },
+    {
+     "type": "worker",
+     "url": "",
+     "attached": false
+    },
+    {
+     "type": "page",
+     "url": "vscode-file://vscode-app/home/user/Documents/GitHub/vscode98/out/vs/code/electron-browser/workbench/workbench-dev.html",
+     "attached": true
+    },
+    {
+     "type": "iframe",
+     "url": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/index.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3",
+     "attached": false
+    }
+   ]
+  },
+  {
+   "t": 5000,
+   "mainPage": {
+    "iframeCount": 1,
+    "iframe": {
+     "src": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/index.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3&parentId=1&origin=d",
+     "sandbox": "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-downloads",
+     "allow": "cross-origin-isolated; autoplay; local-network-access; clipboard-read; clipboard-write",
+     "rect": [
+      353,
+      87,
+      786,
+      780
+     ],
+     "visibility": "visible",
+     "display": "inline",
+     "opacity": "1",
+     "pointerEvents": "auto"
+    },
+    "wrapperClass": "webview ready",
+    "wrapperVisibility": "visible",
+    "wrapperDisplay": "inline",
+    "wrapperOpacity": "1",
+    "activeTab": "README.md"
+   },
+   "targets": [
+    {
+     "type": "service_worker",
+     "url": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/service-worker.js?v=6&vscode-resource-base-authori",
+     "attached": false
+    },
+    {
+     "type": "worker",
+     "url": "",
+     "attached": false
+    },
+    {
+     "type": "worker",
+     "url": "",
+     "attached": false
+    },
+    {
+     "type": "page",
+     "url": "vscode-file://vscode-app/home/user/Documents/GitHub/vscode98/out/vs/code/electron-browser/workbench/workbench-dev.html",
+     "attached": true
+    },
+    {
+     "type": "iframe",
+     "url": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/index.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3",
+     "attached": false
+    }
+   ]
+  },
+  {
+   "t": 10000,
+   "mainPage": {
+    "iframeCount": 1,
+    "iframe": {
+     "src": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/index.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3&parentId=1&origin=d",
+     "sandbox": "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-downloads",
+     "allow": "cross-origin-isolated; autoplay; local-network-access; clipboard-read; clipboard-write",
+     "rect": [
+      353,
+      87,
+      786,
+      780
+     ],
+     "visibility": "visible",
+     "display": "inline",
+     "opacity": "1",
+     "pointerEvents": "auto"
+    },
+    "wrapperClass": "webview ready",
+    "wrapperVisibility": "visible",
+    "wrapperDisplay": "inline",
+    "wrapperOpacity": "1",
+    "activeTab": "README.md"
+   },
+   "targets": [
+    {
+     "type": "service_worker",
+     "url": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/service-worker.js?v=6&vscode-resource-base-authori",
+     "attached": false
+    },
+    {
+     "type": "worker",
+     "url": "",
+     "attached": false
+    },
+    {
+     "type": "worker",
+     "url": "",
+     "attached": false
+    },
+    {
+     "type": "page",
+     "url": "vscode-file://vscode-app/home/user/Documents/GitHub/vscode98/out/vs/code/electron-browser/workbench/workbench-dev.html",
+     "attached": true
+    },
+    {
+     "type": "iframe",
+     "url": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/index.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3",
+     "attached": false
+    }
+   ]
+  },
+  {
+   "t": 15000,
+   "mainPage": {
+    "iframeCount": 1,
+    "iframe": {
+     "src": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/index.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3&parentId=1&origin=d",
+     "sandbox": "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-downloads",
+     "allow": "cross-origin-isolated; autoplay; local-network-access; clipboard-read; clipboard-write",
+     "rect": [
+      353,
+      87,
+      786,
+      780
+     ],
+     "visibility": "visible",
+     "display": "inline",
+     "opacity": "1",
+     "pointerEvents": "auto"
+    },
+    "wrapperClass": "webview ready",
+    "wrapperVisibility": "visible",
+    "wrapperDisplay": "inline",
+    "wrapperOpacity": "1",
+    "activeTab": "README.md"
+   },
+   "targets": [
+    {
+     "type": "service_worker",
+     "url": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/service-worker.js?v=6&vscode-resource-base-authori",
+     "attached": false
+    },
+    {
+     "type": "worker",
+     "url": "",
+     "attached": false
+    },
+    {
+     "type": "worker",
+     "url": "",
+     "attached": false
+    },
+    {
+     "type": "page",
+     "url": "vscode-file://vscode-app/home/user/Documents/GitHub/vscode98/out/vs/code/electron-browser/workbench/workbench-dev.html",
+     "attached": true
+    },
+    {
+     "type": "iframe",
+     "url": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/index.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3",
+     "attached": false
+    }
+   ]
+  }
+ ],
+ "shellTarget": {
+  "url": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/index.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3&parentId=1&origin=d902139f-0bca-492a-93"
+ },
+ "frameTree": "{\"frame\":{\"id\":\"714B9EC295E287490A54985B7422F6A4\",\"name\":\"5b75a20d-1c3b-466c-830e-155e94c5bbc3\",\"url\":\"vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/index.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3&parentId=1&origin=d\",\"securityOrigin\":\"vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l\",\"securityOriginDetails\":{},\"mimeType\":\"text/html\",\"adFrameStatus\":{},\"gatedAPIFeatures\":[]},\"childFrames\":[{\"frame\":{\"id\":\"D31B9483F4C8A3C41084A7A471A791BD\",\"name\":\"active-frame\",\"url\":\"vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/index.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3&parentId=1&origin=d\",\"securityOrigin\":\"vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l\",\"securityOriginDetails\":{},\"mimeType\":\"text/html\",\"adFrameStatus\":{},\"gatedAPIFeatures\":[]}}]}",
+ "shellInfo": {
+  "shellBodyHTML": "\n\t<script async=\"\" type=\"module\">\n\t\t// @ts-check\n\t\t/// <reference lib=\"dom\" />\n\n\t\tconst isSafari = (\n\t\t\tnavigator.vendor && navigator.vendor.indexOf('Apple') > -1 &&\n\t\t\tnavigator.userAgent &&\n\t\t\tnavigator.userAgent.indexOf('CriOS') === -1 &&\n\t\t\tnavigator.userAgent.indexOf('FxiOS') === -1\n\t\t);\n\n\t\tconst isFirefox = (\n\t\t\tnavigator.userAgent &&\n\t\t\tnavigator.userAgent.indexOf('Firefox') >= 0\n\t\t);\n\n\t\tconst searchParams = new URL(location.toString()).searchParams;\n\t\tconst ID = searchParams.get('id');\n\t\tconst webviewOrigin = searchParams.get('origin');\n\t\tconst onElectron = searchParams.get('platform') === 'electron';\n\t\tconst disableServiceWorker = searchParams.has('disableServiceWorker');\n\t\tconst ex",
+  "iframeSrc": "./fake.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3",
+  "iframeSandbox": "allow-same-origin allow-pointer-lock allow-scripts allow-downloads",
+  "innerDoc": "accessible",
+  "readyState": "complete",
+  "hasServiceWorker": true,
+  "swController": true
+ },
+ "inner": {
+  "readyState": "complete",
+  "elements": 145,
+  "textHead": "00 — Overview\nWhat this is\n\nvscode98 is a fork of microsoft/vscode (fork: TakenakaKenji/vscode98). The aim is to run VS Code as a standalone native application, without Electron, on progressively older versions of Windows, with Windows 98 as the extreme end.\n\nWhy\n\nThe owner wants to work on projects",
+  "htmlLen": 208760,
+  "headHTML": "<style id=\"_defaultStyles\">\n\t\t@layer vscode-default {\n\t\t\thtml {\n\t\t\t\tscrollbar-color: var(--vscode-scrollbarSlider-background) var(--vscode-editor-background);\n\t\t\t}\n\n\t\t\tbody {\n\t\t\t\toverscroll-behavior-x: none;\n\t\t\t\tbackground-color: transparent;\n\t\t\t\tcolor: var(--vscode-editor-foreground);\n\t\t\t\tfont-family: var(--vscode-font-family);\n\t\t\t\tfont-weight: var(--vscode-font-weight);\n\t\t\t\tfont-size: var(--vscode-font-size);\n\t\t\t\tmargin: 0;\n\t\t\t\tpadding: 0 20px;\n\t\t\t}\n\n\t\t\timg, video {\n\t\t\t\tmax-width: 100%;\n\t\t\t\tmax-height: 100%;\n\t\t\t}\n\n\t\t\ta, a code {\n\t\t\t\tcolor: var(--vscode-textLink-foreground);\n\t\t\t}\n\n\t\t\tp > a {\n",
+  "bodyClass": "vscode-body scrollBeyondLastLine wordWrap vscode-dark",
+  "styleSheets": 7,
+  "viewport": [
+   786,
+   780
+  ]
+ },
+ "innerCensus": {
+  "stylesheets": {
+   "sheets": 7,
+   "rules": 975,
+   "properties": {
+    "scrollbar-color": 1,
+    "overscroll-behavior-x": 2,
+    "background-color": 41,
+    "color": 40,
+    "font-family": 53,
+    "font-weight": 32,
+    "font-size": 135,
+    "margin-top": 10,
+    "margin-right": 12,
+    "margin-bottom": 18,
+    "margin-left": 10,
+    "padding-top": 23,
+    "padding-right": 22,
+    "padding-bottom": 24,
+    "padding-left": 24,
+    "max-width": 6,
+    "max-height": 4,
+    "text-decoration-line": 7,
+    "text-decoration-thickness": 7,
+    "text-decoration-style": 7,
+    "text-decoration-color": 7,
+    "outline-color": 4,
+    "outline-style": 4,
+    "outline-width": 4,
+    "outline-offset": 2,
+    "border-top-left-radius": 11,
+    "border-top-right-radius": 11,
+    "border-bottom-right-radius": 11,
+    "border-bottom-left-radius": 11,
+    "background-image": 14,
+    "background-position-x": 14,
+    "background-position-y": 14,
+    "background-size": 14,
+    "background-repeat": 14,
+    "background-attachment": 14,
+    "background-origin": 14,
+    "background-clip": 14,
+    "border-top-color": 23,
+    "border-right-color": 22,
+    "border-bottom-color": 22,
+    "border-left-color": 31,
+    "border-top-style": 16,
+    "border-right-style": 15,
+    "border-bottom-style": 21,
+    "border-left-style": 25,
+    "border-top-width": 15,
+    "border-right-width": 14,
+    "border-bottom-width": 17,
+    "border-left-width": 24,
+    "box-shadow": 8,
+    "vertical-align": 4,
+    "width": 33,
+    "height": 14,
+    "display": 42,
+    "line-height": 6,
+    "overflow-wrap": 1,
+    "position": 36,
+    "top": 10,
+    "right": 14,
+    "text-align": 17,
+    "cursor": 6,
+    "overflow-x": 13,
+    "overflow-y": 13,
+    "z-index": 6,
+    "content": 577,
+    "left": 16,
+    "clip-path": 1,
+    "pointer-events": 1,
+    "bottom": 3,
+    "border-image-source": 12,
+    "border-image-slice": 12,
+    "border-image-width": 12,
+    "border-image-outset": 12,
+    "border-image-repeat": 12,
+    "overscroll-behavior-y": 1,
+    "white-space-collapse": 6,
+    "text-wrap-mode": 6,
+    "word-break": 1,
+    "box-decoration-break": 1,
+    "border-collapse": 3,
+    "tab-size": 1,
+    "align-items": 3,
+    "justify-content": 2,
+    "opacity": 9,
+    "transition-behavior": 4,
+    "transition-duration": 4,
+    "transition-timing-function": 4,
+    "transition-delay": 5,
+    "transition-property": 4,
+    "font-style": 32,
+    "src": 21,
+    "font-variant-caps": 2,
+    "font-variant-ligatures": 2,
+    "font-variant-numeric": 2,
+    "font-variant-east-asian": 2,
+    "font-variant-alternates": 2,
+    "font-size-adjust": 2,
+    "font-language-override": 2,
+    "font-kerning": 2,
+    "font-optical-sizing": 2,
+    "font-feature-settings": 2,
+    "font-variation-settings": 2,
+    "font-variant-position": 2,
+    "font-variant-emoji": 2,
+    "font-stretch": 2,
+    "text-indent": 1,
+    "text-rendering": 2,
+    "clip": 1,
+    "table-layout": 1,
+    "min-width": 3,
+    "flex-direction": 2,
+    "min-height": 2,
+    "fill": 1,
+    "stroke": 2,
+    "fill-rule": 1,
+    "fill-opacity": 1,
+    "stroke-width": 1,
+    "stroke-linecap": 1,
+    "stroke-linejoin": 1,
+    "stroke-miterlimit": 1,
+    "stroke-dasharray": 1,
+    "stroke-dashoffset": 1,
+    "stroke-opacity": 1,
+    "box-sizing": 2,
+    "counter-increment": 2,
+    "counter-reset": 1,
+    "font-display": 1,
+    "-webkit-font-smoothing": 1,
+    "user-select": 1,
+    "transform": 2,
+    "animation-duration": 2,
+    "animation-timing-function": 2,
+    "animation-delay": 1,
+    "animation-iteration-count": 1,
+    "animation-direction": 1,
+    "animation-fill-mode": 1,
+    "animation-play-state": 1,
+    "animation-name": 1,
+    "animation-timeline": 1,
+    "animation-range-start": 1,
+    "animation-range-end": 1,
+    "row-gap": 1,
+    "column-gap": 1,
+    "transform-origin": 1
+   },
+   "ruleTypes": {
+    "CSSLayerBlockRule": 1,
+    "CSSStyleRule": 951,
+    "CSSFontFaceRule": 21,
+    "CSSKeyframesRule": 1,
+    "CSSKeyframeRule": 1
+   },
+   "selectorFeatures": {
+    "child combinator >": 31,
+    ":hover": 18,
+    "::-webkit-scrollbar": 5,
+    ":not()": 5,
+    "attribute selector": 3,
+    "::before/::after": 586,
+    ":first/last-child": 1,
+    "sibling combinators + ~": 1,
+    ":focus-visible/focus-within": 2
+   }
+  },
+  "computed": {
+   "display: block": 18,
+   "position: static": 145,
+   "float: none": 145,
+   "overflow-x: visible": 145,
+   "overflow-y: visible": 145,
+   "visibility: visible": 145,
+   "white-space: normal": 145,
+   "text-overflow: clip": 145,
+   "cursor: auto": 142,
+   "pointer-events: auto": 145,
+   "user-select: auto": 145,
+   "flex-direction: row": 145,
+   "flex-wrap: nowrap": 145,
+   "align-items: normal": 145,
+   "justify-content: normal": 145,
+   "box-sizing: content-box": 143,
+   "text-align: start": 141,
+   "text-decoration-line: none": 145,
+   "font-style: normal": 145,
+   "font-weight: 400": 130,
+   "display: none": 16,
+   "display: inline": 51,
+   "font-weight: 600": 8,
+   "font-weight: 700": 7,
+   "cursor: pointer": 3,
+   "FLAG border-radius != 0": 44,
+   "display: list-item": 9,
+   "display: table": 2,
+   "box-sizing: border-box": 2,
+   "display: table-header-group": 2,
+   "display: table-row": 15,
+   "display: table-cell": 30,
+   "text-align: left": 4,
+   "display: table-row-group": 2
+  },
+  "dom": {
+   "elements": 145,
+   "maxDepth": 8,
+   "shadowRoots": 0,
+   "iframes": 0,
+   "canvases": 0,
+   "inputsAndTextareas": 0,
+   "contentEditable": 0,
+   "svgElements": 0,
+   "tags": {
+    "html": 1,
+    "head": 1,
+    "style": 2,
+    "script": 4,
+    "meta": 3,
+    "link": 5,
+    "base": 1,
+    "body": 1,
+    "div": 2,
+    "span": 1,
+    "h1": 1,
+    "h2": 7,
+    "p": 3,
+    "strong": 3,
+    "a": 3,
+    "code": 44,
+    "ul": 2,
+    "li": 9,
+    "table": 2,
+    "thead": 2,
+    "tr": 15,
+    "th": 4,
+    "tbody": 2,
+    "td": 26,
+    "ol": 1
+   }
+  },
+  "viewport": {
+   "w": 786,
+   "h": 780,
+   "dpr": 1
+  },
+  "fonts": [
+   "KaTeX_AMS",
+   "KaTeX_Caligraphic",
+   "KaTeX_Fraktur",
+   "KaTeX_Main",
+   "KaTeX_Math",
+   "KaTeX_SansSerif",
+   "KaTeX_Script",
+   "KaTeX_Size1",
+   "KaTeX_Size2",
+   "KaTeX_Size3",
+   "KaTeX_Size4",
+   "KaTeX_Typewriter",
+   "codicon"
+  ]
+ },
+ "innerFrameUrl": "vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/index.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3",
+ "shellScreenshot": "failed: Command can only be executed on top-level targets",
+ "log": [
+  {
+   "where": "page",
+   "kind": "console.warning",
+   "text": "%c WARN color: #993 [CloudSandboxApi] No 'github' session with scopes [read:user, user:email, repo, workflow]"
+  },
+  {
+   "where": "page",
+   "kind": "log.warning",
+   "text": "Unrecognized feature: 'local-network-access'. vscode-file://vscode-app/home/user/Documents/GitHub/vscode98/out/vs/workbench/contrib/webview/browser/webviewElement.js"
+  },
+  {
+   "where": "page",
+   "kind": "log.warning",
+   "text": "An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. vscode-file://vscode-app/home/user/Documents/GitHub/vscode98/out/vs/workbench/contrib/webview/browser/webviewElement.js"
+  },
+  {
+   "where": "page",
+   "kind": "console.error",
+   "text": "%c  ERR color: #f33 TypeError: Cannot read properties of undefined (reading 'selection')\n    at CustomEditorInput.applyOptions (vscode-file://vscode-app/home/user/Documents/GitHub/vscode98/out/vs/workbench/contrib/customEditor/browser/customEditorInput.js:77:31)\n    at WebviewEditor.applyNavigationO"
+  },
+  {
+   "where": "child",
+   "kind": "log.warning",
+   "text": "Unrecognized feature: 'local-network-access'. vscode-webview://18ecadndjirhd9b4h3u46ufiq3ja5q4chmtgu1eoghoc3sfpi75l/index.html?id=5b75a20d-1c3b-466c-830e-155e94c5bbc3&parentId=1&origin=d902139f-0bca-492a-9352-f446497c24ab&swVersion=6&extensionId=vscode.markdown-language-features&platform=electron&vs"
+  }
+ ],
+ "logTotal": 5
+}

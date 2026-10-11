@@ -34,7 +34,7 @@ bash docs98/inventory/scripts/scan_web_and_lang.sh                              
 4. **WebAssembly is a host requirement.** `vscode-oniguruma` (TextMate regex engine, needed for syntax highlighting), `@vscode/tree-sitter-wasm`, and likely `libsodium` ship as WASM. A JS engine without WASM support (e.g. plain QuickJS) needs a separate WASM runtime, or these must be replaced with native builds. → [native-modules.md](native-modules.md)
 5. **JS language level is very modern.** TS and esbuild targets are `ES2024`. Heavy use of async/await, optional chaining, `??`, private `#fields`, regex lookbehind and named groups, `for await`, generators, `Intl.Segmenter`. A small engine must support these or the build must downlevel. → [js-language-level.md](js-language-level.md)
 6. **Native modules are numerous**: ~10 Windows-relevant compiled modules, each needing a port per target OS. → [native-modules.md](native-modules.md)
-7. **External webviews/iframes are limited in code but required by the extension API** (markdown preview, notebooks, custom editors). A real HTML engine is the only complete solution.
+7. **External webviews/iframes are limited in code but required by the extension API** (markdown preview, notebooks, custom editors). Measured for markdown in [runtime-trace-webview.md](runtime-trace-webview.md): an iframe-in-iframe on a custom scheme with a service worker and table/list/inline layout. A real HTML engine is the only complete solution.
 
 ## Not yet covered (next inventory passes)
 

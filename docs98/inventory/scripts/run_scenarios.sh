@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Launches stock VS Code (dev build, headless, throwaway profile + workspace copy) and runs trace_scenarios.mjs against it.
 # Prereqs: `npm ci`, `npm run transpile-client`, `npm run gulp compile-extensions`, `npm run electron`, codicon.ttf copied.
-# Usage (repo root):  bash docs98/inventory/scripts/run_scenarios.sh <workdir> [port]
-# Output: <workdir>/scenarios-trace.json, <workdir>/shots/*.png, <workdir>/launch.log
+# Usage (repo root):  bash docs98/inventory/scripts/run_scenarios.sh <workdir> [port] [driver.mjs]   (driver defaults to trace_scenarios.mjs)
+# Output: <workdir>/<driver name>.json (e.g. trace_scenarios.json), <workdir>/shots/*.png, <workdir>/launch.log
 set -euo pipefail
-WORK=${1:?workdir required}; PORT=${2:-9333}; ROOT=$(pwd)
+WORK=${1:?workdir required}; PORT=${2:-9333}; DRIVER=${3:-trace_scenarios.mjs}; ROOT=$(pwd)
 rm -rf "$WORK/ud" "$WORK/ext" "$WORK/ws" "$WORK/shots"; mkdir -p "$WORK/ud" "$WORK/ext" "$WORK/ws/src/vs"
 cp -r src/vs/editor "$WORK/ws/src/vs/editor"          # throwaway copy: scenarios never touch the real tree
 cp docs98/00-overview.md "$WORK/ws/README.md"; cp package.json "$WORK/ws/package.json"
@@ -15,4 +15,4 @@ setsid .build/electron/code-oss . "$WORK/ws" --ozone-platform=headless --disable
 APP=$!
 # setsid made the app a process-group leader; kill only that group (never other code-oss instances)
 trap 'kill -- -$APP 2>/dev/null || true' EXIT
-node docs98/inventory/scripts/trace_scenarios.mjs "$PORT" "$WORK/scenarios-trace.json" "$WORK/shots"
+node "docs98/inventory/scripts/$DRIVER" "$PORT" "$WORK/${DRIVER%.mjs}.json" "$WORK/shots"

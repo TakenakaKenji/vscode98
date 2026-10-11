@@ -11,7 +11,7 @@ Follow-up to [runtime-trace.md](runtime-trace.md) (startup only). This one drive
 
 - **Same caveats as the startup trace:** dev mode inflates module-loading counts; only the instrumented subset is visible (~45 interfaces, ~35 constructors/functions, plus event interfaces added for this run); renderer process only.
 - **Synthetic input is not human input.** Every step's success check passed and screenshots confirm the editor, search, terminal, settings, and diff worked. Real users produce different event streams (IME, touch, drag-and-drop, clipboard, high-DPI) that this does not cover. **Not exercised:** drag-and-drop, clipboard paste, IME/composition, context menus, extension views (marketplace, git), debugging, notebooks, custom editors, find-in-terminal, multi-window.
-- **The markdown preview did not visibly render.** The preview tab opened and a webview iframe plus its service worker existed, but the screenshot shows an empty pane ([data/shots/markdown-preview-blank.png](data/shots/markdown-preview-blank.png)). It may be a headless/out-of-process-frame capture limit or a slow load; I did not determine which. So webview *content* APIs are **not measured**, only the host shell.
+- **The markdown preview was blank in this run, and that was a build gap, not a headless limit.** The extension media (`npm run gulp compile-extension-media`) had not been built, so the preview's scripts returned 404. After building it the preview renders; see [runtime-trace-webview.md](runtime-trace-webview.md). Step 06 below and `data/scenarios-trace.json` come from the run *before* that fix, so only the workbench-side calls are valid for it.
 - **The diff step compared the file against the clipboard**, not against another file (the palette's first match took the Enter). It still exercised the diff editor.
 - The terminal runs real `bash` through `node-pty`; typed commands (`ls`, `echo hello`, `cat README.md`) produced correct output.
 - Heap numbers (below) come from `performance.memory` in this run, with ~500 files open in the workspace. They are **not comparable** to the 123 MB `Runtime.getHeapUsage` figure in the startup trace (different measure, different workspace).
@@ -51,7 +51,9 @@ Follow-up to [runtime-trace.md](runtime-trace.md) (startup only). This one drive
 
 ## Webview architecture observed (shell only)
 
-CDP targets after opening the markdown preview: a **service worker** and an **iframe** both on the `vscode-webview://` scheme, plus three workers and the main page. The iframe's document is a thin shell (8 elements: `html, head, 3×meta, body, script, iframe`), i.e. **the webview is an iframe containing another iframe**, with resources served via a service worker on a custom scheme. Implications: the host needs (a) a custom URL scheme with per-webview origin isolation, (b) service-worker-like interception for resource loading (or a different loader), (c) cross-frame `MessageChannel` messaging, and (d) a real HTML/CSS/JS engine for the inner content (extension-authored HTML). Not yet verified: what the inner frame needs, because its content was not captured.
+> Superseded by [runtime-trace-webview.md](runtime-trace-webview.md), which also covers the content frame. Kept for the record.
+
+CDP targets after opening the markdown preview: a **service worker** and an **iframe** both on the `vscode-webview://` scheme, plus three workers and the main page. The iframe's document is a thin shell (8 elements: `html, head, 3×meta, body, script, iframe`), i.e. **the webview is an iframe containing another iframe**, with resources served via a service worker on a custom scheme. Implications: the host needs (a) a custom URL scheme with per-webview origin isolation, (b) service-worker-like interception for resource loading (or a different loader), (c) cross-frame `MessageChannel` messaging, and (d) a real HTML/CSS/JS engine for the inner content (extension-authored HTML). (The inner frame is measured in [runtime-trace-webview.md](runtime-trace-webview.md).)
 
 ## Memory (JS heap, `performance.memory`, dev mode)
 
@@ -64,12 +66,12 @@ After each step (MB): ready 238, typing 318, quick open 248, search 252, termina
 3. **Legacy/non-standard WebKit APIs are used** (`caretRangeFromPoint`, `wheelDelta*`, `MouseEvent.fromElement`). The host must emulate them, or the call sites need patching.
 4. **Canvas 2D is a real dependency** (text via `fillText`, `measureText`, `putImageData`, `OffscreenCanvas` in the terminal), though only a small subset of the API.
 5. **Text selection/ranges** (`Range`, `Selection`, `caretRangeFromPoint`) are used when clicking/selecting; the editor is still `<textarea>`-driven, no `contentEditable`.
-6. **Webviews are a separate, large requirement** (see above) and remain the least-understood piece.
+6. **Webviews are a separate, large requirement.** Now measured for markdown in [runtime-trace-webview.md](runtime-trace-webview.md); other webview types are still unmeasured.
 7. **Several features depend on child processes rather than the DOM**: search (ripgrep), terminal (`node-pty` + bash), TypeScript diagnostics (the Problems count rose to 13 and later 70, presumably from tsserver in the extension host; not traced). They show up as Node/OS requirements, not renderer APIs.
 
 ## Next
 
-- [ ] Resolve the blank markdown preview (headless capture vs real failure; try a windowed run or frame-level screenshot) and census the inner webview frame.
+- [x] Resolve the blank markdown preview: it was an unbuilt-media 404, now measured in [runtime-trace-webview.md](runtime-trace-webview.md).
 - [ ] Production bundle run (non-dev) to remove module-loading noise.
 - [ ] Trace the main, shared, and extension-host processes for Node/Electron APIs at runtime (the process side of the same scenarios).
 - [ ] More scenarios: drag-and-drop, clipboard, IME, context menus, git view, extensions view, debugging, notebook.

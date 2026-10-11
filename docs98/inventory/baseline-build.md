@@ -11,6 +11,7 @@ Taken at `32bbe1b8` (1.142.0) on the Linux dev machine (Fedora, 4 cores, 23 GB R
 | Transpile client | `npm run transpile-client` | **~25 s wall, 460 MB peak RSS**, 10,039 TS files → `out/` (269 MB incl. 2,299 copied resources) |
 | Download Electron | `npm run electron` | ~56 s; lands in `.build/electron/code-oss` |
 | Compile built-in extensions | `npm run gulp compile-extensions` | **~32 s wall, 290 MB peak RSS**; fixes the extension activation errors seen in the first launch |
+| Build extension media (webview scripts/styles) | `npm run gulp compile-extension-media` | ~10 s. **Required for webviews**: without it the markdown preview (and other extension webviews) render blank because their `media/*.js` return 404 |
 | codicon font | `cp node_modules/@vscode/codicons/dist/codicon.ttf src/vs/base/browser/ui/codicons/codicon/ ` and `out/…/codicon/` | Normally done by the full gulp compile; the transpile-only path skips it. Both copies are gitignored |
 
 Not yet run: `npm run compile` (full type-check + gulp), a windowed launch, tests.
