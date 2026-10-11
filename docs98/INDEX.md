@@ -2,6 +2,8 @@
 
 Start here. Every doc in `docs98/` is listed below with a one-line summary. Update this file whenever a doc is added, renamed, or retired.
 
+**Resuming? Read [CHECKPOINT.md](CHECKPOINT.md) first**: current status, next steps, how to rebuild the dev environment, gotchas.
+
 ## Core project docs
 
 | File | What it covers |

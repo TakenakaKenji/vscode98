@@ -2,7 +2,7 @@
 
 This is a fork of microsoft/vscode (`upstream` remote) being turned into an Electron-free, standalone VS Code that can run on old Windows (7 → XP → 98).
 
-**Before doing any work, read [docs98/INDEX.md](docs98/INDEX.md).** It is the table of contents for all project docs (goal, architecture, targets, roadmap, decisions, inventory). Keep it updated when adding or changing docs.
+**Before doing any work, read [docs98/CHECKPOINT.md](docs98/CHECKPOINT.md) (current status and next steps), then [docs98/INDEX.md](docs98/INDEX.md).** It is the table of contents for all project docs (goal, architecture, targets, roadmap, decisions, inventory). Keep it updated when adding or changing docs.
 
 Also see [AGENTS.md](AGENTS.md) for upstream VS Code contribution/coding guidance.
 
