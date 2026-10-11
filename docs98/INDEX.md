@@ -26,8 +26,9 @@ Start here. Every doc in `docs98/` is listed below with a one-line summary. Upda
 | [inventory/js-language-level.md](inventory/js-language-level.md) | ECMAScript level emitted/required, and engine implications |
 | [inventory/baseline-build.md](inventory/baseline-build.md) | How stock VS Code was built on the dev machine, timings, what the emitted JS looks like |
 | [inventory/runtime-trace.md](inventory/runtime-trace.md) | **Measured** startup trace of the renderer: which DOM/Web/CSS features are actually used (180 DOM members, 227 CSS properties) |
+| [inventory/runtime-trace-scenarios.md](inventory/runtime-trace-scenarios.md) | **Measured** trace of 9 scripted feature scenarios: which extra APIs typing, search, terminal, settings, webviews, diff need (312 distinct members total) |
 | `inventory/data/` | Raw JSON from traces |
-| `inventory/scripts/` | The scan scripts that produced the numbers (`scan_imports.py`, `scan_electron.py`, `scan_web_and_lang.sh`, `trace_renderer.mjs`) |
+| `inventory/scripts/` | The scan scripts that produced the numbers (`scan_imports.py`, `scan_electron.py`, `scan_web_and_lang.sh`, `trace_renderer.mjs`, `trace_scenarios.mjs` + `run_scenarios.sh`, shared `trace_common.mjs`) |
 
 ## Key facts to remember (quick reference)
 
@@ -36,6 +37,7 @@ Start here. Every doc in `docs98/` is listed below with a one-line summary. Upda
 - 471 CSS files (~92k lines); flexbox in 287, custom properties in 408, grid in 39.
 - WebAssembly (`vscode-oniguruma`, tree-sitter) is required for syntax highlighting.
 - **Runtime trace (measured):** startup uses only ~180 distinct DOM/Web members and 227 distinct standard CSS properties; layout is block/inline/flex/absolute only (no grid/fixed/sticky live); editor input is a `<textarea>`; renderer heap ~123 MB.
+- **Scenario trace (measured):** startup + 9 features = 312 distinct instrumented members; editor typing needs full legacy keyboard events; terminal uses `OffscreenCanvas` + Canvas 2D (no WebGL); webviews are an iframe-in-iframe over a `vscode-webview:` scheme + service worker (content not yet captured).
 - Build targets are ES2024 (no downleveling today).
 - Open proposals: D-003 (custom host), D-004/5/6 (engine, render, IPC), D-008 (scope out AI/cloud features) in [05-decisions.md](05-decisions.md).
 

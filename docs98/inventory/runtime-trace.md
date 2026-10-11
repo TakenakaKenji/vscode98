@@ -81,7 +81,7 @@ CSS nesting (`&`) is used in 1,431 rules, so the parser must handle native nesti
 
 ## Next trace slices
 
-- [ ] Scripted scenarios in the same harness: type in the editor, scroll a large file, open Search and run a query, open the integrated terminal, open Settings UI, open a markdown preview (webview), open a diff.
+- [x] Scripted scenarios (typing, quick open/scroll/find, search, terminal, settings, markdown preview, diff, explorer): done, see [runtime-trace-scenarios.md](runtime-trace-scenarios.md).
 - [ ] Production bundle (not dev mode) so counts are not inflated by module loading.
 - [ ] Trace the main, shared, and extension-host processes: which Node built-ins, `process.*`, and Electron APIs are called at runtime.
 - [ ] Add more instrumented interfaces (Intl, `IntersectionObserver`, `Selection`/`Range` already included; check `HTMLSlotElement`, SVG, `Animation`, `CSSStyleRule`).

@@ -49,7 +49,12 @@ Taken at `32bbe1b8` from `package.json` and `remote/package.json` plus import sc
 
 `@github/copilot-sdk`, `@anthropic-ai/sdk`, `@anthropic-ai/claude-agent-sdk`, `@vscode/copilot-api`, `@modelcontextprotocol/sdk`, `foundry-local-sdk`, `playwright-core`, `chrome-remote-interface`, `@devcontainers/cli`, `@microsoft/dev-tunnels-*`. These need modern TLS, modern Node, and cloud services. See proposal D-008 in [../05-decisions.md](../05-decisions.md).
 
-## To verify (needs `npm ci` / node_modules)
+## Verified after `npm ci` on the dev machine (Linux x64)
+
+- Compiled `.node` binaries exist for `node-pty` (`build/Release/pty.node`), `@vscode/sqlite3` (`vscode-sqlite3.node`), and `@parcel/watcher` (`watcher.node`). They loaded and worked at runtime in the scenario trace (terminal ran real bash; workspace watching/search ran).
+- `@vscode/ripgrep-universal` ships prebuilt binaries for darwin, linux (several arches), and **win32-x64, win32-ia32, win32-arm64** only. There is no build for Windows XP/9x, so a custom ripgrep (or replacement search) will be needed for the old targets.
+
+## Still to verify
 
 - Which modules truly contain `.node` binaries vs. pure JS.
 - Which ship prebuilt Windows binaries and which compile at install (`build/npm/postinstall.ts` uses a bundled `node-gyp`).
