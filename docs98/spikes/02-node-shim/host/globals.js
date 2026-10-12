@@ -35,10 +35,10 @@ globalThis.__stub = (mod, name) => lenient(mod + '.' + name);
 // ---- process --------------------------------------------------------------------------------------------------------------------------------
 const listeners = new Map();
 const processObj = {
-	platform: 'linux', arch: 'x64', pid: 4242, ppid: 1, title: 'qjs-host', version: 'v24.0.0', versions: { node: '24.0.0', v8: '0', quickjs: '0.17.0' },
+	platform: os.platform === 'win32' ? 'win32' : 'linux', arch: 'x64', pid: 4242, ppid: 1, title: 'qjs-host', version: 'v24.0.0', versions: { node: '24.0.0', v8: '0', quickjs: '0.17.0' },
 	release: { name: 'node' }, argv: ['qjs', ...(globalThis.scriptArgs || []).slice(1)], execArgv: [], execPath: '/usr/bin/qjs', exitCode: undefined,
 	env: new Proxy({}, { get: (_t, k) => typeof k === 'string' ? std.getenv(k) : undefined, has: (_t, k) => std.getenv(k) !== undefined, ownKeys: () => Object.keys(std.getenviron()), getOwnPropertyDescriptor: (_t, k) => (std.getenv(k) !== undefined ? { value: std.getenv(k), enumerable: true, configurable: true, writable: true } : undefined), set: (_t, k, v) => { std.setenv(k, String(v)); return true; }, deleteProperty: (_t, k) => { std.unsetenv(k); return true; } }),
-	cwd: () => os.getcwd()[0], chdir: (d) => os.chdir(d), exit: (c) => std.exit(c ?? 0), kill() { }, umask: () => 0o22, uptime: () => performance.now() / 1000,
+	cwd: () => os.platform === 'win32' ? os.getcwd()[0].replace(/\//g, '\\') : os.getcwd()[0], chdir: (d) => os.chdir(d), exit: (c) => std.exit(c ?? 0), kill() { }, umask: () => 0o22, uptime: () => performance.now() / 1000,
 	nextTick: (fn, ...a) => queueMicrotask(() => fn(...a)), hrtime: Object.assign((prev) => { const t = performance.now(); const s = Math.floor(t / 1000), n = Math.floor((t % 1000) * 1e6); return prev ? [s - prev[0], n - prev[1]] : [s, n]; }, { bigint: () => BigInt(Math.floor(performance.now() * 1e6)) }),
 	memoryUsage: () => ({ rss: 0, heapTotal: 0, heapUsed: 0, external: 0, arrayBuffers: 0 }), cpuUsage: () => ({ user: 0, system: 0 }), emitWarning() { }, getuid: () => 0, getgid: () => 0, geteuid: () => 0,
 	on(ev, fn) { (listeners.get(ev) ?? listeners.set(ev, []).get(ev)).push(fn); return processObj; }, once(ev, fn) { return processObj.on(ev, fn); },

@@ -13,7 +13,7 @@ child.on('disconnect', () => log('disconnect (parent side), connected =', child.
 child.on('exit', (code, sig) => log('exit', code, sig));
 child.on('close', (code) => { log('close', code, 'pongs', got, 'stdout', JSON.stringify(out.trim()), 'stderr', JSON.stringify(err.trim())); killTest(); });
 function killTest() {
-	const c = cp.spawn('sleep', ['30']);
+	const c = process.platform === 'win32' ? cp.spawn(process.execPath, ['-e', "import('qjs:os').then(o => o.sleep(30000))"]) : cp.spawn('sleep', ['30']);
 	c.on('exit', (code, sig) => { log('killed sleep: exit', code, sig, 'killed flag', c.killed); const bad = cp.spawn('definitely-not-a-program'); bad.on('error', e => log('spawn error', e.code, e.syscall)); bad.on('close', c2 => log('bad close', c2)); });
 	setTimeout(() => c.kill('SIGTERM'), 100);
 }

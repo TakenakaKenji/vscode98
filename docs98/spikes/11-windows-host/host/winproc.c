@@ -316,15 +316,15 @@ static void strv_free(char **v) { if (v) { for (char **p = v; *p; p++) { free(*p
 /* spawn({ file, args:[...], env:["K=V"...], cwd, fds:[ourFd or -1 per child fd 0..n-1], detached }) -> pid, or -errno */
 static JSValue js_spawn(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
 	JSValueConst o = argv[0];
-	JSValue vfile = JS_GetPropertyStr(ctx, o, "file"), vargs = JS_GetPropertyStr(ctx, o, "args"), venv = JS_GetPropertyStr(ctx, o, "env"), vcwd = JS_GetPropertyStr(ctx, o, "cwd"), vfds = JS_GetPropertyStr(ctx, o, "fds"), vdet = JS_GetPropertyStr(ctx, o, "detached");
+	JSValue vfile = JS_GetPropertyStr(ctx, o, "file"), vargs = JS_GetPropertyStr(ctx, o, "args"), venv = JS_GetPropertyStr(ctx, o, "env"), vcwd = JS_GetPropertyStr(ctx, o, "cwd"), vfds = JS_GetPropertyStr(ctx, o, "fds"), vdet = JS_GetPropertyStr(ctx, o, "detached"), vverb = JS_GetPropertyStr(ctx, o, "verbatim");
 	const char *file = JS_ToCString(ctx, vfile), *cwd = JS_IsUndefined(vcwd) || JS_IsNull(vcwd) ? NULL : JS_ToCString(ctx, vcwd);
 	int nargs = 0; char **args = strv_from_js(ctx, vargs, &nargs); char **envp = JS_IsUndefined(venv) ? NULL : strv_from_js(ctx, venv, NULL);
 	int nfds = 0; int *fds = NULL; { uint32_t n = 0; JSValue l = JS_GetPropertyStr(ctx, vfds, "length"); JS_ToUint32(ctx, &n, l); JS_FreeValue(ctx, l); nfds = (int)n; fds = calloc(n + 1, sizeof(int)); for (uint32_t i = 0; i < n; i++) { JSValue e = JS_GetPropertyUint32(ctx, vfds, i); int32_t x = -1; JS_ToInt32(ctx, &x, e); fds[i] = x; JS_FreeValue(ctx, e); } }
-	int detached = JS_ToBool(ctx, vdet); int result = 0;
+	int detached = JS_ToBool(ctx, vdet), verbatim = JS_ToBool(ctx, vverb); int result = 0;
 	wchar_t *exe = resolve_exe(file, envp, cwd), *wcwd = cwd ? wide(cwd) : NULL, *envblock = NULL, *cmdw = NULL;
 	if (!exe) { result = -E_NOENT; goto done; }
 	/* command line: argv[0] is the program as given, the rest quoted */
-	{ char *cmd = NULL; size_t len = 0, cap = 0; for (int i = 0; i < nargs; i++) { if (i) { if (len + 2 > cap) { cap = cap * 2 + 64; cmd = realloc(cmd, cap); } cmd[len++] = ' '; } quote_arg(args[i], &cmd, &len, &cap); } if (!cmd) { cmd = malloc(1); } cmd[len] = 0; cmdw = wide(cmd); free(cmd); }
+	{ char *cmd = NULL; size_t len = 0, cap = 0; for (int i = 0; i < nargs; i++) { if (i) { if (len + 2 > cap) { cap = cap * 2 + 64; cmd = realloc(cmd, cap); } cmd[len++] = ' '; } if (verbatim && i > 0) { for (const char *q = args[i]; *q; q++) { if (len + 2 > cap) { cap = cap * 2 + 64; cmd = realloc(cmd, cap); } cmd[len++] = *q; } } else { quote_arg(args[i], &cmd, &len, &cap); } } if (!cmd) { cmd = malloc(1); } cmd[len] = 0; cmdw = wide(cmd); free(cmd); }
 	/* handles: stdio 0..2 via STARTUPINFO, the rest through QJS98_FDMAP; only these are made inheritable, and only for the duration of CreateProcess */
 	HANDLE std[3] = { NULL, NULL, NULL }; HANDLE inh[64]; int ninh = 0; char fdmap[1024] = ""; size_t fl = 0;
 	for (int i = 0; i < nfds; i++) {
@@ -359,7 +359,7 @@ static JSValue js_spawn(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 done:
 	free(exe); free(wcwd); free(envblock); free(cmdw); free(fds); strv_free(args); strv_free(envp);
 	JS_FreeCString(ctx, file); if (cwd) { JS_FreeCString(ctx, cwd); }
-	JS_FreeValue(ctx, vfile); JS_FreeValue(ctx, vargs); JS_FreeValue(ctx, venv); JS_FreeValue(ctx, vcwd); JS_FreeValue(ctx, vfds); JS_FreeValue(ctx, vdet);
+	JS_FreeValue(ctx, vfile); JS_FreeValue(ctx, vargs); JS_FreeValue(ctx, venv); JS_FreeValue(ctx, vcwd); JS_FreeValue(ctx, vfds); JS_FreeValue(ctx, vdet); JS_FreeValue(ctx, vverb);
 	return JS_NewInt32(ctx, result);
 }
 static Proc *proc_find(DWORD pid) { for (Proc *p = procs; p; p = p->next) { if (p->pid == pid) { return p; } } return NULL; }

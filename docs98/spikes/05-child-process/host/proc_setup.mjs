@@ -4,6 +4,8 @@
 // Call after the builtin shims are preloaded into globalThis.__builtins.
 import * as std from 'qjs:std';
 import * as os from 'qjs:os';
+import * as p from 'spike:proc';
+const WIN = os.platform === 'win32';
 
 export async function setupProcess(outDir, runnerPath, script, rest) {
 await import(`${outDir}/shims/module.js`);      // registers globalThis.__builtins.module
@@ -13,10 +15,10 @@ const { FdReadable, FdDuplex } = await import(`${outDir}.impl/fdstreams.js`);
 globalThis.__forkHostArgs = ['--stack-size', '0', runnerPath, outDir];
 // ---- process
 const P = globalThis.process;
-const exePath = os.exePath ? os.exePath() : '/proc/self/exe';
-P.execPath = (std.getenv('VSCODE98_HOST') || exePath); P.execArgv = []; P.pid = os.getpid(); P.ppid = 1;
-if (script) { P.argv = [P.execPath, script.startsWith('/') ? script : os.getcwd()[0] + '/' + script, ...rest]; }
-P.kill = (pid, sig = 'SIGTERM') => { const n = typeof sig === 'number' ? sig : ({ SIGTERM: 15, SIGKILL: 9, SIGINT: 2, SIGHUP: 1, SIGUSR1: 10, SIGUSR2: 12 })[sig] ?? 15; const r = os.kill(pid, n); if (r < 0) { throw Object.assign(new Error(`kill ESRCH`), { code: 'ESRCH', errno: -3, syscall: 'kill' }); } return true; };
+const exePath = WIN ? p.exePath() : (os.exePath ? os.exePath() : '/proc/self/exe');
+P.execPath = (std.getenv('VSCODE98_HOST') || exePath); P.execArgv = []; P.pid = WIN ? p.getpid() : os.getpid(); P.ppid = 1;
+if (script) { P.argv = [P.execPath, globalThis.__builtins.path.resolve(script), ...rest]; }
+P.kill = (pid, sig = 'SIGTERM') => { if (WIN) { const r = p.kill(pid, sig === 0 || sig === undefined ? (sig === 0 ? 0 : 15) : 15); if (r < 0) { throw Object.assign(new Error('kill ESRCH'), { code: 'ESRCH', errno: -3, syscall: 'kill' }); } return true; } const n = typeof sig === 'number' ? sig : ({ SIGTERM: 15, SIGKILL: 9, SIGINT: 2, SIGHUP: 1, SIGUSR1: 10, SIGUSR2: 12 })[sig] ?? 15; const r = os.kill(pid, n); if (r < 0) { throw Object.assign(new Error(`kill ESRCH`), { code: 'ESRCH', errno: -3, syscall: 'kill' }); } return true; };
 class SyncFd extends Writable {          // like Node's stdout for pipes/files on POSIX: synchronous
 	constructor(fd, flush) { super({ decodeStrings: false }); this.fd = fd; this._flush = flush; this.isTTY = os.isatty(fd); }
 	_write(chunk, enc, cb) { const b = typeof chunk === 'string' ? Buffer.from(chunk, enc) : chunk; this._flush(); let off = 0; while (off < b.length) { const n = os.write(this.fd, b.buffer, b.byteOffset + off, b.length - off); if (n === -11) { os.sleep(1); continue; } if (n < 0) { cb(new Error('write error ' + n)); return; } off += n; } cb(); }

@@ -1,6 +1,7 @@
 // `net` on QuickJS: TCP and unix-domain-socket clients/servers on non-blocking fds (spike:proc) + the event loop (qjs:os). IPv4/IPv6 via getaddrinfo (blocking).
 import * as os from 'qjs:os';
 import * as p from 'spike:proc';
+import * as io from './fdio.js';
 import { EventEmitter } from '__SHIMS__/events.js';
 import { FdDuplex, errnoError } from './fdstreams.js';
 
@@ -22,8 +23,8 @@ export class Socket extends FdDuplex {
 		const pathLike = options.path ? options.path : `${options.host || 'localhost'}:${options.port}`;
 		if (typeof r === 'number') { queueMicrotask(() => this._fail(errnoError(r, 'connect', options.path ? { address: options.path } : { address: options.host || 'localhost', port: options.port }))); return this; }
 		this._attachFd(r.fd); this.remoteAddress = options.path ?? (options.host || 'localhost'); this.remotePort = options.port;
-		os.setWriteHandler(r.fd, () => {
-			os.setWriteHandler(r.fd, null);
+		io.setWriteHandler(r.fd, () => {
+			io.setWriteHandler(r.fd, null);
 			const e = p.soError(r.fd);
 			if (e < 0) { this._fail(errnoError(e, 'connect', options.path ? { address: options.path } : { address: options.host || 'localhost', port: options.port })); return; }
 			this.connecting = false; this.localPort = p.sockPort(r.fd); this.emit('connect'); this.emit('ready');
@@ -61,7 +62,7 @@ export class Server extends EventEmitter {
 		if (typeof r === 'number') { const e = errnoError(r, 'listen', options.path ? { address: options.path } : { address: options.host, port: options.port }); queueMicrotask(() => this.emit('error', e)); return this; }
 		this._fd = r.fd; this._path = options.path; this.listening = true;
 		this._addr = options.path !== undefined ? options.path : { address: options.host || '::', family: options.host && isIPv4(options.host) ? 'IPv4' : 'IPv6', port: r.port };
-		os.setReadHandler(this._fd, () => {
+		io.setReadHandler(this._fd, () => {
 			for (;;) {
 				const c = p.accept(this._fd); if (c < 0) { return; }
 				const s = new Socket({ fd: c, allowHalfOpen: this._opts.allowHalfOpen }); s.remoteAddress = this._path ?? '127.0.0.1';
@@ -76,7 +77,7 @@ export class Server extends EventEmitter {
 	getConnections(cb) { cb(null, this._conns.size); }
 	close(cb) {
 		if (cb) { this.once('close', cb); }
-		if (this._fd >= 0) { os.setReadHandler(this._fd, null); os.close(this._fd); this._fd = -1; this.listening = false; if (this._path) { try { os.remove(this._path); } catch { /* already gone */ } } }
+		if (this._fd >= 0) { io.setReadHandler(this._fd, null); io.close(this._fd); this._fd = -1; this.listening = false; if (this._path) { try { os.remove(this._path); } catch { /* already gone */ } } }
 		this._closing = true; queueMicrotask(() => this._maybeClosed()); return this;
 	}
 	_maybeClosed() { if (this._closing && this._conns.size === 0 && !this._closeEmitted) { this._closeEmitted = true; this.emit('close'); } }

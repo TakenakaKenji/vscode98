@@ -3,6 +3,7 @@
 import * as os from 'qjs:os';
 import * as std from 'qjs:std';
 import * as p from 'spike:proc';
+import * as io from './fdio.js';
 import { EventEmitter } from '__SHIMS__/events.js';
 import { FdReadable, FdWritable, FdDuplex, errnoError } from './fdstreams.js';
 
@@ -22,13 +23,20 @@ function reap() {
 	if (live.size === 0 && keepAlive !== null) { os.clearTimeout(keepAlive); keepAlive = null; }
 }
 const tick = () => { try { reap(); } finally { keepAlive = live.size ? os.setTimeout(tick, 500) : null; } };
-os.signal(os.SIGCHLD, reap);
-function track(cp) { live.set(cp.pid, cp); if (keepAlive === null) { keepAlive = os.setTimeout(tick, 500); } }
+if (os.platform !== 'win32') { os.signal(os.SIGCHLD, reap); }
+function track(cp) {
+	live.set(cp.pid, cp);
+	if (os.platform === 'win32') {      // a waitable process handle in the event loop (winproc.c): no signal, no polling
+		p.watchExit(cp.pid, (code, killed) => { live.delete(cp.pid); try { cp._onExitWin(code, killed); } catch (e) { setTimeout(() => { throw e; }, 0); } });
+		return;
+	}
+	if (keepAlive === null) { keepAlive = os.setTimeout(tick, 500); }
+}
 
 // ---- ChildProcess -----------------------------------------------------------------------------------------------------------------------
 export class ChildProcess extends EventEmitter {
 	constructor() { super(); this.pid = undefined; this.stdin = this.stdout = this.stderr = null; this.stdio = []; this.connected = false; this.killed = false; this.exitCode = null; this.signalCode = null; this.spawnfile = undefined; this.spawnargs = []; this.channel = undefined; this._pendingClose = 0; this._exited = false; }
-	kill(sig) { const n = sigNum(sig); if (this.pid === undefined || this._exited) { return false; } const r = os.kill(this.pid, n); if (r === 0 || r === undefined) { this.killed = true; return true; } return false; }
+	kill(sig) { const n = sigNum(sig); if (this.pid === undefined || this._exited) { return false; } const r = os.platform === 'win32' ? p.kill(this.pid, n) : os.kill(this.pid, n); if (r === 0 || r === undefined) { this.killed = true; return true; } return false; }
 	ref() { } unref() { }
 	send(message, handle, options, callback) {
 		if (typeof handle === 'function') { callback = handle; handle = undefined; } else if (typeof options === 'function') { callback = options; }
@@ -45,6 +53,14 @@ export class ChildProcess extends EventEmitter {
 	}
 	_streamClosed() { if (--this._pendingClose <= 0) { this._maybeClose(); } }
 	_maybeClose() { if (this._exited && this._pendingClose <= 0 && !this._closeEmitted) { this._closeEmitted = true; this.emit('close', this.exitCode, this.signalCode); } }
+	_onExitWin(code, killed) {          // Windows: the exit code is the raw 32-bit value; a process we terminated reports SIGTERM like Node does
+		this._exited = true;
+		if (killed) { this.exitCode = null; this.signalCode = 'SIGTERM'; } else { this.exitCode = code; this.signalCode = null; }
+		this.emit('exit', this.exitCode, this.signalCode);
+		if (this.stdin && !this.stdin.destroyed) { this.stdin.destroy(); }
+		for (const s of [this.stdout, this.stderr]) { if (s && s.readable && !s.destroyed) { s.resume(); } }
+		this._maybeClose();
+	}
 	_onExit(status) {
 		this._exited = true;
 		if ((status & 0x7f) === 0) { this.exitCode = (status >> 8) & 0xff; } else { this.signalCode = SIGNAMES[status & 0x7f] || 'SIGUNKNOWN'; }
@@ -56,6 +72,12 @@ export class ChildProcess extends EventEmitter {
 }
 const watch = (cp, s) => { if (s) { cp._pendingClose++; s.on('close', () => cp._streamClosed()); } };
 
+// ---- shell: /bin/sh -c on POSIX, %ComSpec% /d /s /c "line" on Windows (verbatim arguments, as Node does) ----
+const WINDOWS = os.platform === 'win32';
+function shellInvocation(shell, line) {
+	if (WINDOWS) { const file = typeof shell === 'string' ? shell : (std.getenv('ComSpec') || 'cmd.exe'); return { file, args: ['/d', '/s', '/c', `"${line}"`], verbatim: /(^|[\\/])cmd(\.exe)?$/i.test(file) }; }
+	return { file: typeof shell === 'string' ? shell : '/bin/sh', args: ['-c', line], verbatim: false };
+}
 // ---- spawn ------------------------------------------------------------------------------------------------------------------------------
 function envList(env) {
 	if (!env) { return Object.entries(std.getenviron()).map(([k, v]) => `${k}=${v}`); }
@@ -71,14 +93,15 @@ export function spawn(command, args, options) {
 	options = { ...options };
 	let file = options.file ?? command, argv0 = options.argv0 ?? file;
 	let argList = [...args];
-	if (options.shell) { const line = [command, ...args].join(' '); file = typeof options.shell === 'string' ? options.shell : '/bin/sh'; argList = ['-c', line]; argv0 = file; }
+	let verbatim = !!options.windowsVerbatimArguments;
+	if (options.shell) { const sh = shellInvocation(options.shell, [command, ...args].join(' ')); file = sh.file; argList = sh.args; argv0 = file; verbatim = sh.verbatim; }
 	const cp = new ChildProcess(); cp.spawnfile = file; cp.spawnargs = [argv0, ...argList];
 	const stdio = normStdio(options.stdio), n = stdio.length;
 	const childFds = new Array(n).fill(-1), parentEnds = new Array(n).fill(-1), toClose = [];
 	let ipcIndex = -1;
 	for (let i = 0; i < n; i++) {
 		const s = stdio[i];
-		if (s === 'pipe') { const [r, w] = p.pipe(); if (i === 0) { childFds[i] = r; parentEnds[i] = w; toClose.push(r); } else { childFds[i] = w; parentEnds[i] = r; toClose.push(w); } }
+		if (s === 'pipe') { const [r, w] = p.pipe(i === 0 ? 0 : 1); if (i === 0) { childFds[i] = r; parentEnds[i] = w; toClose.push(r); } else { childFds[i] = w; parentEnds[i] = r; toClose.push(w); } }
 		else if (s === 'ipc') { const [a, b] = p.socketpair(); childFds[i] = a; parentEnds[i] = b; toClose.push(a); ipcIndex = i; }
 		else if (s === 'inherit') { childFds[i] = i; }
 		else if (s === 'ignore') { childFds[i] = -1; }
@@ -86,10 +109,10 @@ export function spawn(command, args, options) {
 		else if (s && typeof s.fd === 'number') { childFds[i] = s.fd; }
 	}
 	const env = envList(options.env); if (ipcIndex >= 0) { env.push(`NODE_CHANNEL_FD=${ipcIndex}`, 'NODE_CHANNEL_SERIALIZATION_MODE=json'); }
-	const pid = p.spawn({ file, args: [argv0, ...argList], env, cwd: options.cwd, fds: childFds, detached: !!options.detached });
-	for (const fd of toClose) { os.close(fd); }
+	const pid = p.spawn({ file, args: [argv0, ...argList], env, cwd: options.cwd, fds: childFds, detached: !!options.detached, verbatim });
+	for (const fd of toClose) { io.close(fd); }
 	if (pid < 0) {
-		for (const fd of parentEnds) { if (fd >= 0) { os.close(fd); } }
+		for (const fd of parentEnds) { if (fd >= 0) { io.close(fd); } }
 		const err = errnoError(pid, `spawn ${file}`, { path: file, spawnargs: argList });
 		cp.exitCode = pid; queueMicrotask(() => { cp.emit('error', err); cp._exited = true; cp._maybeClose(); });
 		return cp;
@@ -165,17 +188,18 @@ export function spawnSync(command, args, options) {
 	if (!Array.isArray(args)) { options = args; args = []; }
 	options = { ...options };
 	let file = command, argList = [...args];
-	if (options.shell) { file = typeof options.shell === 'string' ? options.shell : '/bin/sh'; argList = ['-c', [command, ...args].join(' ')]; }
+	let verbatim = !!options.windowsVerbatimArguments;
+	if (options.shell) { const sh = shellInvocation(options.shell, [command, ...args].join(' ')); file = sh.file; argList = sh.args; verbatim = sh.verbatim; }
 	const spec = typeof options.stdio === 'string' ? [options.stdio, options.stdio, options.stdio] : (options.stdio || ['pipe', 'pipe', 'pipe']);
 	const fds = [-1, -1, -1], mine = [-1, -1, -1], closeAfter = [];
 	for (let i = 0; i < 3; i++) {
 		const s = spec[i] ?? 'pipe';
-		if (s === 'pipe') { const [r, w] = p.pipe(); if (i === 0) { fds[i] = r; mine[i] = w; closeAfter.push(r); } else { fds[i] = w; mine[i] = r; closeAfter.push(w); } }
+		if (s === 'pipe') { const [r, w] = p.pipe(i === 0 ? 0 : 1); if (i === 0) { fds[i] = r; mine[i] = w; closeAfter.push(r); } else { fds[i] = w; mine[i] = r; closeAfter.push(w); } }
 		else if (s === 'inherit') { fds[i] = i; } else if (typeof s === 'number') { fds[i] = s; }
 	}
-	const pid = p.spawn({ file, args: [file, ...argList], env: envList(options.env), cwd: options.cwd, fds });
-	for (const fd of closeAfter) { os.close(fd); }
-	if (pid < 0) { for (const fd of mine) { if (fd >= 0) { os.close(fd); } } return { pid: 0, output: null, stdout: null, stderr: null, status: null, signal: null, error: errnoError(pid, `spawnSync ${file}`, { path: file, spawnargs: argList }) }; }
+	const pid = p.spawn({ file, args: [file, ...argList], env: envList(options.env), cwd: options.cwd, fds, verbatim });
+	for (const fd of closeAfter) { io.close(fd); }
+	if (pid < 0) { for (const fd of mine) { if (fd >= 0) { io.close(fd); } } return { pid: 0, output: null, stdout: null, stderr: null, status: null, signal: null, error: errnoError(pid, `spawnSync ${file}`, { path: file, spawnargs: argList }) }; }
 	let input = options.input; if (typeof input === 'string') { input = Buffer.from(input); } if (input && input.buffer) { input = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength); }
 	const r = p.pollSync({ pid, inFd: mine[0], input, outFd: mine[1], errFd: mine[2], timeoutMs: options.timeout || 0, maxBuffer: options.maxBuffer ?? 1024 * 1024 });
 	const enc = options.encoding && options.encoding !== 'buffer' ? options.encoding : null;
@@ -194,6 +218,6 @@ export function execFileSync(file, args, options) {
 	if (r.status !== 0) { const e = new Error(`Command failed: ${[file, ...args].join(' ')}${r.stderr ? '\n' + r.stderr : ''}`); Object.assign(e, { status: r.status, signal: r.signal, output: r.output, pid: r.pid, stdout: r.stdout, stderr: r.stderr }); throw e; }
 	return r.stdout;
 }
-export function execSync(command, options) { return execFileSync('/bin/sh', ['-c', command], options); }
+export function execSync(command, options) { const sh = shellInvocation(true, command); return execFileSync(sh.file, sh.args, { ...options, windowsVerbatimArguments: sh.verbatim }); }
 
 export default { ChildProcess, spawn, fork, exec, execFile, spawnSync, execFileSync, execSync };

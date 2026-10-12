@@ -8,7 +8,7 @@ import * as nodePath from './path.js';
 const { dirname, join, resolve, extname, isAbsolute } = nodePath;
 const kind = (p) => { const [o, e] = os.stat(p); return e ? 0 : (o.mode & 0o170000) === 0o040000 ? 2 : 1; };   // 0 = missing, 1 = file, 2 = directory
 const readText = (p) => { const s = std.loadFile(p); if (s === null) { throw Object.assign(new Error(`ENOENT: cannot read '${p}'`), { code: 'ENOENT' }); } return s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s; };
-const toPath = (f) => String(f).startsWith('file://') ? decodeURIComponent(String(f).slice(7)) : String(f);
+const toPath = (f) => String(f).startsWith('file://') ? nodePath.fromFileUrl(String(f)) : String(f);
 const NODE_CONDITIONS = ['node', 'require', 'module-sync', 'default'];
 globalThis.__builtins ??= {};
 const hooks = [];
@@ -50,7 +50,7 @@ function resolveInPackage(dir, name, sub, conditions = NODE_CONDITIONS) {       
 // sync module loader, ESM-only dependencies must be pre-bundled to CommonJS ahead of time (what VS Code's own extension build does). Pre-bundled copies are
 // looked up in OVERLAY_DIR as <path with / replaced by __>.cjs.
 const overlayDir = std.getenv('ESM_OVERLAY_DIR') || '';
-function nearestPackageType(file) { for (let d = dirname(file); d && d !== '/'; d = dirname(d)) { const pj = join(d, 'package.json'); if (kind(pj) === 1) { try { return JSON.parse(readText(pj)).type || 'commonjs'; } catch { return 'commonjs'; } } } return 'commonjs'; }
+function nearestPackageType(file) { for (let d = dirname(file); d && d !== dirname(d); d = dirname(d)) { const pj = join(d, 'package.json'); if (kind(pj) === 1) { try { return JSON.parse(readText(pj)).type || 'commonjs'; } catch { return 'commonjs'; } } } return 'commonjs'; }
 function isEsmFile(file) { const e = extname(file); return e === '.mjs' || (e === '.js' && nearestPackageType(file) === 'module'); }
 function esmError(file) { const e = new Error(`require() of ES Module ${file} is not supported by this host (no synchronous module loader); pre-bundle it to CommonJS`); e.code = 'ERR_REQUIRE_ESM'; return e; }
 

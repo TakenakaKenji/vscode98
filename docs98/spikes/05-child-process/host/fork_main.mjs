@@ -20,7 +20,7 @@ for (const f of os.readdir(outDir + '/shims')[0].filter(f => f.endsWith('.js')))
 	try { const ns = await import(`${outDir}/shims/${f}`); globalThis.__builtins[name] = ns.default ?? ns; } catch (e) { std.err.puts(`preload failed ${name}: ${e.message}\n`); }
 }
 const { setupProcess } = await import('./proc_setup.mjs');
-await setupProcess(outDir, here.startsWith('/') ? here : os.getcwd()[0] + '/' + here, script, rest);
+await setupProcess(outDir, globalThis.__builtins.path.resolve(here).replace(/\\/g, '/')   /* QuickJS's own relative-import resolution only knows '/' */, script, rest);
 const P = globalThis.process;
 
 // ---- run the script
