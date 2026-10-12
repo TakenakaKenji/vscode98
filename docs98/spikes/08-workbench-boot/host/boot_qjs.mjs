@@ -34,7 +34,8 @@ const tImport = performance.now(); std.out.puts('importing the workbench...\n');
 try { await import(webDir + '/vs/code/browser/workbench/workbench.js'); } catch (e) { note('import', e); }
 const tLoaded = performance.now(); std.out.puts(`imported after ${Math.round(tLoaded - tImport)} ms\n`); std.out.flush(); const rssAfterImport = rss();
 const ctx = { env, doc, note, rss, layoutTiming, opt, log: (m) => { std.out.puts(m + '\n'); std.out.flush(); }, W, H };
-globalThis.__dbgLoop = opt('dbgloop', '0') === '1';
+globalThis.__scenarioDetail = opt('detail', '0') !== '0';   // --detail 1: per-pass lines in scenarios; --detail 2: also the large level-3 marks of the style planner and why (see style_invalidation.js)
+if (opt('detail', '0') === '2') { const d = (el) => el.localName + (el.id ? '#' + el.id : '') + '.' + String(el.getAttribute('class') || '').split(' ').slice(0, 3).join('.'); globalThis.__styleDebug = (plan) => { const big = [...plan.marks].filter(([el, l]) => l === 3 && el.getElementsByTagName('*').length > 100).map(([el]) => [el.getElementsByTagName('*').length, d(el), plan.why.get(el)]); if (big.length) { ctx.log('BIGMARK ' + JSON.stringify(big)); } }; }
 await runScenario(ctx, { seconds, label: 'boot' });
 const done = performance.now();
 summarizeRun(ctx, { tImport, tLoaded, done, t00, errors, consoleLog, rssAfterImport, missing, unsupported });

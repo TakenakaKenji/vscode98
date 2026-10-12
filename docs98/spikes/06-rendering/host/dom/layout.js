@@ -32,17 +32,18 @@ export function resolveStyles(doc, env, log) {
 	const info = { mode: full ? 'full' : 'incremental', reason: full || '', total, recomputed: 0, rematched: 0, marked: plan ? plan.marks.size : 0, planMs: 0, indexMs, sheets: !!delta || undefined };
 	if (plan) { for (const el of plan.marks.keys()) { for (let a = el; a && a.nodeType === 1 && a.__dd !== passId; a = a.parentNode) { a.__dd = passId; } } }
 	info.planMs = performance.now() - t0 - indexMs;
-	const walk = (el, parentCS, parentAnc, forced) => {
+	if (plan && globalThis.__styleDebug) { globalThis.__styleDebug(plan, log, planInv || index.inv); }
+	const walk = (el, parentCS, parentAnc, forced, prev) => {
 		let lvl = forced; if (plan) { const m = plan.marks.get(el); if (m !== undefined && m > lvl) { lvl = m; } } if (full) { lvl = 3; }
-		let cs = el.__cs, anc = el.__anc, childForced = 0;
+		let cs = el.__cs, anc = el.__anc, childForced = 0; el.__prev = prev;
 		if (lvl > 0 || !cs) {
 			const rematch = lvl >= 2 || !cs || !el.__cands; anc = ancestorFilter(el, parentAnc); el.__anc = anc;
 			const cands = rematch ? matchedDeclarations(el, index, null, null) : el.__cands; const ncs = computeStyle(el, parentCS, index, env, null, cands); info.recomputed++; if (rematch) { info.rematched++; }
 			const pc = el.__pcands = rematch || !el.__pcands ? [matchedDeclarations(el, index, null, 'before'), matchedDeclarations(el, index, null, 'after')] : el.__pcands;
 			['before', 'after'].forEach((pe, i) => { const pcs = pc[i].length ? computeStyle(el, ncs, index, env, pe, pc[i]) : null; const c = pcs && pcs.values.content; el['__' + pe] = (c && c !== 'none' && c !== 'normal') ? pcs : null; });
 			el.__cands = cands; childForced = lvl === 3 ? 3 : (inheritedChanged(cs, ncs, INH) ? 1 : 0); el.__cs = cs = ncs;
-		} else if (el.__dd !== passId) { return; }
-		for (const c of el.__children) { if (c.nodeType === 1) { walk(c, cs, anc, childForced); } }
+		} else if (el.__dd !== passId) { return; } else { anc = ancestorFilter(el, parentAnc); el.__anc = anc; }   // ancestors on the way to a marked element: their filter is rebuilt too, a cached one may predate a class change that no rule cared about then
+		let pe = null; for (const c of el.__children) { if (c.nodeType === 1) { walk(c, cs, anc, childForced, pe); pe = c; } }
 	};
 	if (root) { walk(root, null, null, 0); } doc.__styleCount = total; doc.__styleReady = true; { const ae = doc.__activeElement && doc.__activeElement.isConnected ? doc.__activeElement : null; doc.__styledActive = ae; doc.__styledChain = []; for (let a = ae; a && a.nodeType === 1; a = a.parentNode) { doc.__styledChain.push(a); } } doc.__logOverflow = false; info.ms = performance.now() - t0; doc.__styleInfo = info;
 	if (doc.__verifyStyles) { verifyStyles(doc, env, index); }

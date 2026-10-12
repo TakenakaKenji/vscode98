@@ -1,5 +1,7 @@
 # Spike 8 — booting the real workbench on our own DOM, style, layout and renderer
 
+> **Update (spike 9):** the timings below are those of the full-restyle engine this spike ran on. [Spike 9](../09-incremental-style/README.md) made style incremental: same boot 175 s → 32 s, a keystroke ~10 s → ~0.1 s.
+
 **Question** (D-003, D-005): everything so far was measured on parts (Monaco alone, a captured snapshot of the workbench). Does the real workbench start on the engine built in spikes 6 and 7, what breaks, and what does a running workbench cost?
 
 - **Host:** `qjs-spike7` (QuickJS-ng 0.17.0, x86-64, spike 5/7 host) with the spike 6 DOM/CSS engine, the spike 7 native layout and integer rasterizer. Intel Xeon @ 2.1 GHz, 4 vCPU, Linux, headless, 1280×800, framebuffer written to a PPM.

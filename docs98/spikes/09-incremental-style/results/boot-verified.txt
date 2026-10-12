@@ -1,0 +1,35 @@
+importing the workbench...
+imported after 5619 ms
+import 5619 ms (RSS 222 MB after), total until stable 563292 ms, elements 968, layouts 163 (555970 ms incl. style; native engine pack 1812 + C 457 + apply 146 ms), RSS 607 MB (peak 607 MB)
+missing: [["css: unparsable selector",98]]
+unsupported: [["float",477],["display:grid",220]]
+console: 78 messages, 28 distinct
+  x1 error: %c  ERR color: #f33 Error while creating IndexedDB     at <anonymous> (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:960730:24)
+  x1 error: %c  ERR color: #f33 [IndexedDB Storage vscode-web-state-db-global] connect() error: indexedDB is not defined
+  x1 error: %c  ERR color: #f33 [IndexedDB Storage vscode-web-state-db-global-shared] connect() error: indexedDB is not defined
+  x1 error: %c  ERR color: #f33 [IndexedDB Storage vscode-web-state-db-empty-window] connect() error: indexedDB is not defined
+  x1 error: %c  ERR color: #f33 [IndexedDB Storage global] create(): indexedDB is not defined:     at <anonymous> (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:960730:24)
+  x1 error: %c  ERR color: #f33 [IndexedDB Storage global-shared] create(): indexedDB is not defined:     at <anonymous> (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:960730:24)
+  x1 error: %c  ERR color: #f33 [IndexedDB Storage empty-window] create(): indexedDB is not defined:     at <anonymous> (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:960730:24)
+  x1 warn: %c WARN color: #993 [AgentHost:remote] No remote agent connection available. Not connecting.
+  x1 error: %c  ERR color: #f33 could not load module filename '/out/vs/workbench/services/keybinding/browser/keyboardLayouts/layout.contribution.linux.js'
+  x47 error: %c  ERR color: #f33     at _FileSystemProviderError (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:59009:11)
+  x2 error: %c  ERR color: #f33     at getExtensionsControlManifest (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:389067:17)
+  x2 error: %c  ERR color: #f33     at _ErrorNoTelemetry (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:344:11)
+layout passes: 163, 555969 ms total (style 552906, layout 3021); elements per pass min 23 max 983
+restyle estimate with perfect invalidation: 4675 element restyles instead of 128207 (3.6 %)
+passes by estimated dirty elements: 0-0: 17, 1-5: 76, 6-25: 41, 26-100: 19, 101-300: 6, 301-max: 4
+style passes: 161 incremental, 2 full {"first pass":1,"too many dirty elements ":1}; elements restyled 6786 of 128207 (rule matching redone for 4845); style time: incremental passes 547615 ms, full passes 5291 ms
+style verification against a full restyle: 0 mismatches
+mutations that triggered passes: {"ins":2492,"rem":480,"text":0,"attr:class":2804,"attr:style":2085,"attr:other":3495}
+passes with no structural/attribute change (text or nothing): 0
+slowest passes:
+   7437 ms (237 mutations, est 66/967; style incremental: index 975 + plan 56 ms, 967 restyled (135 rematched), marked 135)
+   6483 ms (208 mutations, est 62/968; style incremental: index 805 + plan 52 ms, 62 restyled (62 rematched), marked 62)
+   5643 ms (103 mutations, est 44/967; style incremental: index 0 + plan 9 ms, 31 restyled (31 rematched), marked 31)
+   5597 ms (2 mutations, est 2/967; style incremental: index 0 + plan 1 ms, 2 restyled (2 rematched), marked 2)
+   5565 ms (1 mutations, est 1/967; style incremental: index 0 + plan 1 ms, 1 restyled (1 rematched), marked 1)
+errors: 11 (2 distinct)
+  x4 unhandledRejection:     at <anonymous> (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:960730:24)
+  x7 unhandledRejection:     at _FileSystemProviderError (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:59009:11)
+painted in 5204 ms {"rects":63,"glyphs":910,"glyphMisses":405} unpainted: [["rounded border (drawn square)",14],["box-shadow",4],["outline",5],["background-image",3]]

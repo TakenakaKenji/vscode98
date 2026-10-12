@@ -11,8 +11,8 @@ export async function run(ctx) {
 	const measure = async (label, action, settle = 20) => {
 		const before = doc.__passStats.length; const t = performance.now(); await action(); await runScenario(ctx, { seconds: settle, stableRounds: 8 });
 		const p = doc.__passStats.slice(before); const sum = (f) => p.reduce((a, x) => a + f(x), 0);
-		const row = { label, passes: p.length, ms: Math.round(sum(x => x.ms)), styleMs: Math.round(sum(x => x.styleMs)), layoutMs: Math.round(sum(x => x.layoutMs)), wall: Math.round(performance.now() - t), restyleNow: sum(x => x.total), restyleIdeal: sum(x => x.restyleEstimate), elements: doc.getElementsByTagName('*').length };
-		rows.push(row); log(`  ${label}: ${row.passes} passes, ${row.ms} ms (style ${row.styleMs}, layout ${row.layoutMs}), element restyles now ${row.restyleNow} vs ideal ${row.restyleIdeal}, wall ${row.wall} ms, ${row.elements} elements`);
+		const row = { label, passes: p.length, ms: Math.round(sum(x => x.ms)), styleMs: Math.round(sum(x => x.styleMs)), layoutMs: Math.round(sum(x => x.layoutMs)), wall: Math.round(performance.now() - t), restyleNow: sum(x => x.style ? x.style.recomputed : x.total), rematchNow: sum(x => x.style ? x.style.rematched : x.total), restyleIdeal: sum(x => x.restyleEstimate), elements: doc.getElementsByTagName('*').length };
+		rows.push(row); if (globalThis.__scenarioDetail) for (const x of p) log(`      pass ${x.ms.toFixed(0)} ms mut ${x.mutations} ${JSON.stringify(x.counts)} est ${x.restyleEstimate} style ${JSON.stringify(x.style)}`); log(`  ${label}: ${row.passes} passes, ${row.ms} ms (style ${row.styleMs}, layout ${row.layoutMs}), element restyles now ${row.restyleNow} (rematched ${row.rematchNow}) vs ideal ${row.restyleIdeal}, wall ${row.wall} ms, ${row.elements} elements`);
 	};
 	log('scenario:');
 	const skip = doc.querySelector('.onboarding-a-close-btn'); if (skip) { await measure('close the onboarding dialog (click X)', async () => { for (const t of ['mousedown', 'mouseup', 'click']) { skip.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, button: 0, buttons: 1 })); } }); }
@@ -32,4 +32,5 @@ export async function run(ctx) {
 	const search = [...doc.querySelectorAll('.activitybar .action-label, .composite-bar .action-label')].find(e => /Search/.test(e.getAttribute('aria-label') || ''));
 	if (search) { await measure('click Search (activity bar)', async () => { for (const t of ['mousedown', 'mouseup', 'click']) { search.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, button: 0, buttons: 1 })); } }); } else { log('  (Search action label not found)'); }
 	ctx.scenarioRows = rows;
+	if (doc.__verifyStyles) { log(`style verification against a full restyle, boot + scenario: ${(doc.__styleMismatches || []).length} mismatches`); }
 }

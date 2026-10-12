@@ -23,30 +23,55 @@ export function elementKeys(el) {
 const intersects = (a, b) => { const [s, l] = a.size < b.size ? [a, b] : [b, a]; for (const k of s) { if (l.has(k)) { return true; } } return false; };
 const keysOfCompound = (c) => { const k = []; for (const cl of c.classes) { k.push('.' + cl); } if (c.id) { k.push('#' + c.id); } for (const a of c.attrs) { k.push('[' + a.name + ']'); } for (const p of c.pseudos) { if (STATE.has(p.name)) { k.push(':' + p.name); for (const a of STATE_ATTR[p.name] || []) { k.push(a); } } } return k; };
 
+/** The part of a compound that does not depend on state or position (tag, id, classes, attribute names): an element lacking any of them cannot match the compound whatever its state. null = matches anything. */
+const IS_LIKE = new Set(['is', 'where', 'matches', '-webkit-any', 'any']);
+const shapeOf = (c, outer, parent, anc) => {
+	const par = parent || (outer && outer.parent) || null; const an = anc || (outer && outer.anc) || null;
+	const sh = { parent: par, anc: an, tag: c.tag || (outer && outer.tag) || null, id: c.id || (outer && outer.id) || null, classes: c.classes.concat(outer ? outer.classes : []), attrs: c.attrs.map(a => a.name).concat(outer ? outer.attrs : []), anyOf: outer ? outer.anyOf.slice() : [] };
+	for (const p of c.pseudos) { if (IS_LIKE.has(p.name) && Array.isArray(p.arg)) { const alt = p.arg.map(cx => shapeOf(cx.parts[cx.parts.length - 1].compound, null)); if (!alt.includes(null)) { sh.anyOf.push(alt); } } }
+	return (par || an || sh.tag || sh.id || sh.classes.length || sh.attrs.length || sh.anyOf.length) ? sh : null;
+};
+/** Can `el` match a compound of shape `sh` (not null)? */
+function shapeMatch(sh, el) {
+	if (sh.anc) { let a = el.parentNode; while (a && a.nodeType === 1 && !shapeMatch(sh.anc, a)) { a = a.parentNode; } if (!a || a.nodeType !== 1) { return false; } }
+	if (sh.parent) { const p = el.parentNode; if (!p || p.nodeType !== 1 || !shapeMatch(sh.parent, p)) { return false; } }
+	if (sh.tag && el.localName !== sh.tag && el.localName.toLowerCase() !== sh.tag) { return false; } if (sh.id && el.getAttribute('id') !== sh.id) { return false; }
+	if (sh.classes.length) { const cl = el.classes(); if (!sh.classes.every(c => cl.includes(c))) { return false; } } if (sh.attrs.length && !sh.attrs.every(n => el.__attrs.has(n))) { return false; }
+	return sh.anyOf.every(alt => alt.some(a => shapeMatch(a, el)));
+}
+/** Can `el` match a compound of one of `shapes` (a list of shapeOf() results; undefined or containing null = anything)? */
+function shapesMatch(shapes, el) {
+	if (!shapes) { return true; } for (const sh of shapes) { if (!sh || shapeMatch(sh, el)) { return true; } } return false;
+}
+/** Whether a change of state/structure `key` of `el` can change how its descendants match (the key is context somewhere, in a compound `el` can satisfy). */
+const ctxHit = (inv, key, el) => inv.ctxKeys.has(key) && shapesMatch(inv.ctxShapes.get(key), el);
+
 /** Analyses the active rules once per rule-set change: which keys occur as ancestor context, as sibling context, inside :has(), and which structural pseudo-classes are used. */
 export function analyzeIndex(index) {
-	const inv = { ctxKeys: new Set(), sibKeys: new Set(), sibKeysDeep: new Set(), sibUniversal: false, selfStateKeys: new Set(), hasRules: [], struct: { first: { any: false, left: false }, last: { any: false, left: false }, nth: { any: false, left: false }, nthLast: { any: false, left: false }, empty: { any: false, left: false } }, entries: 0 };
+	const inv = { ctxKeys: new Set(), ctxShapes: new Map(), sibKeys: new Set(), sibKeysDeep: new Set(), sibUniversal: false, sibUniShapes: [], sibAllKeys: new Set(), adj: 0, adjChain: false, selfStateKeys: new Set(), hasRules: [], struct: { first: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, last: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, nth: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, nthLast: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, empty: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] } }, entries: 0 };
 	const all = [...index.byId.values(), ...index.byClass.values(), ...index.byTag.values(), index.universal].flat(); inv.entries = all.length; const seen = new Set();
-	const scanCompoundPseudos = (c, left, followedBySibling, tailHasDesc, forced) => {
+	const scanCompoundPseudos = (c, left, eff, forced, shape) => {
 		for (const p of c.pseudos) {
-			const cats = STRUCT_CAT[p.name]; if (cats) { for (const cat of cats) { inv.struct[cat].any = true; if (left || forced) { inv.struct[cat].left = true; } } }
+			const cats = STRUCT_CAT[p.name]; if (cats) { for (const cat of cats) { inv.struct[cat].any = true; if (left || forced) { inv.struct[cat].left = true; inv.struct[cat].shapes.push(shape); } if (eff) { inv.struct[cat].sib = Math.max(inv.struct[cat].sib, eff); inv.struct[cat].sibShapes.push(shape); } } }
 			if (p.name === 'has' && Array.isArray(p.arg)) {
-				for (const a of p.arg) { const argKeys = new Set(); let universal = false; scanArg(a, argKeys, () => { universal = true; }); inv.hasRules.push({ hostClasses: c.classes.slice(), hostId: c.id, hostAttrs: c.attrs.map(x => x.name), hostTag: c.tag, argKeys, argUniversal: universal, left: left || forced }); scanComplex(a, true); }
+				for (const a of p.arg) { const argKeys = new Set(); let universal = false; scanArg(a, argKeys, () => { universal = true; }); inv.hasRules.push({ hostClasses: c.classes.slice(), hostId: c.id, hostAttrs: c.attrs.map(x => x.name), hostTag: c.tag, argKeys, argUniversal: universal, left: left || forced, sib: eff }); scanComplex(a, true, false, eff); }
 			} else if ((LOGICAL.has(p.name) || p.name.startsWith('nth-')) && p.arg) {
-				const list = Array.isArray(p.arg) ? p.arg : p.arg.of; if (list) { for (const a of list) { scanComplex(a, left || forced, true); } } if (p.arg && p.arg.of) { inv.sibUniversal = true; }
+				const list = Array.isArray(p.arg) ? p.arg : p.arg.of; if (list) { for (const a of list) { scanComplex(a, left || forced, true, eff, shape); } } if (p.arg && p.arg.of) { inv.sibUniversal = true; inv.sibUniShapes.push(shape); for (const a of p.arg.of) { scanArg(a, inv.sibAllKeys, () => { }); } }
 			}
 		}
 	};
 	const scanArg = (complex, keys, onUniversal) => { for (const part of complex.parts) { const c = part.compound; const ks = keysOfCompound(c); for (const k of ks) { keys.add(k); } if (c.tag) { keys.add('T:' + c.tag); } if (!ks.length && !c.tag) { onUniversal(); } for (const p of c.pseudos) { if (Array.isArray(p.arg)) { for (const a of p.arg) { scanArg(a, keys, onUniversal); } } else if (p.arg && p.arg.of) { for (const a of p.arg.of) { scanArg(a, keys, onUniversal); } } } } };
-	const scanComplex = (complex, forced, nested) => {
+	const scanComplex = (complex, forced, nested, sibMode = 0, outer = null) => {
 		const parts = complex.parts, n = parts.length;
 		for (let i = 0; i < n; i++) {
-			const c = parts[i].compound; const left = i < n - 1 || forced; const nextComb = i < n - 1 ? parts[i + 1].comb : null; const followedBySibling = nextComb === '+' || nextComb === '~'; const keys = keysOfCompound(c);
-			const tailHasDesc = followedBySibling && parts.slice(i + 2).some(p => p.comb === ' ' || p.comb === '>');
-			if (left) { if (followedBySibling) { const target = tailHasDesc || forced ? inv.sibKeysDeep : inv.sibKeys; for (const k of keys) { target.add(k); } if (!keys.length) { inv.sibUniversal = true; } } if (!followedBySibling || forced) { for (const k of keys) { inv.ctxKeys.add(k); } } }
+			if (i > 0 && parts[i].comb === '+') { inv.adj = Math.max(inv.adj, forced || parts.slice(i + 1).some(q => q.comb === ' ' || q.comb === '>') ? 3 : 2); if (parts.slice(i + 1).some(q => q.comb === '+' || q.comb === '~')) { inv.adjChain = true; } }
+			const c = parts[i].compound; const left = i < n - 1 || forced; const nextComb = i < n - 1 ? parts[i + 1].comb : null; const followedBySibling = nextComb === '+' || nextComb === '~'; const keys = keysOfCompound(c); const shape = shapeOf(c, i === n - 1 ? outer : null, i > 0 && parts[i].comb === '>' ? shapeOf(parts[i - 1].compound, null) : null, i > 0 && parts[i].comb === ' ' ? shapeOf(parts[i - 1].compound, null) : null); const addCtx = (k) => { inv.ctxKeys.add(k); if (k[0] === ':') { const l = inv.ctxShapes.get(k); if (l) { l.push(shape); } else { inv.ctxShapes.set(k, [shape]); } } };
+			const tailHasDesc = followedBySibling && parts.slice(i + 2).some(p => p.comb === ' ' || p.comb === '>'); let inRun = i === n - 1; for (let j = i; !inRun && j + 1 < n && (parts[j + 1].comb === '+' || parts[j + 1].comb === '~'); j++) { inRun = j + 1 === n - 1; }
+			const own = followedBySibling ? (tailHasDesc || forced ? 3 : 2) : 0; const eff = Math.max(own, inRun ? sibMode : 0);
+			if (left) { if (eff) { const target = eff === 3 ? inv.sibKeysDeep : inv.sibKeys; for (const k of keys) { target.add(k); } if (!keys.length && own) { inv.sibUniversal = true; { const rp = i > 0 && parts[i].comb === '>' ? shapeOf(parts[i - 1].compound, null) : null, ra = i > 0 && parts[i].comb === ' ' ? shapeOf(parts[i - 1].compound, null) : null; for (let j = i + 1; j < n; j++) { inv.sibUniShapes.push(shapeOf(parts[j].compound, j === n - 1 ? outer : null, rp, ra)); if (parts[j + 1] === undefined || (parts[j + 1].comb !== '+' && parts[j + 1].comb !== '~')) { break; } } } } } if (!eff || forced) { for (const k of keys) { addCtx(k); } } }
 			else { for (const k of keys) { if (k[0] === ':') { inv.selfStateKeys.add(k); } } }
-			if (forced && nested) { for (const k of keys) { inv.ctxKeys.add(k); } }
-			scanCompoundPseudos(c, left, followedBySibling, tailHasDesc, forced);
+			if (forced && nested) { for (const k of keys) { addCtx(k); } }
+			scanCompoundPseudos(c, left, eff, forced, shape);
 		}
 	};
 	for (const e of all) { if (seen.has(e.complex)) { continue; } seen.add(e.complex); scanComplex(e.complex, false, false); }
@@ -55,8 +80,9 @@ export function analyzeIndex(index) {
 
 /** The analyses of two rule sets combined: cached styles were computed with the old rules, new styles will be computed with the new ones, so an invalidation must consider both. */
 export function mergeInv(a, b) {
-	const u = (x, y) => new Set([...x, ...y]); const struct = {}; for (const k of Object.keys(a.struct)) { struct[k] = { any: a.struct[k].any || b.struct[k].any, left: a.struct[k].left || b.struct[k].left }; }
-	return { ctxKeys: u(a.ctxKeys, b.ctxKeys), sibKeys: u(a.sibKeys, b.sibKeys), sibKeysDeep: u(a.sibKeysDeep, b.sibKeysDeep), sibUniversal: a.sibUniversal || b.sibUniversal, selfStateKeys: u(a.selfStateKeys, b.selfStateKeys), hasRules: a.hasRules.concat(b.hasRules), struct, entries: a.entries + b.entries };
+	const u = (x, y) => new Set([...x, ...y]); const struct = {}; for (const k of Object.keys(a.struct)) { struct[k] = { any: a.struct[k].any || b.struct[k].any, left: a.struct[k].left || b.struct[k].left, shapes: a.struct[k].shapes.concat(b.struct[k].shapes), sib: Math.max(a.struct[k].sib, b.struct[k].sib), sibShapes: a.struct[k].sibShapes.concat(b.struct[k].sibShapes) }; }
+	const ctxShapes = new Map(a.ctxShapes); for (const [k, l] of b.ctxShapes) { ctxShapes.set(k, (ctxShapes.get(k) || []).concat(l)); }
+	return { ctxKeys: u(a.ctxKeys, b.ctxKeys), ctxShapes, sibKeys: u(a.sibKeys, b.sibKeys), sibKeysDeep: u(a.sibKeysDeep, b.sibKeysDeep), sibUniversal: a.sibUniversal || b.sibUniversal, sibUniShapes: a.sibUniShapes.concat(b.sibUniShapes), sibAllKeys: u(a.sibAllKeys, b.sibAllKeys), adj: Math.max(a.adj, b.adj), adjChain: a.adjChain || b.adjChain, selfStateKeys: u(a.selfStateKeys, b.selfStateKeys), hasRules: a.hasRules.concat(b.hasRules), struct, entries: a.entries + b.entries };
 }
 
 /** Entries of `index` as a Map(decls -> Set(complex)) used to find the rules that differ between two rule sets. */
@@ -98,21 +124,26 @@ function connected(n) { return n.isConnected; }
  */
 export function planRestyle(doc, log, inv, delta, total) {
 	if (doc.__logOverflow) { return { full: 'mutation log overflow' }; }
-	const marks = new Map(); const mark = (el, lvl) => { if (el && el.nodeType === 1 && (marks.get(el) || 0) < lvl) { marks.set(el, lvl); } };
+	const marks = new Map(); const dbg = globalThis.__styleDebug ? new Map() : null; let why = ''; const mark = (el, lvl) => { if (el && el.nodeType === 1 && (marks.get(el) || 0) < lvl) { marks.set(el, lvl); if (dbg) { dbg.set(el, why); } } };
 	const markFollowing = (el, lvl) => { const p = el.parentNode; if (!p) { return; } let after = false; for (const c of p.__children) { if (c === el) { after = true; } else if (after && c.nodeType === 1) { mark(c, lvl); } } };
+	// `:nth-child(n of S)`: whether a sibling matches S changes the position of the others, before and after it
+	const markSiblingsAll = (el) => { const p = el.parentNode; if (!p || p.nodeType !== 1) { return; } for (const k of p.__children) { if (k.nodeType === 1 && shapesMatch(inv.sibUniShapes, k)) { mark(k, 3); } } };
 	const markAncestors = (el, lvl) => { for (let a = el; a && a.nodeType === 1; a = a.parentNode) { mark(a, lvl); } };
 	// :has(): rules whose argument keys intersect `keys` may change the match of any ancestor that satisfies the rule's host compound
 	const hostMatches = (h, a) => { if (h.hostTag && a.localName !== h.hostTag) { return false; } if (h.hostId && a.getAttribute('id') !== h.hostId) { return false; } if (h.hostClasses.length) { const cl = a.classes(); for (const c of h.hostClasses) { if (!cl.includes(c)) { return false; } } } for (const n of h.hostAttrs) { if (!a.hasAttribute(n)) { return false; } } return true; };
-	const touchHas = (from, keys) => { for (const h of inv.hasRules) { if (h.argUniversal || intersects(h.argKeys, keys)) { for (let a = from; a && a.nodeType === 1; a = a.parentNode) { if (hostMatches(h, a)) { mark(a, h.left ? 3 : 2); } } } } };
+	const touchHas = (from, keys) => { for (const h of inv.hasRules) { if (h.argUniversal || intersects(h.argKeys, keys)) { for (let a = from; a && a.nodeType === 1; a = a.parentNode) { if (hostMatches(h, a)) { mark(a, h.left ? 3 : 2); if (h.sib) { markFollowing(a, h.sib); } } } } } };
 
-	if (delta) { const walk = (el) => { if (matchesDelta(el, delta)) { mark(el, 2); } for (const c of el.__children) { if (c.nodeType === 1) { walk(c); } } }; if (doc.documentElement) { walk(doc.documentElement); } }
+	const at = (arr, cat) => { const S = inv.struct; why += ' [' + cat + ']'; for (const k of arr) { mark(k, S[cat].left && shapesMatch(S[cat].shapes, k) ? 3 : 2); if (S[cat].sib && shapesMatch(S[cat].sibShapes, k)) { markFollowing(k, S[cat].sib); } } };
+	why = 'delta'; if (delta) { const walk = (el) => { if (matchesDelta(el, delta)) { mark(el, 2); } for (const c of el.__children) { if (c.nodeType === 1) { walk(c); } } }; if (doc.documentElement) { walk(doc.documentElement); } }
 
 	// ---- attribute changes: compare the value before the first change in this window with the current one
-	const firstOld = new Map(); const parents = new Map();
+	const firstOld = new Map(); const parents = new Map(); const removedFrom = new Map();
 	for (const [, what, node, arg, extra] of log) {
 		if (what === 'attr') { let m = firstOld.get(node); if (!m) { m = new Map(); firstOld.set(node, m); } if (!m.has(arg)) { m.set(arg, extra); } }
-		else if (what === 'ins' || what === 'rem') { let r = parents.get(node); if (!r) { r = { min: Infinity, max: -1, nodes: [] }; parents.set(node, r); } const i = extra ?? 0; r.min = Math.min(r.min, i); r.max = Math.max(r.max, i); r.nodes.push(arg); }
+		else if (what === 'ins' || what === 'rem') { if (what === 'rem') { const l = removedFrom.get(node); if (l) { l.push(arg); } else { removedFrom.set(node, [arg]); } } let r = parents.get(node); if (!r) { r = { min: Infinity, max: -1, nodes: [] }; parents.set(node, r); } const i = extra ?? 0; r.min = Math.min(r.min, i); r.max = Math.max(r.max, i); r.nodes.push(arg); }
 	}
+	/** keys of an element now and, when its attributes changed in this window, before: a removed element mattered with its old attributes */
+	const ekeys = (n) => { const ks = elementKeys(n); const fo = firstOld.get(n); if (fo) { for (const [name, old] of fo) { if (name === 'class') { for (const c of (old || '').split(/\s+/)) { if (c) { ks.add('.' + c); } } } else if (name === 'id') { if (old) { ks.add('#' + old); } } else { ks.add('[' + name + ']'); } } } return ks; };
 	for (const [el, attrs] of firstOld) {
 		if (!connected(el)) { continue; } mark(el, 2); const touched = new Set();
 		for (const [name, old] of attrs) {
@@ -121,7 +152,9 @@ export function planRestyle(doc, log, inv, delta, total) {
 			else { touched.add('[' + name + ']'); }
 		}
 		if (!touched.size) { continue; }
+		why = 'attr ' + [...touched].join(' ');
 		let ctx = false, sib = false, sibDeep = false; for (const k of touched) { if (inv.ctxKeys.has(k)) { ctx = true; } if (inv.sibKeys.has(k)) { sib = true; } if (inv.sibKeysDeep.has(k)) { sibDeep = true; } }
+		if (inv.sibAllKeys.size && intersects(touched, inv.sibAllKeys)) { markSiblingsAll(el); }
 		if (ctx) { mark(el, 3); } if (sibDeep) { markFollowing(el, 3); } else if (sib) { markFollowing(el, 2); }
 		if (inv.hasRules.length) { touchHas(el.parentNode, touched); }
 	}
@@ -130,38 +163,51 @@ export function planRestyle(doc, log, inv, delta, total) {
 		if (!connected(P) && P.nodeType !== 9) { continue; }
 		const kids = P.nodeType === 1 ? elementChildren(P) : []; const pos = new Map(); if (P.nodeType === 1 && kids.length > 2) { P.__children.forEach((c, i) => pos.set(c, i)); }
 		const posOf = (k) => pos.has(k) ? pos.get(k) : P.__children.indexOf(k);
-		for (const X of r.nodes) { if (X.nodeType === 1 && connected(X)) { mark(X, 3); } }
+		why = 'inserted'; for (const X of r.nodes) { if (X.nodeType === 1 && connected(X)) { mark(X, 3); } }
 		if (P.nodeType !== 1) { continue; }
-		const S = inv.struct; const at = (arr, lvl) => { for (const k of arr) { mark(k, lvl); } };
-		if (S.empty.any) { mark(P, S.empty.left ? 3 : 2); }
-		if (S.first.any) { at(kids.slice(0, 2), S.first.left ? 3 : 2); } if (S.last.any) { at(kids.slice(-2), S.last.left ? 3 : 2); }
-		if (S.nth.any) { at(kids.filter(k => posOf(k) >= r.min - 1), S.nth.left ? 3 : 2); }
-		if (S.nthLast.any) { at(kids.filter(k => posOf(k) <= r.max + 1), S.nthLast.left ? 3 : 2); }
-		if (inv.sibUniversal || inv.sibKeys.size || inv.sibKeysDeep.size) {
-			for (const X of r.nodes) { if (X.nodeType !== 1) { continue; } const ks = elementKeys(X); const deep = intersects(ks, inv.sibKeysDeep); if (inv.sibUniversal || deep || intersects(ks, inv.sibKeys)) { const lvl = deep || inv.sibUniversal ? 3 : 2; at(kids.filter(k => posOf(k) >= r.min - 1), lvl); break; } }
+		why = 'struct in ' + P.localName + '.' + P.getAttribute('class'); const S = inv.struct; 
+		if (inv.adj) {   // `A + B`: whatever now precedes an element differs from what it preceded when it was styled
+			let pe = null, changed = false; for (const k of kids) { if (changed && inv.adjChain) { mark(k, inv.adj); } else if (k.__prev !== pe) { mark(k, inv.adj); changed = true; } pe = k; }
 		}
-		if (inv.hasRules.length) { const keys = new Set(); const collect = (n) => { if (n.nodeType !== 1) { return; } for (const k of elementKeys(n)) { keys.add(k); } for (const c of n.__children) { collect(c); } }; for (const X of r.nodes) { collect(X); } if (keys.size) { touchHas(P, keys); } }
+		if (S.empty.any) { at([P], 'empty'); }
+		if (S.first.any || S.last.any) {
+			// the elements whose first/last-child-ness can have changed: the new edge element, the inserted ones next to it, and the first untouched one behind them (the old edge)
+			const ins = new Set(r.nodes); const edge = (list) => { const out = []; for (const k of list) { out.push(k); if (!ins.has(k)) { break; } } return out; };
+			if (S.first.any) { const f = edge(kids); if (r.min <= posOf(f[f.length - 1])) { at(f, 'first'); } }
+			if (S.last.any) { const l = edge(kids.slice().reverse()); if (r.max >= posOf(l[l.length - 1])) { at(l, 'last'); } }
+		}
+		if (S.nth.any) { at(kids.filter(k => posOf(k) >= r.min), 'nth'); }
+		if (S.nthLast.any) { at(kids.filter(k => posOf(k) <= r.max), 'nthLast'); }
+		if (inv.sibUniversal || inv.sibKeys.size || inv.sibKeysDeep.size) {
+			let base = 0; for (const X of r.nodes) { if (X.nodeType !== 1) { continue; } const ks = ekeys(X); if (intersects(ks, inv.sibKeysDeep)) { base = 3; break; } if (base < 2 && intersects(ks, inv.sibKeys)) { base = 2; } }
+			const uni = inv.sibUniversal && r.nodes.some(X => X.nodeType === 1);
+			if (base || uni) { for (const k of kids) { if (posOf(k) >= r.min - 1) { const lvl = uni && shapesMatch(inv.sibUniShapes, k) ? 3 : base; if (lvl) { mark(k, lvl); } } } }
+		}
+		if (inv.hasRules.length) { const keys = new Set(); const seenN = new Set(); const collect = (n) => { if (n.nodeType !== 1 || seenN.has(n)) { return; } seenN.add(n); for (const k of ekeys(n)) { keys.add(k); } for (const c of n.__children) { collect(c); } const gone = removedFrom.get(n); /* a removed subtree also held what was removed from inside it earlier in the window */ if (gone) { for (const c of gone) { collect(c); } } }; for (const X of r.nodes) { collect(X); } if (keys.size) { touchHas(P, keys); } }
 	}
+	why = 'text/focus/state';
 	// ---- text changes only matter for :empty
-	for (const [, what, node] of log) { if (what === 'text' && inv.struct.empty.any) { const p = node.parentNode; if (p && p.nodeType === 1 && connected(p)) { mark(p, inv.struct.empty.left ? 3 : 2); } } }
+	for (const [, what, node] of log) { if (what === 'text' && inv.struct.empty.any) { const p = node.parentNode; if (p && p.nodeType === 1 && connected(p)) { at([p], 'empty'); } } }
 	// ---- focus: compare the focus chain (active element and its ancestors) of the previous style pass with the current one; the log cannot say where a removed element used to be
 	const activeNow = doc.__activeElement && doc.__activeElement.isConnected ? doc.__activeElement : null; const chainBefore = doc.__styledChain || [];
-	if ((doc.__styledActive || null) !== activeNow) {
-		const chainNow = []; for (let a = activeNow; a && a.nodeType === 1; a = a.parentNode) { chainNow.push(a); } const setBefore = new Set(chainBefore), setNow = new Set(chainNow); const focusEls = new Set([doc.__styledActive, activeNow]);
+	const chainNow = []; for (let a = activeNow; a && a.nodeType === 1; a = a.parentNode) { chainNow.push(a); }
+	if ((doc.__styledActive || null) !== activeNow || chainNow.length !== chainBefore.length || chainNow.some((e, i) => e !== chainBefore[i])) {   // also when the focused element was moved: its ancestors changed
+		const setBefore = new Set(chainBefore), setNow = new Set(chainNow); const focusEls = new Set([doc.__styledActive, activeNow]);
 		for (const el of [...chainBefore, ...chainNow]) {
 			if (!connected(el) || (setBefore.has(el) && setNow.has(el) && !focusEls.has(el))) { continue; }
 			const keys = focusEls.has(el) ? [':focus', ':focus-visible', ':focus-within'] : [':focus-within']; mark(el, 2);
-			for (const k of keys) { if (inv.ctxKeys.has(k)) { mark(el, 3); } if (inv.sibKeys.has(k) || inv.sibKeysDeep.has(k)) { markFollowing(el, inv.sibKeysDeep.has(k) ? 3 : 2); } }
+			for (const k of keys) { if (ctxHit(inv, k, el)) { mark(el, 3); } if (inv.sibKeys.has(k) || inv.sibKeysDeep.has(k)) { markFollowing(el, inv.sibKeysDeep.has(k) ? 3 : 2); } }
+			if (inv.sibAllKeys.size && intersects(new Set(keys), inv.sibAllKeys)) { markSiblingsAll(el); }
 			if (inv.hasRules.length) { touchHas(el.parentNode, new Set(keys)); }
 		}
 	}
 	// ---- other state changes
 	for (const [, what, node, arg] of log) {
 		if (what !== 'state' || arg === 'focus' || !connected(node)) { continue; }
-		const k = ':' + arg; mark(node, 2); if (inv.ctxKeys.has(k)) { mark(node, 3); } if (inv.sibKeys.has(k) || inv.sibKeysDeep.has(k)) { markFollowing(node, inv.sibKeysDeep.has(k) ? 3 : 2); } if (inv.hasRules.length) { touchHas(node.parentNode, new Set([k])); }
+		const k = ':' + arg; mark(node, 2); if (ctxHit(inv, k, node)) { mark(node, 3); } if (inv.sibKeys.has(k) || inv.sibKeysDeep.has(k)) { markFollowing(node, inv.sibKeysDeep.has(k) ? 3 : 2); } if (inv.sibAllKeys.has(k)) { markSiblingsAll(node); } if (inv.hasRules.length) { touchHas(node.parentNode, new Set([k])); }
 	}
 	if (marks.size > total * 0.4) { return { full: `too many dirty elements (${marks.size} of ${total})` }; }
-	return { marks };
+	return { marks, why: dbg };
 }
 
 const eq = (a, b) => { if (a === b) { return true; } if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) { return false; } if (Array.isArray(a) !== Array.isArray(b)) { return false; } const ka = Object.keys(a), kb = Object.keys(b); if (ka.length !== kb.length) { return false; } for (const k of ka) { if (!eq(a[k], b[k])) { return false; } } return true; };
