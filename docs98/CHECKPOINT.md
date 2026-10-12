@@ -1,6 +1,6 @@
 # Checkpoint — Resume Here
 
-**Last updated:** 2026-10-12, after Phase 1 spike 1 step 1 (QuickJS-ng compile-only test of the production bundle), on top of the bundle baseline and the finished process-side trace. Work is on branch `claude/adoring-heisenberg-ipwnb8`; check `git status` / `git log origin/main..` for anything unpushed (the cloud session could not push for a while: GitHub access 403).
+**Last updated:** 2026-10-12, after Phase 1 spike 2 (execution speed + Node-side shim on QuickJS-ng), on top of spike 1 step 1, the bundle baseline and the finished process-side trace. Work is on branch `claude/adoring-heisenberg-ipwnb8`; check `git status` / `git log origin/main..` for anything unpushed (the cloud session could not push for a while: GitHub access 403).
 Update this file at the end of each working session (what's done, what's next, what to watch for).
 
 ## Where we are
@@ -14,6 +14,7 @@ Goal recap ([01-goal-and-scope.md](01-goal-and-scope.md)): full VS Code feature 
 - Static inventory of Electron, Node, DOM/CSS/Web, native modules, JS level ([inventory/README.md](inventory/README.md)).
 - Built stock VS Code on the Fedora dev machine and ran it headless ([inventory/baseline-build.md](inventory/baseline-build.md)).
 - **Measured renderer traces:** startup ([runtime-trace.md](inventory/runtime-trace.md)), 9 feature scenarios ([runtime-trace-scenarios.md](inventory/runtime-trace-scenarios.md)), markdown webview ([runtime-trace-webview.md](inventory/runtime-trace-webview.md)).
+- **Measured Phase 1 spike 2 (execution speed, Node-side shim):** [spikes/02-node-shim/README.md](spikes/02-node-shim/README.md). QuickJS-ng 8.5× slower than V8 JIT, 2.2× slower than V8 jitless, identical results; extension host/shared process/pty host/watcher bundles boot on QuickJS-ng; extension host completes the handshake and sends its first 10 RPC requests.
 - **Measured Phase 1 spike 1, step 1 (JS engine, compile-only):** [spikes/01-js-engine/README.md](spikes/01-js-engine/README.md). QuickJS-ng 0.17.0 parses all 30 bundle files unmodified; gaps `Intl`, `WebAssembly`, `structuredClone`; ES2015 lowering floor; compile cost makes precompiled bytecode necessary.
 - **Measured production bundle baseline:** bundle size/JS level, startup time and memory, bundled vs dev ([inventory/baseline-bundle.md](inventory/baseline-bundle.md)).
 - **Measured process-side trace:** Node + Electron API usage of the main process, 5 utility processes and 5 language-server/worker Node children during the same scenarios ([runtime-trace-processes.md](inventory/runtime-trace-processes.md)). Re-run 2026-10-12 after fixing two hook defects (see that doc); the first run's "75 Electron entries" was an undercount, the correct figure is 102.
@@ -45,7 +46,7 @@ Goal recap ([01-goal-and-scope.md](01-goal-and-scope.md)): full VS Code feature 
 ## Suggested next steps (in order)
 1. ~~Finish the process-side trace~~ done 2026-10-12.
 2. ~~Production bundle build + memory/startup baseline~~ done 2026-10-12 ([baseline-bundle.md](inventory/baseline-bundle.md)). Not done: full packaging (`vscode-linux-x64-min`, marketplace built-in extensions), baseline on a real Windows machine.
-3. ~~Decide the Phase 1 spike order~~ agreed 2026-10-12: (1) JS engine load test [step 1 done], (2) Node shim + `tsserver` benchmark on QuickJS (execution speed; boot the extension-host bundle on a shim), (3) WebAssembly (wasm3 vs native bindings), (4) rendering (start with a logging stub DOM). **Next: spike 1 step 2.**
+3. ~~Decide the Phase 1 spike order~~ agreed 2026-10-12: (1) JS engine load test [step 1 done], (2) Node shim + `tsserver` benchmark on QuickJS (execution speed; boot the extension-host bundle on a shim), (3) WebAssembly (wasm3 vs native bindings), (4) rendering (start with a logging stub DOM). Step 2 done 2026-10-12. **Next: spike 3, WebAssembly (wasm3 vs native oniguruma/tree-sitter bindings), then rendering. Also open from spike 2: extension loading via `require`/`registerHooks`, `net`/`child_process` on QuickJS, native module ports.**
 4. Set up a Windows 7 VM/machine for real testing before writing host code.
 
 ## How to resume the dev environment

@@ -20,7 +20,7 @@ Format: ID, date, status (`accepted`, `proposed`, `rejected`, `superseded`), dec
 ## D-004 — JS engine — proposed (pending Phase 1)
 - **Candidate:** QuickJS / QuickJS-ng. Others to compare: older V8 builds, Duktape, other embeddable engines.
 - **Criteria:** buildable for Win 7/XP/98, ES level support, speed, memory, multi-context/worker support.
-- **Evidence so far (spike 1, step 1, 2026-10-12):** QuickJS-ng 0.17.0 compiles all 30 bundle files unmodified (language level OK); workbench compile 2.8 to 3.4 s but 0.2 s from precompiled bytecode (so ship bytecode); 86 MB compiled heap for the workbench; lacks `Intl`, `WebAssembly`, `structuredClone` (must be supplied); its Windows sync layer uses Vista+ APIs (fine on Win 7, to be replaced for XP/98). **Execution speed not yet measured.** ES5-only engines are excluded (esbuild cannot lower below ES2015). Details: [spikes/01-js-engine/README.md](spikes/01-js-engine/README.md). Still `proposed`.
+- **Evidence so far (spike 1, step 1, 2026-10-12):** QuickJS-ng 0.17.0 compiles all 30 bundle files unmodified (language level OK); workbench compile 2.8 to 3.4 s but 0.2 s from precompiled bytecode (so ship bytecode); 86 MB compiled heap for the workbench; lacks `Intl`, `WebAssembly`, `structuredClone` (must be supplied); its Windows sync layer uses Vista+ APIs (fine on Win 7, to be replaced for XP/98). **Spike 2 (execution speed, 2026-10-12):** on the TypeScript compiler QuickJS-ng gives identical results, is 8.5× slower than V8 with JIT (2.3× to 15× by phase) and 2.2× slower than V8's JIT-less interpreter, memory +15%; the Node-side bundles boot on it with a small shim ([spikes/02-node-shim/README.md](spikes/02-node-shim/README.md)). ES5-only engines are excluded (esbuild cannot lower below ES2015). Details: [spikes/01-js-engine/README.md](spikes/01-js-engine/README.md). Still `proposed`.
 
 ## D-005 — Render strategy — proposed (pending Phase 1)
 - **Candidate:** Minimal DOM + CSS layout engine drawing via GDI.
@@ -28,6 +28,7 @@ Format: ID, date, status (`accepted`, `proposed`, `rejected`, `superseded`), dec
 
 ## D-006 — Process and IPC model — proposed (pending Phase 1)
 - **Open:** processes vs threads for UI / extension host / shared process; replace Electron IPC with named pipes or sockets.
+- **Evidence so far (spike 2, 2026-10-12):** the extension host talks to its renderer over one `MessagePort` obtained from `process.parentPort`: `Ready` → init JSON → `Initialized` → length-framed RPC. Four Node-side bundles run as separate QuickJS instances in 11 to 33 MB each. A replacement host needs `MessagePort`-style endpoints (or an adapter with `on('message'|'close')`, `start`, `postMessage`). Details: [spikes/02-node-shim/README.md](spikes/02-node-shim/README.md).
 
 ## D-008 — Scope out AI/agent/cloud features for old Windows (2026-10-11) — accepted
 - **Decision:** Exclude `platform/agentHost`, Copilot/Anthropic/MCP SDKs, dev-tunnels, playwright, and similar from the old-Windows builds.
