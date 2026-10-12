@@ -29,7 +29,7 @@ const errors = []; const note = (k, e) => { errors.push([k, (e && (e.stack || e.
 globalThis.addEventListener('error', (ev) => note('window.onerror', ev.error || ev.message));
 const consoleLog = []; for (const k of ['log', 'info', 'warn', 'error', 'debug', 'trace']) { console[k] = (...a) => { consoleLog.push([k, a.map(x => (x && x.stack) || String(x)).join(' ')]); }; }
 globalThis.__rejection = (promise, reason, handled) => { if (handled) { return; } const ev = new globalThis.Event('unhandledrejection', { cancelable: true }); ev.promise = promise; ev.reason = reason; globalThis.dispatchEvent(ev); if (!ev.defaultPrevented) { note('unhandledRejection', reason); } };
-doc.__passStats = [];
+doc.__passStats = []; if (opt('verify', '0') === '1') { doc.__verifyStyles = true; } if (opt('incremental', '1') === '0') { doc.__incremental = false; }
 const tImport = performance.now(); std.out.puts('importing the workbench...\n'); std.out.flush();
 try { await import(webDir + '/vs/code/browser/workbench/workbench.js'); } catch (e) { note('import', e); }
 const tLoaded = performance.now(); std.out.puts(`imported after ${Math.round(tLoaded - tImport)} ms\n`); std.out.flush(); const rssAfterImport = rss();

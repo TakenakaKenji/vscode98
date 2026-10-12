@@ -67,17 +67,17 @@ export class Node extends EventTarget {
 	contains(o) { for (let n = o; n; n = n.parentNode) { if (n === this) { return true; } } return false; }
 	getRootNode() { let n = this; while (n.parentNode) { n = n.parentNode; } return n; }
 	__parentForEvents() { return this.parentNode ?? (this.nodeType === 9 ? this.defaultView : null); }
-	__invalidate(kind, what, arg) { const d = this.nodeType === 9 ? this : this.ownerDocument; if (d) { d.__dirty = true; d.__styleDirty = d.__styleDirty || kind === 'style'; const log = (d.__dirtyLog ??= []); if (log.length < 200000) { log.push([kind, what, this, arg]); } } }   // the log (cleared by every layout pass) says what made the pass necessary
+	__invalidate(kind, what, arg, extra) { const d = this.nodeType === 9 ? this : this.ownerDocument; if (d) { d.__dirty = true; d.__styleDirty = d.__styleDirty || kind === 'style'; const log = (d.__dirtyLog ??= []); if (log.length < 200000) { log.push([kind, what, this, arg, extra]); } else { d.__logOverflow = true; } } }   // the log (cleared by every layout pass) says what made the pass necessary
 	insertBefore(node, ref) {
 		if (node.nodeType === 11) { for (const c of [...node.__children]) { this.insertBefore(c, ref); } return node; }
 		if (ref && ref.parentNode !== this) { throw new DOMException('The node before which the new node is to be inserted is not a child of this node.', 'NotFoundError'); }
 		if (node.contains && node.contains(this)) { throw new DOMException('The new child element contains the parent.', 'HierarchyRequestError'); }
 		if (node.parentNode) { node.parentNode.__removeChild(node, true); }
 		const i = ref ? this.__children.indexOf(ref) : this.__children.length; this.__children.splice(i, 0, node); node.parentNode = this;
-		this.__invalidate('style', 'ins', node); this.__queueMutation({ type: 'childList', target: this, addedNodes: [node], removedNodes: [] }); node.__connectedChanged && node.__connectedChanged(this.isConnected); return node;
+		this.__invalidate('style', 'ins', node, i); this.__queueMutation({ type: 'childList', target: this, addedNodes: [node], removedNodes: [] }); node.__connectedChanged && node.__connectedChanged(this.isConnected); return node;
 	}
 	appendChild(node) { return this.insertBefore(node, null); }
-	__removeChild(node, moving) { const i = this.__children.indexOf(node); if (i < 0) { throw new DOMException('The node to be removed is not a child of this node.', 'NotFoundError'); } this.__children.splice(i, 1); node.parentNode = null; this.__invalidate('style', 'rem', node); if (!moving) { this.__queueMutation({ type: 'childList', target: this, addedNodes: [], removedNodes: [node] }); } node.__connectedChanged && node.__connectedChanged(false); return node; }
+	__removeChild(node, moving) { const i = this.__children.indexOf(node); if (i < 0) { throw new DOMException('The node to be removed is not a child of this node.', 'NotFoundError'); } this.__children.splice(i, 1); node.parentNode = null; this.__invalidate('style', 'rem', node, i); { const d = this.nodeType === 9 ? this : this.ownerDocument; const ae = d && d.__activeElement; if (ae && node.contains && node.contains(ae)) { d.__activeElement = null; this.__invalidate('style', 'state', 'focus'); } } /* removing the focused element moves focus to the body: :focus and :focus-within change */ if (!moving) { this.__queueMutation({ type: 'childList', target: this, addedNodes: [], removedNodes: [node] }); } node.__connectedChanged && node.__connectedChanged(false); return node; }
 	removeChild(node) { return this.__removeChild(node, false); }
 	replaceChild(n, old) { this.insertBefore(n, old); return this.removeChild(old); }
 	remove() { if (this.parentNode) { this.parentNode.removeChild(this); } }
@@ -179,11 +179,11 @@ export class Element extends Node {
 	setAttribute(n, v) {
 		n = String(n).toLowerCase(); v = String(v); const old = this.__attrs.get(n); this.__attrs.set(n, v); if (n === 'class') { this.__cls = null; }
 		if (n === 'style' && !this.__syncingStyleAttr) { this.__syncingStyleAttr = true; try { this.style.cssText = v; } finally { this.__syncingStyleAttr = false; } }
-		this.__invalidate(n === 'class' || n === 'id' || n === 'style' || n.startsWith('data-') || n.startsWith('aria-') || n === 'type' || n === 'disabled' || n === 'hidden' ? 'style' : 'layout', 'attr', n);
+		this.__invalidate(n === 'class' || n === 'id' || n === 'style' || n.startsWith('data-') || n.startsWith('aria-') || n === 'type' || n === 'disabled' || n === 'hidden' ? 'style' : 'layout', 'attr', n, old);
 		this.__queueMutation({ type: 'attributes', target: this, attributeName: n, oldValue: old ?? null });
 	}
 	setAttributeNS(ns, n, v) { this.setAttribute(n, v); }
-	removeAttribute(n) { n = n.toLowerCase(); if (n === 'class') { this.__cls = null; } if (this.__attrs.delete(n)) { if (n === 'style' && !this.__syncingStyleAttr) { this.style.cssText = ''; } this.__invalidate('style', 'attr', n); this.__queueMutation({ type: 'attributes', target: this, attributeName: n, oldValue: null }); } }
+	removeAttribute(n) { n = n.toLowerCase(); if (n === 'class') { this.__cls = null; } const oldV = this.__attrs.get(n); if (this.__attrs.delete(n)) { if (n === 'style' && !this.__syncingStyleAttr) { this.style.cssText = ''; } this.__invalidate('style', 'attr', n, oldV); this.__queueMutation({ type: 'attributes', target: this, attributeName: n, oldValue: null }); } }
 	removeAttributeNS(ns, n) { this.removeAttribute(n); }
 	hasAttribute(n) { return this.__attrs.has(n.toLowerCase()); } hasAttributes() { return this.__attrs.size > 0; }
 	toggleAttribute(n, force) { const has = this.hasAttribute(n); const want = force === undefined ? !has : !!force; if (want && !has) { this.setAttribute(n, ''); } else if (!want && has) { this.removeAttribute(n); } return want; }
@@ -207,8 +207,8 @@ export class Element extends Node {
 	cloneNode(deep) { const e = this.ownerDocument.__createElementNS(this.namespaceURI, this.localName); for (const [k, v] of this.__attrs) { e.setAttribute(k, v); } if (deep) { for (const c of this.__children) { e.appendChild(c.cloneNode(true)); } } return e; }
 	get shadowRoot() { return null; } attachShadow() { noteMissing('Element.attachShadow'); throw new DOMException('Shadow DOM not supported', 'NotSupportedError'); }
 	// focus
-	focus() { const d = this.ownerDocument; if (!d || d.__activeElement === this) { return; } const prev = d.__activeElement; d.__activeElement = this; if (prev) { prev.dispatchEvent(new FocusEvent('blur', { relatedTarget: this })); prev.dispatchEvent(new FocusEvent('focusout', { relatedTarget: this, bubbles: true })); } this.dispatchEvent(new FocusEvent('focus', { relatedTarget: prev })); this.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: prev })); }
-	blur() { const d = this.ownerDocument; if (d && d.__activeElement === this) { d.__activeElement = null; this.dispatchEvent(new FocusEvent('blur')); this.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); } }
+	focus() { const d = this.ownerDocument; if (!d || d.__activeElement === this) { return; } const prev = d.__activeElement; d.__activeElement = this; if (prev) { prev.__invalidate('style', 'state', 'focus'); } this.__invalidate('style', 'state', 'focus'); if (prev) { prev.dispatchEvent(new FocusEvent('blur', { relatedTarget: this })); prev.dispatchEvent(new FocusEvent('focusout', { relatedTarget: this, bubbles: true })); } this.dispatchEvent(new FocusEvent('focus', { relatedTarget: prev })); this.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: prev })); }
+	blur() { const d = this.ownerDocument; if (d && d.__activeElement === this) { d.__activeElement = null; this.__invalidate('style', 'state', 'focus'); this.dispatchEvent(new FocusEvent('blur')); this.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); } }
 	click() { this.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); }
 	scrollIntoView() { } setPointerCapture() { } releasePointerCapture() { } hasPointerCapture() { return false; } requestPointerLock() { }
 	animate() { return { cancel() { }, finished: Promise.resolve(), onfinish: null }; } getAnimations() { return []; }

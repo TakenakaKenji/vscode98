@@ -238,7 +238,7 @@ export function buildRuleIndex(doc, env) {
 		let list; try { list = f.rule.selectors; } catch { noteMissing('css: unparsable selector'); continue; }
 		const decls = expandRuleDecls(f.rule);
 		for (const complex of list) {
-			const c = complex.parts[complex.parts.length - 1].compound; const e = { complex, decls, ua: f.ua, order: f.order, spec: complex.spec, pseudoElement: c.pseudoElement, need: needOf(complex) }; count++;
+			const c = complex.parts[complex.parts.length - 1].compound; const e = { complex, decls, ua: f.ua, order: f.order, spec: complex.spec, pseudoElement: c.pseudoElement, need: needOf(complex), sel: f.rule.selectorText }; count++;
 			if (c.id) { push(byId, c.id, e); } else if (c.classes.length) { push(byClass, c.classes[0], e); } else if (c.tag) { push(byTag, c.tag, e); } else { universal.push(e); }
 		}
 	}
@@ -298,8 +298,8 @@ export function substituteVars(value, vars, depth = 0) {
 	return out;
 }
 /** Compute the style of one element (or pseudo-element) given its parent's computed style. Returns { values (camel-free dashed keys → computed), vars (Map) } */
-export function computeStyle(el, parentCS, index, env, pseudo) {
-	const cands = matchedDeclarations(el, index, null, pseudo);
+export function computeStyle(el, parentCS, index, env, pseudo, candsIn) {
+	const cands = candsIn ?? matchedDeclarations(el, index, null, pseudo);   // candsIn: the cached result of matchedDeclarations when only inherited values changed
 	if (pseudo && cands.length === 0) { return null; }
 	let vars = parentCS ? parentCS.vars : new Map(); let varsOwned = !parentCS;      // copy-on-write: the workbench has ~1500 custom properties on one ancestor
 	const winners = new Map();    // longhand → { value, important, pendingShorthand }
@@ -338,10 +338,10 @@ export function computeStyle(el, parentCS, index, env, pseudo) {
 	if (out['font-weight'] === 'bold') { out['font-weight'] = 700; } if (typeof out['font-weight'] === 'string') { out['font-weight'] = out['font-weight'] === 'bolder' ? 700 : out['font-weight'] === 'lighter' ? 300 : 400; }
 	for (const k of ['overflow-x', 'overflow-y']) { if (!['visible', 'hidden', 'scroll', 'auto', 'clip'].includes(out[k])) { out[k] = 'visible'; } }
 	if (out.position === 'absolute' || out.position === 'fixed' || out.float !== 'none') { if (out.display === 'inline') { out.display = 'block'; } else if (out.display === 'inline-block' || out.display === 'inline-flex' || out.display === 'inline-table') { out.display = out.display === 'inline-flex' ? 'flex' : out.display === 'inline-table' ? 'table' : 'block'; } }
-	return { values: out, vars };
+	return { values: out, vars, cands };
 }
 const initialOf = (p) => Array.isArray(p.init) ? p.init.slice() : p.init;
-const INIT = {}, INH = [], NONINH = []; for (const k in T) { INIT[k] = initialOf(T[k]); (T[k].inh ? INH : NONINH).push(k); }
+export const INIT = {}, INH = [], NONINH = []; for (const k in T) { INIT[k] = initialOf(T[k]); (T[k].inh ? INH : NONINH).push(k); }
 const parseCache = new Map();
 function parseValueCached(p, k, d, ctx, color) {
 	const ctxDep = p.kind === 'len' || /em|ex|ch|vw|vh|vmin|vmax|calc|min\(|max\(|clamp|currentcolor|color-mix/i.test(d);

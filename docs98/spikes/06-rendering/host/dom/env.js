@@ -23,7 +23,7 @@ export class Document extends Node {
 	get head() { return this.documentElement.__children.find(c => c.localName === 'head') ?? null; } get body() { return this.documentElement.__children.find(c => c.localName === 'body') ?? null; }
 	get defaultView() { return this.__env.window; } get activeElement() { return this.__activeElement && this.__activeElement.isConnected ? this.__activeElement : this.body; }
 	get location() { return this.__env.window.location; } get URL() { return this.__env.window.location.href; } get baseURI() { return this.URL; } get referrer() { return ''; } get domain() { return ''; }
-	get scrollingElement() { return this.documentElement; } get styleSheets() { return this.__allSheets(); } get adoptedStyleSheets() { return this.__adopted ??= []; } set adoptedStyleSheets(v) { this.__adopted = v; this.__styleDirty = true; this.__dirty = true; }
+	get scrollingElement() { return this.documentElement; } get styleSheets() { return this.__allSheets(); } get adoptedStyleSheets() { return this.__adopted ??= []; } set adoptedStyleSheets(v) { this.__adopted = v; this.__styleDirty = true; this.__dirty = true; this.__rulesVersion = (this.__rulesVersion || 0) + 1; }
 	get textContent() { return null; } get fullscreenElement() { return null; } get pointerLockElement() { return null; } get currentScript() { return null; } get all() { return this.getElementsByTagName('*'); }
 	hasFocus() { return this.__hasFocus; } execCommand() { return false; } queryCommandSupported() { return false; } getSelection() { return this.__selection; } exitFullscreen() { return Promise.resolve(); } exitPointerLock() { }
 	createElement(name) { return this.__createElementNS(XHTML, String(name).toLowerCase()); } createElementNS(ns, name) { return this.__createElementNS(ns ?? XHTML, ns === XHTML || !ns ? String(name).toLowerCase() : name); }
@@ -46,7 +46,7 @@ export class Document extends Node {
 	__ensureLayout() {
 		const env = this.__env;
 		if (this.__layout && !this.__dirty) { return; }
-		const t0 = performance.now(); const dirty = this.__dirtyLog || []; this.__dirtyLog = []; const lay = new Layout(this, env); lay.run(); if (this.__passStats) { this.__passStats.push(summarizeDirty(dirty, this, lay, t0)); } this.__layout = lay; this.__dirty = false; this.__styleDirty = false; this.__layoutCount++; this.__layoutMs += performance.now() - t0; this.__applyTransforms(lay);
+		const t0 = performance.now(); const dirty = this.__dirtyLog || []; this.__dirtyLog = []; const lay = new Layout(this, env); lay.dirtyLog = dirty; lay.run(); if (this.__passStats) { this.__passStats.push(summarizeDirty(dirty, this, lay, t0)); } this.__layout = lay; this.__dirty = false; this.__styleDirty = false; this.__layoutCount++; this.__layoutMs += performance.now() - t0; this.__applyTransforms(lay);
 		if (this.__scrollClampPending) { this.__scrollClampPending = false; }
 	}
 	__applyTransforms(lay) {   // 2D affine per box from `transform` (translate / scale / matrix / rotate approximated)
@@ -128,7 +128,7 @@ function summarizeDirty(log, doc, lay, t0) {
 		else if (what === 'attr') { if (arg === 'class') { counts['attr:class']++; subtree(node); } else if (arg === 'style') { counts['attr:style']++; need.add(node); } else { counts['attr:other']++; if (kind === 'style') { subtree(node); } } }
 	}
 	let live = 0; for (const n of need) { if (n.isConnected) { live++; } }
-	return { total: lay.__elementCount ?? doc.__styleCount, mutations: log.length, counts, restyleEstimate: live, styleMs: lay.styleMs, layoutMs: lay.layoutMs, ms: performance.now() - t0 };
+	return { total: lay.__elementCount ?? doc.__styleCount, mutations: log.length, counts, restyleEstimate: live, styleMs: lay.styleMs, layoutMs: lay.layoutMs, ms: performance.now() - t0, style: lay.styleInfo };
 }
 export function installEnvironment(opts = {}) {
 	const g = opts.global ?? globalThis; const env = { vw: opts.width ?? 800, vh: opts.height ?? 520, dpr: 1, dark: false, rootFontSize: 16, scrollbarSize: opts.scrollbarSize ?? 0, window: g };

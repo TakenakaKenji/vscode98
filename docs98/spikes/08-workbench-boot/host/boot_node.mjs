@@ -30,7 +30,7 @@ const consoleLog = []; for (const k of ['log', 'info', 'warn', 'error', 'debug',
 const tImport = performance.now();
 try { await import(pathToFileURL(path.join(webDir, 'vs/code/browser/workbench/workbench.js')).href); } catch (e) { note('import', e); }
 const tLoaded = performance.now();
-doc.__passStats = [];
+doc.__passStats = []; if (opt('verify', '0') === '1') { doc.__verifyStyles = true; } if (opt('incremental', '1') === '0') { doc.__incremental = false; }
 const ctx = { env, doc, note, rss: () => ({ rss: Math.round(nodeProcess.memoryUsage().rss / 1048576), peak: 0 }), layoutTiming: null, opt, log: (m) => nodeProcess.stdout.write(m + '\n'), W, H };
 await runScenario(ctx, { seconds });
 const done = performance.now();

@@ -1,7 +1,8 @@
 // Style resolution + layout for the rendering spike: block flow with margin collapsing, inline formatting (line breaking, white-space modes, baseline alignment),
 // inline-block and replaced elements, absolute/fixed/relative positioning, flexbox (single and multi-line), overflow/scroll geometry, translate/scale transforms.
 // Not implemented (recorded in `unsupported`): floats, tables (laid out as blocks), grid, multi-column, writing modes, bidi, ::first-line/letter.
-import { buildRuleIndex, computeStyle, resolveLen, PROPS, ancestorFilter } from './css.js';
+import { buildRuleIndex, computeStyle, matchedDeclarations, resolveLen, PROPS, ancestorFilter, INH } from './css.js';
+import { analyzeIndex, diffIndex, mergeInv, planRestyle, logTouchesSheets, inheritedChanged, deepEqual } from './style_invalidation.js';
 import { resolveFont, fontMetrics, advance, kern } from './fonts.js';
 import { noteMissing } from './dom.js';
 
@@ -10,14 +11,58 @@ const box_oof = (v) => v.position === 'absolute' || v.position === 'fixed';
 const unsup = (k) => { unsupported.set(k, (unsupported.get(k) || 0) + 1); };
 
 // ---- style pass -------------------------------------------------------------------------------------------------------------------------------
-export function resolveStyles(doc, env) {
-	const index = buildRuleIndex(doc, env); doc.__ruleIndex = index; let n = 0;
-	const walk = (el, parentCS, parentAnc) => {
-		el.__anc = ancestorFilter(el, parentAnc); const cs = computeStyle(el, parentCS, index, env, null); el.__cs = cs; n++;
-		for (const pe of ['before', 'after']) { const pcs = computeStyle(el, cs, index, env, pe); const c = pcs && pcs.values.content; el['__' + pe] = (c && c !== 'none' && c !== 'normal') ? pcs : null; }
-		for (const c of el.__children) { if (c.nodeType === 1) { walk(c, cs, el.__anc); } }
+const countElements = (el) => { let n = 1; for (const c of el.__children) { if (c.nodeType === 1) { n += countElements(c); } } return n; };
+/**
+ * Computes the style of every element that needs it. The first pass, and any pass whose rule set, environment or mutation log cannot be analysed, restyles the whole tree;
+ * all other passes restyle only what style_invalidation.js plans (see there for the levels). Cached per element: el.__cs (computed style), el.__cands (matched rules),
+ * el.__pcands (matched rules of ::before/::after), el.__anc (ancestor Bloom filter). Statistics of the pass go to doc.__styleInfo.
+ */
+export function resolveStyles(doc, env, log) {
+	const t0 = performance.now(); const root = doc.documentElement; const passId = (doc.__stylePass = (doc.__stylePass || 0) + 1);
+	const envKey = `${env.vw}x${env.vh}|${env.dark}|${env.dpr}`; let index = doc.__ruleIndex; let delta = null; let full = null;
+	if (!doc.__styleReady) { full = 'first pass'; } else if (log === undefined) { full = 'no mutation log'; } else if (doc.__incremental === false) { full = 'incremental style disabled'; }
+	let planInv = null;
+	if (!index || doc.__indexRulesVersion !== doc.__rulesVersion || envKey !== doc.__indexEnvKey || (log && logTouchesSheets(log))) {
+		const old = index; index = buildRuleIndex(doc, env); index.inv = analyzeIndex(index); planInv = old && old.inv ? mergeInv(old.inv, index.inv) : index.inv; doc.__ruleIndex = index; doc.__indexRulesVersion = doc.__rulesVersion;
+		if (!full) { if (envKey !== doc.__indexEnvKey) { full = 'environment changed'; } else { delta = old ? diffIndex(old, index) : null; if (!delta) { full = 'rule set changed too much'; } } }
+		doc.__indexEnvKey = envKey;
+	}
+	const indexMs = performance.now() - t0; let total = root ? countElements(root) : 0; let plan = null;
+	if (!full && root) { plan = planRestyle(doc, log, planInv || index.inv, delta, total); if (plan.full) { full = plan.full; plan = null; } }
+	const info = { mode: full ? 'full' : 'incremental', reason: full || '', total, recomputed: 0, rematched: 0, marked: plan ? plan.marks.size : 0, planMs: 0, indexMs, sheets: !!delta || undefined };
+	if (plan) { for (const el of plan.marks.keys()) { for (let a = el; a && a.nodeType === 1 && a.__dd !== passId; a = a.parentNode) { a.__dd = passId; } } }
+	info.planMs = performance.now() - t0 - indexMs;
+	const walk = (el, parentCS, parentAnc, forced) => {
+		let lvl = forced; if (plan) { const m = plan.marks.get(el); if (m !== undefined && m > lvl) { lvl = m; } } if (full) { lvl = 3; }
+		let cs = el.__cs, anc = el.__anc, childForced = 0;
+		if (lvl > 0 || !cs) {
+			const rematch = lvl >= 2 || !cs || !el.__cands; anc = ancestorFilter(el, parentAnc); el.__anc = anc;
+			const cands = rematch ? matchedDeclarations(el, index, null, null) : el.__cands; const ncs = computeStyle(el, parentCS, index, env, null, cands); info.recomputed++; if (rematch) { info.rematched++; }
+			const pc = el.__pcands = rematch || !el.__pcands ? [matchedDeclarations(el, index, null, 'before'), matchedDeclarations(el, index, null, 'after')] : el.__pcands;
+			['before', 'after'].forEach((pe, i) => { const pcs = pc[i].length ? computeStyle(el, ncs, index, env, pe, pc[i]) : null; const c = pcs && pcs.values.content; el['__' + pe] = (c && c !== 'none' && c !== 'normal') ? pcs : null; });
+			el.__cands = cands; childForced = lvl === 3 ? 3 : (inheritedChanged(cs, ncs, INH) ? 1 : 0); el.__cs = cs = ncs;
+		} else if (el.__dd !== passId) { return; }
+		for (const c of el.__children) { if (c.nodeType === 1) { walk(c, cs, anc, childForced); } }
 	};
-	const root = doc.documentElement; if (root) { walk(root, null, null); } doc.__styleCount = n;
+	if (root) { walk(root, null, null, 0); } doc.__styleCount = total; doc.__styleReady = true; doc.__logOverflow = false; info.ms = performance.now() - t0; doc.__styleInfo = info;
+	if (doc.__verifyStyles) { verifyStyles(doc, env, index); }
+}
+/** Test oracle: restyle everything from scratch (without the ancestor filter) and record every difference to the cached styles in doc.__styleMismatches. */
+export function verifyStyles(doc, env, index) {
+	const out = (doc.__styleMismatches ??= []); const root = doc.documentElement; if (!root) { return; }
+	const same = (a, b) => (a === null || a === undefined) ? (b === null || b === undefined) : (b !== null && b !== undefined && deepEqual(a.values, b.values) && (a.vars === b.vars || (a.vars.size === b.vars.size && [...a.vars].every(([k, v]) => b.vars.get(k) === v))));
+	const describe = (el) => el.localName + (el.getAttribute('id') ? '#' + el.getAttribute('id') : '') + (el.classes().length ? '.' + el.classes().join('.') : '');
+	const diffProps = (a, b) => { if (!a || !b) { return String(!!a) + '/' + String(!!b); } for (const k of Object.keys(b.values)) { if (!deepEqual(a.values[k], b.values[k])) { return `${k}: ${JSON.stringify(a.values[k])} (cached) vs ${JSON.stringify(b.values[k])} (full)`; } } return 'custom properties'; };
+	const walk = (el, parentCS) => {
+		const saved = el.__anc; el.__anc = undefined;
+		const fresh = matchedDeclarations(el, index, null, null); const cs = computeStyle(el, parentCS, index, env, null, fresh); const pseudo = {};
+		for (const pe of ['before', 'after']) { const pcs = computeStyle(el, cs, index, env, pe); const c = pcs && pcs.values.content; pseudo[pe] = (c && c !== 'none' && c !== 'normal') ? pcs : null; }
+		el.__anc = saved;
+		if (!same(el.__cs, cs) && out.length < 200) { const had = new Set((el.__cands || []).map(e => e.sel)), want = new Set(fresh.map(e => e.sel)); out.push(`${describe(el)}: ${diffProps(el.__cs, cs)}   [rules only cached: ${[...had].filter(x => !want.has(x)).join(' ; ') || '-'}; only fresh: ${[...want].filter(x => !had.has(x)).join(' ; ') || '-'}]`); }
+		for (const pe of ['before', 'after']) { if (!same(el['__' + pe], pseudo[pe]) && out.length < 200) { out.push(`${describe(el)}::${pe}: ${diffProps(el['__' + pe], pseudo[pe])}`); } }
+		for (const c of el.__children) { if (c.nodeType === 1) { walk(c, cs); } }
+	};
+	walk(root, null);
 }
 export function parseContent(v) { if (!v) { return ''; } let out = ''; const re = /"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'/g; let m; while ((m = re.exec(v))) { out += (m[1] ?? m[2]).replace(/\\([0-9a-f]{1,6})\s?|\\(.)/gi, (_, h, c) => h ? String.fromCodePoint(parseInt(h, 16)) : c); } return out; }
 
@@ -33,7 +78,7 @@ const REPLACED = new Set(['img', 'canvas', 'video', 'svg', 'iframe', 'input', 's
 export class Layout {
 	constructor(doc, env) { this.doc = doc; this.env = env; this.boxOf = new Map(); this.oofList = []; }
 	run() {
-		const ts = performance.now(); resolveStyles(this.doc, this.env); this.styleMs = performance.now() - ts; const tl = performance.now();
+		const ts = performance.now(); resolveStyles(this.doc, this.env, this.dirtyLog); this.styleMs = performance.now() - ts; this.styleInfo = this.doc.__styleInfo; const tl = performance.now();
 		const root = this.doc.documentElement; this.rootBox = null; this.boxOf.clear(); this.fragsByText = new Map();
 		if (!root) { return; }
 		const rootBox = this.build(root, null); this.rootBox = rootBox; if (!rootBox) { return; }
