@@ -47,7 +47,9 @@ for (const [mod, e] of mods) {
 	const implFile = findImpl(mod);
 	const hasImpl = !!implFile;
 	const lines = [`// generated for module '${mod}'`];
-	if (hasImpl) { lines.push(`import * as impl from '${implFile}';`, `export * from '${implFile}';`); }   // also expose names that were only reached through dynamic import()
+	// SHIM_RELATIVE=1: import the implementation by a path relative to the shim (a relocatable package: same directory layout on the target machine)
+	const implSpec = process.env.SHIM_RELATIVE && implFile ? (p => p.startsWith('.') ? p : './' + p)(path.relative(path.join(outDir, 'shims'), implFile).split(path.sep).join('/')) : implFile;
+	if (hasImpl) { lines.push(`import * as impl from '${implSpec}';`, `export * from '${implSpec}';`); }   // also expose names that were only reached through dynamic import()
 	for (const n of [...e.named].sort()) {
 		if (!/^[\w$]+$/.test(n)) { continue; }
 		lines.push(hasImpl ? `export const ${n} = impl.${n} ?? globalThis.__stub('${mod}', '${n}');` : `export const ${n} = globalThis.__stub('${mod}', '${n}');`);

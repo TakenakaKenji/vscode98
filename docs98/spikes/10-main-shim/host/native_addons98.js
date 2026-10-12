@@ -97,12 +97,22 @@ function makeWatcher() {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------ registry
-function lenientStub(name) { const f = function () { }; return new Proxy(f, { get(t, p) { if (p === 'then' || typeof p === 'symbol') { return undefined; } return lenientStub(name + '.' + String(p)); }, apply() { return lenientStub(name + '()'); }, construct() { return lenientStub('new ' + name); } }); }
+function lenientStub(name) { const f = function () { }; return new Proxy(f, { get(t, p) { if (p === Symbol.toPrimitive) { return () => ''; } if (p === 'then' || typeof p === 'symbol') { return undefined; } return lenientStub(name + '.' + String(p)); }, apply() { return lenientStub(name + '()'); }, construct() { return lenientStub('new ' + name); } }); }
 const registry = { 'vscode-sqlite3.node': makeSqlite, 'watcher.node': makeWatcher };
 const loaded = new Map();
 export function installAddons() {
+	// The `bindings` package finds the .node file of its caller by parsing a V8 call stack, which QuickJS does not have: answer it directly with the stand-in registry.
+	const Module = globalThis.__builtins?.module;
+	if (Module && Module._load && !Module._load.__addons) {
+		const orig = Module._load;
+		Module._load = function (request, parent, isMain) {
+			if (request === 'bindings') { return (opts) => globalThis.__loadNativeAddon(String(typeof opts === 'string' ? opts : opts && (opts.bindings || opts.module_root) || 'unknown').replace(/\.node$/, '') + '.node'); }
+			return orig.apply(this, arguments);
+		};
+		Module._load.__addons = true;
+	}
 	globalThis.__loadNativeAddon = (filename) => {
-		const base = filename.split('/').pop(); if (loaded.has(base)) { return loaded.get(base); }
+		const base = filename.split(/[\\/]/).pop(); if (loaded.has(base)) { return loaded.get(base); }
 		const mk = registry[base]; const exp = mk ? mk() : lenientStub(base); loaded.set(base, exp); return exp;
 	};
 }

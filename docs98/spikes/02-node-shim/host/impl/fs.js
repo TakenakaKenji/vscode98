@@ -8,6 +8,8 @@ const S_IFMT = 0o170000, S_IFDIR = 0o040000, S_IFREG = 0o100000, S_IFLNK = 0o120
 const lstatRaw = os.lstat ?? os.stat;   // QuickJS has no lstat on Windows (no symlink support there: stat is what lstat would return)
 const E = std.Error;   // errno constants live on std.Error in QuickJS (E.ENOENT etc. do not exist)
 const CODES = { [E.ENOENT]: 'ENOENT', [E.EEXIST]: 'EEXIST', [E.ENOTDIR]: 'ENOTDIR', [E.EACCES]: 'EACCES', [E.EISDIR]: 'EISDIR', [E.EINVAL]: 'EINVAL', [E.EBADF]: 'EBADF', [E.ENOTEMPTY]: 'ENOTEMPTY', [E.EPERM]: 'EPERM' };
+// QuickJS on Windows returns raw Win32 error codes from some calls (readdir: ERROR_PATH_NOT_FOUND = 3, ...): translate them
+if (os.platform === 'win32') { Object.assign(CODES, { 3: 'ENOENT', 5: 'EACCES', 15: 'ENOENT', 32: 'EBUSY', 80: 'EEXIST', 123: 'ENOENT', 145: 'ENOTEMPTY', 183: 'EEXIST', 267: 'ENOTDIR' }); }
 function fail(errno, syscall, path) { if (globalThis.__fsDebug) { std.err.puts(`FSFAIL ${CODES[-errno] || CODES[errno] || errno} ${syscall} ${path}\n`); } const e = new Error(`${CODES[-errno] || CODES[errno] || 'E' + errno}: ${syscall} '${path}'`); e.errno = -Math.abs(errno); e.code = CODES[Math.abs(errno)] || 'EUNKNOWN'; e.syscall = syscall; e.path = path; return e; }
 
 export class Stats {
@@ -52,7 +54,7 @@ function mkdirRec(dir) {                 // creates dir and its missing parents;
 export function mkdirSync(p, opts) { const rec = opts && opts.recursive; if (rec) { return mkdirRec(nodePath.resolve(String(p))); } const e = os.mkdir(String(p), 0o777); if (e) { throw fail(e, 'mkdir', p); } }
 export function realpathSync(p) { const [r, e] = os.realpath(String(p)); if (e) { throw fail(e, 'realpath', p); } return r; }
 export function unlinkSync(p) { const e = os.remove(String(p)); if (e) { throw fail(e, 'unlink', p); } }
-export function renameSync(a, b) { const e = os.rename(String(a), String(b)); if (e) { throw fail(e, 'rename', a); } }
+export function renameSync(a, b) { const e = globalThis.__nativeRename ? globalThis.__nativeRename(String(a), String(b)) : os.rename(String(a), String(b)); if (e) { throw fail(e, 'rename', a); } }
 export function rmSync(p, o = {}) { const [st, e] = lstatRaw(String(p)); if (e) { if (o.force) { return; } throw fail(e, 'rm', p); } if ((st.mode & S_IFMT) === S_IFDIR) { for (const n of readdirSync(p)) { rmSync(p + '/' + n, o); } } os.remove(String(p)); }
 export function chmodSync() { }
 export function mkdtempSync(prefix) { const p = prefix + Math.random().toString(36).slice(2, 8); mkdirSync(p); return p; }

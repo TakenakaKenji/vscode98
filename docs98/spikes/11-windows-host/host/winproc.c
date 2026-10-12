@@ -402,6 +402,12 @@ static JSValue js_kill(JSContext *ctx, JSValueConst this_val, int argc, JSValueC
 static JSValue js_exe_path(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
 	wchar_t buf[MAX_PATH * 2]; DWORD n = GetModuleFileNameW(NULL, buf, MAX_PATH * 2); buf[n] = 0; char *s = narrow(buf); JSValue r = JS_NewString(ctx, s); free(s); return r;
 }
+static JSValue js_rename(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {            /* rename(from, to): replaces an existing destination (what Node's fs.rename does on Windows) */
+	const char *a = JS_ToCString(ctx, argv[0]), *b = JS_ToCString(ctx, argv[1]); if (!a || !b) { if (a) { JS_FreeCString(ctx, a); } if (b) { JS_FreeCString(ctx, b); } return JS_EXCEPTION; }
+	wchar_t *wa = wide(a), *wb = wide(b); JS_FreeCString(ctx, a); JS_FreeCString(ctx, b);
+	BOOL ok = MoveFileExW(wa, wb, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED); DWORD e = ok ? 0 : GetLastError(); free(wa); free(wb);
+	return JS_NewInt32(ctx, ok ? 0 : -errno_from_win(e));
+}
 static JSValue js_getpid(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { return JS_NewInt32(ctx, (int)GetCurrentProcessId()); }
 
 /* spawnSync's engine: pollSync({ pid, inFd, input, outFd, errFd, timeoutMs, maxBuffer }) -> { status, signal, out, err, timedOut, overflow }. Closes the three fds. */
@@ -571,7 +577,7 @@ static JSValue js_utf8_encode(JSContext *ctx, JSValueConst this_val, int argc, J
 static const JSCFunctionListEntry funcs[] = {
 	JS_CFUNC_DEF("pipe", 1, js_pipe), JS_CFUNC_DEF("socketpair", 0, js_socketpair), JS_CFUNC_DEF("read", 4, js_read), JS_CFUNC_DEF("write", 4, js_write), JS_CFUNC_DEF("close", 1, js_close),
 	JS_CFUNC_DEF("setReadHandler", 2, js_set_read_handler), JS_CFUNC_DEF("setWriteHandler", 2, js_set_write_handler), JS_CFUNC_DEF("spawn", 1, js_spawn), JS_CFUNC_DEF("watchExit", 2, js_watch_exit),
-	JS_CFUNC_DEF("kill", 2, js_kill), JS_CFUNC_DEF("exePath", 0, js_exe_path), JS_CFUNC_DEF("getpid", 0, js_getpid), JS_CFUNC_DEF("pollSync", 1, js_poll_sync), JS_CFUNC_DEF("errname", 1, js_errname),
+	JS_CFUNC_DEF("kill", 2, js_kill), JS_CFUNC_DEF("exePath", 0, js_exe_path), JS_CFUNC_DEF("rename", 2, js_rename), JS_CFUNC_DEF("getpid", 0, js_getpid), JS_CFUNC_DEF("pollSync", 1, js_poll_sync), JS_CFUNC_DEF("errname", 1, js_errname),
 	JS_CFUNC_DEF("setNonblock", 2, js_noop_ok), JS_CFUNC_DEF("setCloexec", 2, js_noop_ok), JS_CFUNC_DEF("ignoreSigpipe", 0, js_noop0), JS_CFUNC_DEF("shutdown", 2, js_shutdown),
 	JS_CFUNC_DEF("listen", 2, js_nosys), JS_CFUNC_DEF("listenUnix", 1, js_listen_unix), JS_CFUNC_DEF("accept", 1, js_accept), JS_CFUNC_DEF("connect", 2, js_nosys), JS_CFUNC_DEF("connectUnix", 1, js_connect_unix),
 	JS_CFUNC_DEF("soError", 1, js_noop_ok), JS_CFUNC_DEF("sockPort", 1, js_noop_ok),
@@ -584,6 +590,7 @@ void spike_init(JSContext *ctx) {
 	JSValue g = JS_GetGlobalObject(ctx);
 	JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 1));
 	JS_SetPropertyStr(ctx, g, "__utf8Encode", JS_NewCFunction(ctx, js_utf8_encode, "__utf8Encode", 1));
+	JS_SetPropertyStr(ctx, g, "__nativeRename", JS_NewCFunction(ctx, js_rename, "__nativeRename", 2));   /* used by the fs shim */
 	JS_FreeValue(ctx, g);
 	JSModuleDef *m = JS_NewCModule(ctx, "spike:proc", proc_init); if (m) { JS_AddModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); }
 }

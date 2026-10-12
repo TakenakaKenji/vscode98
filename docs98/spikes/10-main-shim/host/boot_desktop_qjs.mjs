@@ -8,7 +8,7 @@ import cp from 'node:child_process';
 import nodePath from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import '../../06-rendering/host/dom/intl_shim.js';
-import * as opentype from '/home/user/vscode98/node_modules/opentype.js/dist/opentype.mjs';
+import * as opentype from '../../../../node_modules/opentype.js/dist/opentype.mjs';
 import { installEnvironment } from '../../06-rendering/host/dom/env.js';
 import { parseFragment, missing } from '../../06-rendering/host/dom/dom.js';
 import { unsupported } from '../../06-rendering/host/dom/layout.js';
@@ -47,8 +47,8 @@ child.on('exit', (c) => { mainLog.push(`[main exited ${c}]`); });
 // ---- ipcRenderer transport
 const listeners = new Map(), pending = new Map(); let nextInvoke = 1, wcId = 0;
 const ipc = {
-	send: (channel, ...args) => child.send(encode({ t: 'send', wc: wcId, channel, args })),
-	invoke: (channel, ...args) => new Promise((res, rej) => { const id = nextInvoke++; pending.set(id, { res, rej }); child.send(encode({ t: 'invoke', id, wc: wcId, channel, args })); }),
+	send: (channel, ...args) => (opt('debug-ipc', '0') === '1' && log(`[ipc] send ${channel}`), child.send(encode({ t: 'send', wc: wcId, channel, args }))),
+	invoke: (channel, ...args) => new Promise((res, rej) => { const id = nextInvoke++; if (opt('debug-ipc', '0') === '1') { log(`[ipc] invoke ${channel}`); } pending.set(id, { res, rej }); child.send(encode({ t: 'invoke', id, wc: wcId, channel, args })); }),
 	on: (ch, fn) => { let l = listeners.get(ch); if (!l) { l = []; listeners.set(ch, l); } l.push(fn); },
 	once: (ch, fn) => { const w = (...a) => { ipc.off(ch, w); fn(...a); }; ipc.on(ch, w); },
 	off: (ch, fn) => { const l = listeners.get(ch); if (l) { const i = l.indexOf(fn); if (i >= 0) { l.splice(i, 1); } } },
@@ -79,7 +79,7 @@ const mount = (el, markup) => { const f = parseFragment(doc, markup, el); for (c
 mount(doc.head, headM[1].replace(/<script[\s\S]*?<\/script>/g, '')); mount(doc.body, bodyM[2].replace(/<script[\s\S]*?<\/script>/g, ''));
 for (const el of doc.head.__children) { if (el.localName === 'link' && el.getAttribute('rel') === 'stylesheet') { const abs = resolveUrl(el.getAttribute('href'), load.url); el.__linkText = absolutizeCssUrls(std.loadFile(fileOf(abs)), abs); } }
 const scripts = [...html.matchAll(/<script[^>]*src="([^"]+)"[^>]*type="module"[^>]*>|<script[^>]*type="module"[^>]*src="([^"]+)"[^>]*>/g)].map(m => resolveUrl(m[1] || m[2], load.url));
-const procLike = { platform: 'linux', arch: 'x64', env: { ...nodeProcess.env }, versions: { electron: '39.0.0', chrome: '140.0.0.0', node: '22.0.0' }, execPath: nodeProcess.execPath };
+const procLike = { platform: nodeProcess.platform, arch: 'x64', env: { ...nodeProcess.env }, versions: { electron: '39.0.0', chrome: '140.0.0.0', node: '22.0.0' }, execPath: nodeProcess.execPath };
 installPreload(env.window, ipc, { argv: createOpts?.options?.webPreferences?.additionalArguments || [], process: procLike });
 env.window.queryLocalFonts = async () => [];
 env.window.postMessage = (data, origin, transfer) => { const ev = Object.assign(new env.window.Event('message'), { data, origin: '', source: env.window, ports: transfer || [] }); setTimeout(() => env.window.dispatchEvent(ev), 0); };
@@ -89,7 +89,8 @@ globalThis.__rejection = (promise, reason, handled) => { if (handled) { return; 
 const consoleLog = []; for (const k of ['log', 'info', 'warn', 'error', 'debug', 'trace']) { console[k] = (...a) => { consoleLog.push([k, a.map(x => (x && x.stack) || String(x)).join(' ')]); }; }
 doc.__passStats = []; if (opt('verify', '0') === '1') { doc.__verifyStyles = true; }
 const tImport = performance.now();
-for (const s of scripts) { try { await import(s); } catch (e) { note('import ' + s, e); } }
+log('[harness] page scripts: ' + JSON.stringify(scripts));
+for (const s of scripts) { try { await import(s); log('[harness] imported ' + s); } catch (e) { log('[harness] import failed ' + s + ': ' + (e && e.stack || e)); note('import ' + s, e); } }
 const tLoaded = performance.now(); const rssAfterImport = rss();
 const ctx = { env, doc, note, rss, layoutTiming, opt, log, W, H, consoleLog };
 await runScenario(ctx, { seconds, stableRounds: Number(opt('stable', 25)) });

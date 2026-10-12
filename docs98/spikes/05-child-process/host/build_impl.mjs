@@ -5,7 +5,9 @@ import { createRequire } from 'node:module';
 const { build } = createRequire(import.meta.url)(process.env.ESBUILD_DIR || '../../../../build/node_modules/esbuild');
 import fs from 'node:fs';
 import path from 'node:path';
-const [outDir, shimsDir] = process.argv.slice(2);
+const [outDir, shimsDirArg] = process.argv.slice(2);
+// SHIM_RELATIVE=1: reference the shims by a path relative to the impl directory (a relocatable package)
+const shimsDir = process.env.SHIM_RELATIVE ? path.relative(path.resolve(outDir), path.resolve(shimsDirArg)).split(path.sep).join('/').replace(/^(?!\.)/, './') : shimsDirArg;
 fs.mkdirSync(outDir, { recursive: true });
 const root = path.resolve(import.meta.dirname, '../../../../node_modules');
 // `require('events'|'util'|'buffer')` inside the CommonJS packages resolves to tiny ESM adapters that re-export the spike's shims (esbuild turns an external

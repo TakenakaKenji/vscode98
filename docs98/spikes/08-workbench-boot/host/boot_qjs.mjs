@@ -3,7 +3,7 @@
 import * as std from 'qjs:std';
 import '../../02-node-shim/host/globals.js';
 import '../../06-rendering/host/dom/intl_shim.js';
-import * as opentype from '/home/user/vscode98/node_modules/opentype.js/dist/opentype.mjs';
+import * as opentype from '../../../../node_modules/opentype.js/dist/opentype.mjs';
 import { installEnvironment } from '../../06-rendering/host/dom/env.js';
 import { parseFragment, missing } from '../../06-rendering/host/dom/dom.js';
 import { unsupported } from '../../06-rendering/host/dom/layout.js';

@@ -2,7 +2,7 @@
 // (their .node files cannot be loaded; none of them is needed to boot: policies, registry, process trees, mutexes, elevation checks).
 import Module from 'node:module';
 const WINDOWS_STUBS = { '@vscode/policy-watcher': 'policy-watcher', 'native-is-elevated': 'native-is-elevated', 'windows-foreground-love': 'windows-foreground-love', '@vscode/windows-mutex': 'windows-mutex',
-	'@vscode/windows-registry': 'windows-registry', '@vscode/windows-process-tree': 'windows-process-tree' };
+	'@vscode/windows-registry': 'windows-registry', '@vscode/windows-process-tree': 'windows-process-tree', 'native-keymap': 'native-keymap' };
 export function installResolveHooks(hereUrl) {
 	const here = hereUrl.replace(/\/[^/]*$/, '/');
 	Module.registerHooks({
