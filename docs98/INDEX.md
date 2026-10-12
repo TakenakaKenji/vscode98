@@ -31,8 +31,9 @@ Start here. Every doc in `docs98/` is listed below with a one-line summary. Upda
 | [inventory/runtime-trace-scenarios.md](inventory/runtime-trace-scenarios.md) | **Measured** trace of 9 scripted feature scenarios: which extra APIs typing, search, terminal, settings, webviews, diff need (312 distinct members total) |
 | [inventory/runtime-trace-webview.md](inventory/runtime-trace-webview.md) | **Measured** webview deep-dive (markdown preview): iframe-in-iframe + service worker + custom scheme, CSS/DOM actually used, requirements for the host |
 | [inventory/runtime-trace-processes.md](inventory/runtime-trace-processes.md) | **Measured** Node + Electron API usage of the main process, 5 utility processes and the language-server children (119 Node functions, 102 Electron methods/events, IPC channels, native addons, env, spawned programs) |
-| `inventory/data/` | Raw JSON from traces |
-| `inventory/scripts/` | The scan scripts that produced the numbers (`scan_imports.py`, `scan_electron.py`, `scan_web_and_lang.sh`, `trace_renderer.mjs`, `trace_scenarios.mjs` + `run_scenarios.sh`, `trace_webview.mjs`, process hook `node_hook.cjs` (+ `node_hook_esm.mjs`, `analyze_proc_trace.py`), shared `trace_common.mjs`/`cdp_input.mjs`) |
+| [inventory/baseline-bundle.md](inventory/baseline-bundle.md) | **Measured** production-bundle baseline: bundle size/time, JS level of the bundle (still ES2024 ES modules), startup time (2.4 s bundled vs 12.8 s dev) and memory (~0.84 GB PSS / 1.5 GB RSS idle, empty workspace) |
+| `inventory/data/` | Raw JSON from traces and baselines (`data/baseline/`) |
+| `inventory/scripts/` | The scan scripts that produced the numbers (`scan_imports.py`, `scan_electron.py`, `scan_web_and_lang.sh`, `trace_renderer.mjs`, `trace_scenarios.mjs` + `run_scenarios.sh`, `trace_webview.mjs`, process hook `node_hook.cjs` (+ `node_hook_esm.mjs`, `analyze_proc_trace.py`), shared `trace_common.mjs`/`cdp_input.mjs`; baseline: `stage_bundled_app.ts`, `run_baseline.sh`, `measure_baseline.mjs`) |
 
 ## Key facts to remember (quick reference)
 
@@ -43,6 +44,7 @@ Start here. Every doc in `docs98/` is listed below with a one-line summary. Upda
 - **Runtime trace (measured):** startup uses only ~180 distinct DOM/Web members and 227 distinct standard CSS properties; layout is block/inline/flex/absolute only (no grid/fixed/sticky live); editor input is a `<textarea>`; renderer heap ~123 MB.
 - **Scenario trace (measured):** startup + 9 features = 312 distinct instrumented members; editor typing needs full legacy keyboard events; terminal uses `OffscreenCanvas` + Canvas 2D (no WebGL); webviews are an iframe-in-iframe over a `vscode-webview:` scheme + service worker (content measured in `runtime-trace-webview.md`: table/list/inline layout, 144 CSS properties, KaTeX web fonts).
 - **Process-side trace (measured):** the whole app calls only 119 distinct Node functions (~13 modules) and 102 Electron methods/events (incl. `webContents`/`session`); renderer↔main IPC is one multiplexed `vscode:message` channel + ~3 MessagePort handoffs; programs launched: `rg`, `git`, `tsserver`, shells. Language-server children traced: they add the `fork()` IPC channel (`process.send`) and very heavy synchronous `fs.statSync` use but few new functions.
+- **Bundle baseline (measured):** the desktop bundle is 58 MB of minified ES2024 ES modules in 30 files (workbench 20.6 MB); renderer reaches a restored workbench ~2.0 s after start, of which ~1.3 s is loading the workbench bundle; idle with an empty workspace is ~1.5 GB RSS / ~0.84 GB PSS across 10 processes.
 - Build targets are ES2024 (no downleveling today).
 - Open proposals: D-003 (custom host), D-004/5/6 (engine, render, IPC), D-008 (scope out AI/cloud features) in [05-decisions.md](05-decisions.md).
 

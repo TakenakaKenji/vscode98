@@ -1,6 +1,6 @@
 # Checkpoint — Resume Here
 
-**Last updated:** 2026-10-12, after finishing the process-side trace (language-server children + `webContents`/`session`). Work is on branch `claude/adoring-heisenberg-ipwnb8`; check `git status` / `git log origin/main..` for anything unpushed (the cloud session could not push for a while: GitHub access 403).
+**Last updated:** 2026-10-12, after the production bundle build and startup/memory baseline (on top of the finished process-side trace). Work is on branch `claude/adoring-heisenberg-ipwnb8`; check `git status` / `git log origin/main..` for anything unpushed (the cloud session could not push for a while: GitHub access 403).
 Update this file at the end of each working session (what's done, what's next, what to watch for).
 
 ## Where we are
@@ -14,6 +14,7 @@ Goal recap ([01-goal-and-scope.md](01-goal-and-scope.md)): full VS Code feature 
 - Static inventory of Electron, Node, DOM/CSS/Web, native modules, JS level ([inventory/README.md](inventory/README.md)).
 - Built stock VS Code on the Fedora dev machine and ran it headless ([inventory/baseline-build.md](inventory/baseline-build.md)).
 - **Measured renderer traces:** startup ([runtime-trace.md](inventory/runtime-trace.md)), 9 feature scenarios ([runtime-trace-scenarios.md](inventory/runtime-trace-scenarios.md)), markdown webview ([runtime-trace-webview.md](inventory/runtime-trace-webview.md)).
+- **Measured production bundle baseline:** bundle size/JS level, startup time and memory, bundled vs dev ([inventory/baseline-bundle.md](inventory/baseline-bundle.md)).
 - **Measured process-side trace:** Node + Electron API usage of the main process, 5 utility processes and 5 language-server/worker Node children during the same scenarios ([runtime-trace-processes.md](inventory/runtime-trace-processes.md)). Re-run 2026-10-12 after fixing two hook defects (see that doc); the first run's "75 Electron entries" was an undercount, the correct figure is 102.
 
 ### Key measured facts (details in the linked docs)
@@ -23,11 +24,12 @@ Goal recap ([01-goal-and-scope.md](01-goal-and-scope.md)): full VS Code feature 
 - WebAssembly is required (syntax highlighting).
 - Process side: the app calls only 119 distinct Node functions (~13 modules) and 102 Electron methods/events (incl. `webContents`/`session`/`utilityProcess`); renderer↔main IPC is one multiplexed `vscode:message` channel plus ~3 MessagePort handoffs; the renderer's files are served through the `vscode-file://` protocol (`net.fetch`); programs launched: `rg`, `git`, `tsserver`, shells.
 - Webviews = iframe-in-iframe on a `vscode-webview:` origin + service worker; need a real HTML engine (incl. table layout, `@layer`, web fonts).
-- Emitted JS is ES2024 ES modules, not downleveled.
+- Emitted JS is ES2024 ES modules, not downleveled. **The production bundle is the same:** 58 MB of minified ES2024 ES modules in 30 files (target `es2024`; workbench 20.6 MB); still static/dynamic `import` and `import.meta`.
+- **Baseline (Linux, 4-core VM, headless, bundled, empty workspace):** time to ready 2.4 s (dev mode 12.8 s); ~1.3 s of the ~2.0 s renderer time to "restored" is loading the workbench bundle; idle 10 processes, 1.5 GB RSS / 0.84 GB PSS, renderer JS heap ~78 MB. The workbench alone already exceeds the RAM budget of the oldest targets ([03-targets-and-limits.md](03-targets-and-limits.md)).
 
 ### Not done yet (open)
 - Inventory pass 2: built-in `extensions/`, `build/`, finer CSS inventory.
-- Production bundle (non-dev) build and baseline memory/startup numbers.
+- Full packaging (`vscode-linux-x64-min`, with marketplace built-in extensions, V8 code cache) and a baseline taken on a real Windows machine; the staged-bundle baseline is an approximation ([baseline-bundle.md](inventory/baseline-bundle.md)).
 - Other webview types (notebooks, custom editors, simple browser); API counters inside webview frames.
 - More scenarios: drag-and-drop, clipboard, IME, context menus, git, extensions view, debugging, notebooks.
 - Windows build/test environment (VM or machine): **not set up**. Everything so far ran on Linux.
@@ -41,7 +43,7 @@ Goal recap ([01-goal-and-scope.md](01-goal-and-scope.md)): full VS Code feature 
 
 ## Suggested next steps (in order)
 1. ~~Finish the process-side trace~~ done 2026-10-12.
-2. Production bundle build + memory/startup baseline.
+2. ~~Production bundle build + memory/startup baseline~~ done 2026-10-12 ([baseline-bundle.md](inventory/baseline-bundle.md)). Not done: full packaging (`vscode-linux-x64-min`, marketplace built-in extensions), baseline on a real Windows machine.
 3. Decide the Phase 1 spike order (suggested: JS engine + WASM on the emitted bundle first, since it gates everything).
 4. Set up a Windows 7 VM/machine for real testing before writing host code.
 
@@ -82,7 +84,7 @@ cp node_modules/@vscode/codicons/dist/codicon.ttf src/vs/base/browser/ui/codicon
 - The container is ephemeral: everything above must be redone in a new session. Consider a SessionStart hook / setup script if cloud sessions will be used regularly.
 
 ## Gotchas to remember
-- Two hand-written launches of the hooked app (headless, no driver) crashed with `Trace/breakpoint trap` in the cloud container while `run_scenarios.sh` runs worked; the cause was not isolated (a missing CDP client is one suspect). Use `run_scenarios.sh` (with a short driver such as `trace_renderer.mjs` for quick checks) rather than launching `code-oss` by hand.
+- `Trace/breakpoint trap` / `Trace/breakpoint` lines printed by the shell when a run ends are just the app group being killed with SIGTERM at the end (also noted in baseline-build.md); they are **not** a launch crash. An earlier note here claiming hand-launches crash was wrong: that run only looked broken because of the `electron.screen` hook bug (empty `shapes`).
 - Do not trust a trace result that is suspiciously empty for a whole API group: the first process trace silently lost every Electron module after `screen`. `VSCODE98_TRACE_SHAPES=1` records the `webContents` layout and `shapes.deferredModules` / `shapes.patchErr` in the hook's per-process dump.
 - `git-lfs` is not installed; the LFS filter is disabled in this clone's local `.git/config` (D-002). Don't re-enable it without installing git-lfs.
 - Dev-mode runs create `~/.vscode-oss-shared/` in the home directory (outside the temp profile). Safe to delete.
