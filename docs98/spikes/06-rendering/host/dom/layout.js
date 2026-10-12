@@ -22,9 +22,11 @@ export function resolveStyles(doc, env) {
 export function parseContent(v) { if (!v) { return ''; } let out = ''; const re = /"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'/g; let m; while ((m = re.exec(v))) { out += (m[1] ?? m[2]).replace(/\\([0-9a-f]{1,6})\s?|\\(.)/gi, (_, h, c) => h ? String.fromCodePoint(parseInt(h, 16)) : c); } return out; }
 
 // ---- boxes ------------------------------------------------------------------------------------------------------------------------------------
-class Box {
+export class Box {
 	constructor(el, cs, kind) { this.el = el; this.cs = cs; this.v = cs ? cs.values : null; this.kind = kind; this.children = []; this.parent = null; this.ox = 0; this.oy = 0; this.w = 0; this.h = 0; this.ax = 0; this.ay = 0; this.lines = null; this.pos = this.v ? this.v.position : 'static'; this.mt = this.mr = this.mb = this.ml = 0; this.pt = this.pr = this.pb = this.pl = 0; this.bt = this.br = this.bb = this.bl = 0; this.text = null; this.oof = false; this.relDx = 0; this.relDy = 0; this.scrollW = 0; this.scrollH = 0; }
 }
+/** style of the anonymous block box wrapped around text that is a direct child of a flex container */
+export function anonStyle(v) { return Object.assign({}, v, { display: 'block', 'margin-top': 0, 'margin-bottom': 0, 'margin-left': 0, 'margin-right': 0, 'padding-top': 0, 'padding-bottom': 0, 'padding-left': 0, 'padding-right': 0, 'border-top-width': 0, 'border-bottom-width': 0, 'border-left-width': 0, 'border-right-width': 0, width: 'auto', height: 'auto', 'min-width': 0, 'min-height': 0, 'max-width': 'none', 'max-height': 'none', position: 'static', 'flex-grow': 0, 'flex-shrink': 1, 'flex-basis': 'auto', order: 0, 'align-self': 'auto' }); }
 const isBlockLevel = (d) => d === 'block' || d === 'list-item' || d === 'flex' || d === 'table' || d === 'flow-root' || d === 'grid' || d === 'table-row' || d === 'table-row-group' || d === 'table-header-group' || d === 'table-cell';
 const REPLACED = new Set(['img', 'canvas', 'video', 'svg', 'iframe', 'input', 'select', 'textarea', 'button']);
 
@@ -35,6 +37,7 @@ export class Layout {
 		const root = this.doc.documentElement; this.rootBox = null; this.boxOf.clear(); this.fragsByText = new Map();
 		if (!root) { return; }
 		const rootBox = this.build(root, null); this.rootBox = rootBox; if (!rootBox) { return; }
+		if (this.env.layoutEngine) { this.env.layoutEngine.run(this, rootBox, this.env.vw, this.env.vh); this.layoutMs = performance.now() - tl; return; }   // e.g. the native engine of spike 7
 		const vw = this.env.vw, vh = this.env.vh;
 		this.oofList = []; this.collectOof(rootBox);
 		this.layoutBlock(rootBox, vw, vh, { forceW: vw, forceH: null });
@@ -210,7 +213,7 @@ export class Layout {
 		box.contentExtentH = y; return y;
 	}
 	collapse(a, b) { if (a >= 0 && b >= 0) { return Math.max(a, b); } if (a < 0 && b < 0) { return Math.min(a, b); } return a + b; }
-	shiftFrags(out, dy) { for (const f of out.frags) { f.y += dy; } for (const a of out.atomics) { a.box.oy += dy; } for (const o of out.oofs) { o.box.oy += dy; if (o.box.static) { o.box.static.y += dy; } } for (const r of out.inlineRects) { for (const q of r.rects) { q.y += dy; } } }
+	shiftFrags(out, dy) { for (const f of out.frags) { f.y += dy; if (f.baseline !== undefined) { f.baseline += dy; } } for (const a of out.atomics) { a.box.oy += dy; } for (const o of out.oofs) { o.box.oy += dy; if (o.box.static) { o.box.static.y += dy; } } for (const r of out.inlineRects) { for (const q of r.rects) { q.y += dy; } } }
 
 	// ---- inline layout --------------------------------------------------------------------------------------------------------------------
 	layoutInline(container, run, cw, y0, chDefinite = null) {
@@ -307,7 +310,7 @@ export class Layout {
 	layoutFlex(box, cw, ch) {
 		const v = box.v; const dir = v['flex-direction']; const row = dir === 'row' || dir === 'row-reverse'; const rev = dir.endsWith('reverse'); const wrap = v['flex-wrap'] !== 'nowrap';
 		const colGap = this.gapOf(box, 'column-gap', cw), rowGap = this.gapOf(box, 'row-gap', ch ?? 0); const mainGap = row ? colGap : rowGap, crossGap = row ? rowGap : colGap;
-		const items = []; for (const c of box.children) { if (c.oof) { c.static = { x: 0, y: 0, parentBox: box }; c.ox = box.bl + box.pl; c.oy = box.bt + box.pt; continue; } if (c.kind === 'text') { if (!c.text.trim()) { continue; } const anon = new Box(null, box.cs, 'block'); anon.v = box.v; anon.display = 'block'; anon.anon = true; anon.children = [c]; c.parent = anon; anon.parent = box; anon.v = Object.assign({}, box.v, { display: 'block', 'margin-top': 0, 'margin-bottom': 0, 'margin-left': 0, 'margin-right': 0, 'padding-top': 0, 'padding-bottom': 0, 'padding-left': 0, 'padding-right': 0, 'border-top-width': 0, 'border-bottom-width': 0, 'border-left-width': 0, 'border-right-width': 0, width: 'auto', height: 'auto', 'min-width': 0, 'min-height': 0, 'max-width': 'none', 'max-height': 'none', position: 'static', 'flex-grow': 0, 'flex-shrink': 1, 'flex-basis': 'auto', order: 0, 'align-self': 'auto' }); items.push(anon); continue; } items.push(c); }
+		const items = []; for (const c of box.children) { if (c.oof) { c.static = { x: 0, y: 0, parentBox: box }; c.ox = box.bl + box.pl; c.oy = box.bt + box.pt; continue; } if (c.kind === 'text') { if (!c.text.trim()) { continue; } const anon = new Box(null, box.cs, 'block'); anon.v = box.v; anon.display = 'block'; anon.anon = true; anon.children = [c]; c.parent = anon; anon.parent = box; anon.v = anonStyle(box.v); items.push(anon); continue; } items.push(c); }
 		items.sort((a, b) => (a.v.order || 0) - (b.v.order || 0));
 		const mainAvail = row ? cw : ch; const crossAvail = row ? ch : cw;
 		for (const it of items) {

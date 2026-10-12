@@ -19,13 +19,14 @@ globalThis.__readFileBytes = (p) => { const f = std.open(p, 'rb'); f.seek(0, std
 const log = (m) => { std.out.puts(m + '\n'); std.out.flush(); };
 async function main() {
 	const t0 = performance.now(); const env = installEnvironment({ width: 800, height: 520, opentype }); const doc = env.document; let error = null;
+	let layoutTiming = null; if (opt('layout', 'js') === 'native') { const m = await import('../../07-native-render/host/native_layout.js'); env.layoutEngine = m.engine; layoutTiming = m.timing; }
 	const indirectEval = (0, eval); const container0 = () => doc.getElementById('container');
 	try { loadPage(doc, std.loadFile(pageFile), monacoDir, { readText: (p) => std.loadFile(p), evalScript: (t, n) => indirectEval(t), join: (a, b) => a + '/' + b }); }
 	catch (e) { error = e; }
 	let stable = 0, last = -1; for (let i = 0; i < 400 && !error && stable < 8; i++) { await new Promise(r => setTimeout(r, 15)); try { env.flushFrames(); } catch (e) { error = e; } const n = container0().getElementsByTagName('*').length; if (n === last && !env.pendingFrames()) { stable++; } else { stable = 0; } last = n; if (std.getenv('TICKS')) { log(`tick ${i} elements ${n} t=${Math.round(performance.now() - t0)}ms`); } }
 	if (error) { log('LOAD FAILED: ' + (error.message || error) + '\n' + (error.stack || '')); }
 	const ms = Math.round(performance.now() - t0); const container = doc.getElementById('container');
-	log(`loaded in ${ms} ms; layouts ${doc.__layoutCount} (${Math.round(doc.__layoutMs)} ms); container descendants: ${container ? container.getElementsByTagName('*').length : 'n/a'}`);
+	log(`loaded in ${ms} ms; layouts ${doc.__layoutCount} (${Math.round(doc.__layoutMs)} ms${layoutTiming ? `; native engine runs ${JSON.stringify(layoutTiming.perRun)}: pack ${layoutTiming.pack.toFixed(0)} + C ${layoutTiming.native.toFixed(0)} + apply ${layoutTiming.apply.toFixed(0)} ms` : ''}); container descendants: ${container ? container.getElementsByTagName('*').length : 'n/a'}`);
 	log('missing: ' + JSON.stringify([...missing].sort((a, b) => b[1] - a[1]).slice(0, 40))); log('unsupported: ' + JSON.stringify([...unsupported]));
 	let backend; if (opt('backend', 'js') === 'native') { const { NativeBackend } = await import('../../07-native-render/host/native_backend.js'); backend = new NativeBackend(800, 520); }
 	const ppm = opt('ppm', null); if (ppm) { const t = performance.now(); const r = paintDocument(doc, 800, 520, backend); writeBytes(ppm, toPPM(r.px, r.w, r.h)); log(`painted in ${Math.round(performance.now() - t)} ms${backend ? ` (record ${Math.round(performance.now() - t - backend.execMs)} ms + native execute ${backend.execMs.toFixed(1)} ms)` : ''} ${JSON.stringify(r.stats)} unpainted: ${JSON.stringify([...unpainted])}`); }

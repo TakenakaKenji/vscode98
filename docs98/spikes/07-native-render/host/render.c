@@ -30,7 +30,7 @@ static Slot *map_find(Map *m, uint64_t key, int insert) {
 /* ---------------------------------------------------------------- fonts and glyphs */
 typedef struct { double adv; int ncmd; double *cmd; } Outline;   /* adv in em; cmd: groups of 7 doubles {type,x,y,x1,y1,x2,y2} in font units */
 typedef struct { int left, top, w, h, empty; uint8_t *cov; } Glyph;
-typedef struct { double upm; Map outlines, kerns, glyphs; } Font;
+typedef struct { double upm, asc, desc, gap; Map outlines, kerns, glyphs; } Font;   /* asc/desc/gap: hhea metrics in em */
 static Font fonts[256]; static int nfonts;
 static uint8_t GAMMA[256]; static int gamma_init;
 
@@ -181,17 +181,22 @@ static int get_u8(JSContext *ctx, JSValueConst v, uint8_t **out, size_t *count) 
 	size_t sz; uint8_t *p = JS_GetArrayBuffer(ctx, &sz, buf); JS_FreeValue(ctx, buf); if (!p) { return -1; }
 	*out = p + off; *count = len; return 0;
 }
-/* registerFont(upm) -> id */
+/* registerFont(upm, ascenderEm, descenderEm, lineGapEm) -> id */
 static JSValue js_register_font(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-	double upm; JS_ToFloat64(ctx, &upm, argv[0]); if (nfonts >= 256) { return JS_ThrowRangeError(ctx, "too many fonts"); }
-	memset(&fonts[nfonts], 0, sizeof(Font)); fonts[nfonts].upm = upm; return JS_NewInt32(ctx, nfonts++);
+	double upm, asc = 0, desc = 0, gap = 0; JS_ToFloat64(ctx, &upm, argv[0]); if (argc > 1) { JS_ToFloat64(ctx, &asc, argv[1]); JS_ToFloat64(ctx, &desc, argv[2]); JS_ToFloat64(ctx, &gap, argv[3]); }
+	if (nfonts >= 256) { return JS_ThrowRangeError(ctx, "too many fonts"); }
+	memset(&fonts[nfonts], 0, sizeof(Font)); fonts[nfonts].upm = upm; fonts[nfonts].asc = asc; fonts[nfonts].desc = desc; fonts[nfonts].gap = gap; return JS_NewInt32(ctx, nfonts++);
 }
-/* provideGlyph(fontId, cp, advanceEm, Float64Array commands) */
-static JSValue js_provide_glyph(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
-	int id; uint32_t cp; double adv; JS_ToInt32(ctx, &id, argv[0]); JS_ToUint32(ctx, &cp, argv[1]); JS_ToFloat64(ctx, &adv, argv[2]);
-	double *cmd = NULL; size_t n = 0; if (get_f64(ctx, argv[3], &cmd, &n) < 0) { return JS_EXCEPTION; }
-	Outline *o = (Outline *)calloc(1, sizeof(Outline)); o->adv = adv; o->ncmd = (int)(n / 7); if (n) { o->cmd = (double *)malloc(n * sizeof(double)); memcpy(o->cmd, cmd, n * sizeof(double)); }
-	Slot *s = map_find(&fonts[id].outlines, cp, 1); s->v.p = o; return JS_UNDEFINED;
+static Outline *get_outline(int id, uint32_t cp) { Slot *s = map_find(&fonts[id].outlines, cp, 1); if (!s->v.p) { s->v.p = calloc(1, sizeof(Outline)); } return (Outline *)s->v.p; }
+/* provideAdvance(fontId, cp, advanceEm) */
+static JSValue js_provide_advance(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
+	int id; uint32_t cp; double adv; JS_ToInt32(ctx, &id, argv[0]); JS_ToUint32(ctx, &cp, argv[1]); JS_ToFloat64(ctx, &adv, argv[2]); get_outline(id, cp)->adv = adv; return JS_UNDEFINED;
+}
+/* provideOutline(fontId, cp, Float64Array commands): groups of 7 doubles {type,x,y,x1,y1,x2,y2} in font units */
+static JSValue js_provide_outline(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
+	int id; uint32_t cp; JS_ToInt32(ctx, &id, argv[0]); JS_ToUint32(ctx, &cp, argv[1]);
+	double *cmd = NULL; size_t n = 0; if (get_f64(ctx, argv[2], &cmd, &n) < 0) { return JS_EXCEPTION; }
+	Outline *o = get_outline(id, cp); free(o->cmd); o->cmd = NULL; o->ncmd = (int)(n / 7); if (n) { o->cmd = (double *)malloc(n * sizeof(double)); memcpy(o->cmd, cmd, n * sizeof(double)); } return JS_UNDEFINED;
 }
 /* provideKern(fontId, a, b, valueEm) */
 static JSValue js_provide_kern(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
@@ -227,8 +232,13 @@ static JSValue js_execute(JSContext *ctx, JSValueConst t, int argc, JSValueConst
 }
 
 static const JSCFunctionListEntry funcs[] = {
-	JS_CFUNC_DEF("registerFont", 1, js_register_font), JS_CFUNC_DEF("provideGlyph", 4, js_provide_glyph), JS_CFUNC_DEF("provideKern", 4, js_provide_kern),
+	JS_CFUNC_DEF("registerFont", 4, js_register_font), JS_CFUNC_DEF("provideAdvance", 3, js_provide_advance), JS_CFUNC_DEF("provideOutline", 3, js_provide_outline), JS_CFUNC_DEF("provideKern", 4, js_provide_kern),
 	JS_CFUNC_DEF("setGamma", 1, js_set_gamma), JS_CFUNC_DEF("execute", 5, js_execute),
 };
 static int render_init(JSContext *ctx, JSModuleDef *m) { return JS_SetModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); }
 void spike_init_render(JSContext *ctx) { JSModuleDef *m = JS_NewCModule(ctx, "spike:render", render_init); if (m) { JS_AddModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); } }
+
+/* accessors for layout.c */
+int render_font_metrics(int id, double *asc, double *desc, double *gap) { if (id < 0 || id >= nfonts) { return 0; } *asc = fonts[id].asc; *desc = fonts[id].desc; *gap = fonts[id].gap; return 1; }
+double render_advance_em(int id, uint32_t cp) { Slot *s = map_find(&fonts[id].outlines, cp, 0); return s ? ((Outline *)s->v.p)->adv : 0; }
+double render_kern_em(int id, uint32_t a, uint32_t b) { Slot *s = map_find(&fonts[id].kerns, ((uint64_t)a << 32) | b, 0); return s ? s->v.d : 0; }
