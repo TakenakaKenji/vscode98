@@ -30,15 +30,15 @@ function tryDirectory(p) {
 	return tryIndex(p);
 }
 function tryIndex(p) { for (const f of ['index.js', 'index.json', 'index.cjs']) { if (kind(join(p, f)) === 1) { return join(p, f); } } return undefined; }
-function resolveInPackage(dir, name, sub) {            // dir/node_modules entry `name` with subpath `sub` ('' or '/x/y')
+function resolveInPackage(dir, name, sub, conditions = NODE_CONDITIONS) {            // dir/node_modules entry `name` with subpath `sub` ('' or '/x/y')
 	const pkgDir = join(dir, name); if (kind(pkgDir) !== 2) { return undefined; }
 	const pj = join(pkgDir, 'package.json');
 	if (kind(pj) === 1) {
 		let ex; try { ex = JSON.parse(readText(pj)).exports; } catch { ex = undefined; }
 		if (ex !== undefined) {
 			let target;
-			if (typeof ex === 'string' || Array.isArray(ex) || (ex && !Object.keys(ex).some(k => k.startsWith('.')))) { target = sub === '' ? pickExport(ex, NODE_CONDITIONS) : undefined; }
-			else { const key = sub === '' ? '.' : '.' + sub; target = ex[key] !== undefined ? pickExport(ex[key], NODE_CONDITIONS) : undefined; if (target === undefined) { for (const k of Object.keys(ex)) { if (k.endsWith('/*') && key.startsWith(k.slice(0, -1))) { const t = pickExport(ex[k], NODE_CONDITIONS); if (t) { target = t.replace('*', key.slice(k.length - 1)); break; } } } } }
+			if (typeof ex === 'string' || Array.isArray(ex) || (ex && !Object.keys(ex).some(k => k.startsWith('.')))) { target = sub === '' ? pickExport(ex, conditions) : undefined; }
+			else { const key = sub === '' ? '.' : '.' + sub; target = ex[key] !== undefined ? pickExport(ex[key], conditions) : undefined; if (target === undefined) { for (const k of Object.keys(ex)) { if (k.endsWith('/*') && key.startsWith(k.slice(0, -1))) { const t = pickExport(ex[k], conditions); if (t) { target = t.replace('*', key.slice(k.length - 1)); break; } } } } }
 			if (target) { const f = resolve(pkgDir, target); return kind(f) === 1 ? f : tryFile(f); }
 			return undefined;
 		}
@@ -62,7 +62,7 @@ export class Module {
 		if (extname(filename) === '.json') { this.exports = JSON.parse(readText(filename)); }
 		else if (isEsmFile(filename)) {
 			const overlay = overlayDir ? `${overlayDir}/${filename.replace(/\//g, '__')}.cjs` : '';
-			if (overlay && kind(overlay) === 1) { this._compile(readText(overlay), filename); } else { throw esmError(filename); }
+			if (overlay && kind(overlay) === 1) { this._compile(readText(overlay), filename); } else if (typeof globalThis.__requireEsm === 'function') { this.exports = globalThis.__requireEsm(filename); } else { throw esmError(filename); }
 		} else { this._compile(readText(filename), filename); }
 		this.loaded = true;
 	}
@@ -75,7 +75,7 @@ export class Module {
 Module._cache = Object.create(null);
 Module._extensions = { '.js': null, '.json': null, '.node': null };
 Module.builtinModules = ['assert', 'async_hooks', 'buffer', 'child_process', 'cluster', 'console', 'constants', 'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks', 'process', 'punycode', 'querystring', 'readline', 'repl', 'stream', 'string_decoder', 'sys', 'timers', 'tls', 'tty', 'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib'];
-Module.isBuiltin = (name) => { const n = String(name).replace(/^node:/, ''); return String(name).startsWith('node:') || Module.builtinModules.includes(n.split('/')[0]) && (n.indexOf('/') < 0 || ['fs/promises', 'path/posix', 'path/win32', 'stream/promises', 'timers/promises', 'util/types', 'dns/promises', 'readline/promises', 'assert/strict'].includes(n)); };
+Module.isBuiltin = (name) => { const n = String(name).replace(/^node:/, ''); return String(name).startsWith('node:') || Module.builtinModules.includes(n.split('/')[0]) && (n.indexOf('/') < 0 || ['fs/promises', 'path/posix', 'path/win32', 'stream/promises', 'stream/web', 'stream/consumers', 'timers/promises', 'util/types', 'dns/promises', 'readline/promises', 'assert/strict'].includes(n)); };
 Module.wrap = (s) => '(function (exports, require, module, __filename, __dirname) { ' + s + '\n});';
 Module._nodeModulePaths = (from) => { const parts = resolve(from).split('/').filter(Boolean); const out = []; for (let i = parts.length; i >= 0; i--) { if (parts[i - 1] === 'node_modules') { continue; } out.push('/' + parts.slice(0, i).join('/') + (i ? '/' : '') + 'node_modules'); } return out; };
 Module._resolveLookupPaths = (request, parent) => (request.startsWith('./') || request.startsWith('../') ? [parent && parent.filename ? dirname(parent.filename) : '.'] : (parent && parent.paths ? parent.paths.slice() : Module._nodeModulePaths(os.getcwd()[0])));
@@ -92,6 +92,12 @@ Module._resolveFilename = function (request, parent, isMain, options) {
 	}
 	if (!found) { throw moduleNotFound(request, parent); }
 	return found;
+};
+// ES-module resolution of a bare specifier from a directory, with the `import` conditions (used by the host's native module-resolver hook, see 05-child-process/host).
+Module._resolveBareEsm = function (request, fromDir) {
+	const m = /^((?:@[^/]+\/)?[^/]+)(\/.*)?$/.exec(request); if (!m) { return undefined; }
+	for (const d of Module._nodeModulePaths(fromDir)) { const f = resolveInPackage(d.endsWith('node_modules') ? d : join(d, 'node_modules'), m[1], m[2] || '', ['node', 'import', 'module-sync', 'default']); if (f) { return f; } }
+	return undefined;
 };
 Module._load = function (request, parent, isMain) {
 	if (Module.isBuiltin(request)) { const n = String(request).replace(/^node:/, ''); return globalThis.__builtins[n] ?? globalThis.__stub('builtin', n); }

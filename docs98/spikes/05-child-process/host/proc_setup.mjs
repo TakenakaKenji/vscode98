@@ -6,6 +6,8 @@ import * as std from 'qjs:std';
 import * as os from 'qjs:os';
 
 export async function setupProcess(outDir, runnerPath, script, rest) {
+await import(`${outDir}/shims/module.js`);      // registers globalThis.__builtins.module
+(await import('./esm_loader.mjs')).installEsm(outDir);
 const { Writable } = await import(`${outDir}/shims/stream.js`);
 const { FdReadable, FdDuplex } = await import(`${outDir}.impl/fdstreams.js`);
 globalThis.__forkHostArgs = ['--stack-size', '0', runnerPath, outDir];
@@ -33,13 +35,15 @@ const chanFd = std.getenv('NODE_CHANNEL_FD');
 if (chanFd !== undefined) {
 	const fd = Number(chanFd); std.unsetenv('NODE_CHANNEL_FD'); std.unsetenv('NODE_CHANNEL_SERIALIZATION_MODE');
 	const chan = new FdDuplex(fd); P.channel = chan; P.connected = true; let acc = '';
-	chan.setEncoding('utf8');
-	chan.on('data', (d) => { acc += d; let i; while ((i = acc.indexOf('\n')) >= 0) { const line = acc.slice(0, i); acc = acc.slice(i + 1); if (!line) { continue; } let m; try { m = JSON.parse(line); } catch { continue; } if (m && typeof m.cmd === 'string' && m.cmd.startsWith('NODE_')) { continue; } P.emit('message', m); } });
 	chan.on('error', () => { });
 	chan.on('close', () => { if (P.connected) { P.connected = false; P.channel = undefined; P.emit('disconnect'); } });
 	P.send = (msg, handle, opts, cb) => { if (typeof handle === 'function') { cb = handle; } else if (typeof opts === 'function') { cb = opts; } if (!P.connected) { const e = Object.assign(new Error('Channel closed'), { code: 'ERR_IPC_CHANNEL_CLOSED' }); if (cb) { queueMicrotask(() => cb(e)); } else { queueMicrotask(() => P.emit('error', e)); } return false; } return chan.write(JSON.stringify(msg) + '\n', 'utf8', cb ? (e) => cb(e || null) : undefined); };
 	P.disconnect = () => { if (P.connected) { chan.destroy(); } };
-	if (chan.resume) { chan.resume(); }
+	// Like Node, the channel only keeps the process alive once someone listens for 'message' or 'disconnect'.
+	let refd = false; const ensureReading = () => { if (!refd) { refd = true; chan.setEncoding('utf8');
+		chan.on('data', (d) => { acc += d; let i; while ((i = acc.indexOf('\n')) >= 0) { const line = acc.slice(0, i); acc = acc.slice(i + 1); if (!line) { continue; } let m; try { m = JSON.parse(line); } catch { continue; } if (m && typeof m.cmd === 'string' && m.cmd.startsWith('NODE_')) { continue; } P.emit('message', m); } });
+	 chan.resume(); } };
+	for (const m of ['on', 'once', 'addListener', 'prependListener']) { const orig = P[m]; if (orig) { P[m] = function (ev, ...rest) { const r = orig.call(this, ev, ...rest); if (ev === 'message' || ev === 'disconnect') { ensureReading(); } return r; }; } }
 }
 
 }

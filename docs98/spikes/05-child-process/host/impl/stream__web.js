@@ -1,0 +1,6 @@
+// `stream/web`: only the class names exist (for `instanceof` checks done by libraries such as file-type at import time); the WHATWG streams are not implemented.
+const stub = (name) => ({ [name]: class { constructor() { throw new Error(`${name} is not implemented in this host`); } } })[name];
+export const ReadableStream = stub('ReadableStream'), ReadableStreamDefaultReader = stub('ReadableStreamDefaultReader'), ReadableStreamBYOBReader = stub('ReadableStreamBYOBReader'), WritableStream = stub('WritableStream'),
+	WritableStreamDefaultWriter = stub('WritableStreamDefaultWriter'), TransformStream = stub('TransformStream'), ByteLengthQueuingStrategy = stub('ByteLengthQueuingStrategy'), CountQueuingStrategy = stub('CountQueuingStrategy'),
+	TextEncoderStream = stub('TextEncoderStream'), TextDecoderStream = stub('TextDecoderStream'), CompressionStream = stub('CompressionStream'), DecompressionStream = stub('DecompressionStream');
+export default { ReadableStream, ReadableStreamDefaultReader, ReadableStreamBYOBReader, WritableStream, WritableStreamDefaultWriter, TransformStream, ByteLengthQueuingStrategy, CountQueuingStrategy, TextEncoderStream, TextDecoderStream, CompressionStream, DecompressionStream };

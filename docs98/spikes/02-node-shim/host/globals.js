@@ -78,8 +78,16 @@ globalThis.TextDecoder ??= class TextDecoder {
 	constructor(label = 'utf-8') { this.encoding = String(label).toLowerCase(); }
 	decode(buf) { if (!buf) { return ''; } const b = buf instanceof Uint8Array ? buf : new Uint8Array(buf.buffer ?? buf); let s = ''; for (let i = 0; i < b.length;) { const c = b[i++]; if (c < 0x80) { s += String.fromCharCode(c); } else if (c < 0xE0) { s += String.fromCharCode((c & 31) << 6 | b[i++] & 63); } else if (c < 0xF0) { s += String.fromCharCode((c & 15) << 12 | (b[i++] & 63) << 6 | b[i++] & 63); } else { const cp = (c & 7) << 18 | (b[i++] & 63) << 12 | (b[i++] & 63) << 6 | b[i++] & 63; s += String.fromCodePoint(cp); } } return s; }
 };
+// Hosts that provide native UTF-8 conversion (spike 5: __utf8Decode / __utf8Encode) replace the slow JS loops above.
+if (typeof globalThis.__utf8Decode === 'function') {
+	const dec = globalThis.__utf8Decode, enc = globalThis.__utf8Encode;
+	TextDecoder.prototype.decode = function (buf) { if (!buf) { return ''; } const s = dec(buf); return s.charCodeAt(0) === 0xFEFF && !this.ignoreBOM ? s.slice(1) : s; };
+	TextEncoder.prototype.encode = function (s = '') { return enc(String(s)); };
+}
 globalThis.AbortController ??= class AbortController { constructor() { const l = []; this.signal = { aborted: false, reason: undefined, addEventListener: (t, f) => l.push(f), removeEventListener() { }, throwIfAborted() { } }; this._l = l; } abort(r) { this.signal.aborted = true; this.signal.reason = r; this._l.forEach(f => f()); } };
 if (typeof globalThis.Intl === 'undefined') { globalThis.Intl = { Collator: class { compare(a, b) { return a.localeCompare(b); } resolvedOptions() { return { locale: 'en' }; } } }; }
+// Intl.ListFormat stand-in (English only): vscode-css-languageservice builds one at module load.
+if (typeof Intl.ListFormat === 'undefined') { Intl.ListFormat = class ListFormat { constructor(loc, o = {}) { this.type = o.type || 'conjunction'; } format(list) { const a = Array.from(list), w = this.type === 'disjunction' ? 'or' : 'and'; return a.length <= 1 ? a.join('') : a.length === 2 ? `${a[0]} ${w} ${a[1]}` : `${a.slice(0, -1).join(', ')}, ${w} ${a[a.length - 1]}`; } }; }
 
 // ---- crypto (Web Crypto subset), Buffer, URL ---------------------------------------------------------------------------------------------
 globalThis.crypto ??= {

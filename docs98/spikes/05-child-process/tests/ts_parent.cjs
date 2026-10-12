@@ -29,6 +29,7 @@ child.on('exit', (c, sig) => { if (!result.done) { console.log(JSON.stringify({ 
 	r = await request('completionInfo', { file: target, line, offset: 1, includeExternalModuleExports: false, triggerKind: 1 }); mark('completionInfo'); result.completionCount = r.body && r.body.entries && r.body.entries.length;
 	r = await request('navtree', { file: target }); mark('navtree'); result.navtreeChildren = r.body && r.body.childItems && r.body.childItems.length;
 	r = await request('references', { file: target, line: before.length, offset: before[before.length - 1].length + 1 }); mark('references'); result.references = r.body && r.body.refs && r.body.refs.length;
+	try { const st = fs.readFileSync(`/proc/${child.pid}/status`, 'utf8'); result.childPeakRssMB = Math.round(Number(/VmHWM:\s+(\d+) kB/.exec(st)[1]) / 1024); } catch { /* not Linux */ }
 	result.events = [...new Set(events)].sort(); result.timingsMs = timings; result.done = true;
 	console.log(JSON.stringify(result));
 	child.send({ seq: ++seq, type: 'request', command: 'exit' });

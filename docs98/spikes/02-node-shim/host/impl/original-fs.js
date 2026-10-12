@@ -59,5 +59,19 @@ export const read = (fd, buf, off, len, pos, done) => { let n, err = null; try {
 export const write = (fd, data, ...rest) => { const done = rest.pop(); let n, err = null; try { n = writeSync(fd, data, ...rest); } catch (e) { err = e; } queueMicrotask(() => done(err, n, data)); };
 const pr = (fn) => async (...a) => fn(...a);
 export const promises = { stat: pr(statSync), lstat: pr(lstatSync), readdir: pr(readdirSync), readFile: pr(readFileSync), writeFile: pr(writeFileSync), mkdir: pr(mkdirSync), rm: pr(rmSync), rename: pr(renameSync), access: pr(accessSync), chmod: pr(chmodSync), realpath: pr(realpathSync), unlink: pr(unlinkSync), mkdtemp: pr(mkdtempSync), open: async () => { throw new Error('fs.promises.open not implemented'); } };
+// ---- additions made in spike 5 (git and other ESM-only dependencies import these by name) ----
+export function copyFileSync(a, b) { const d = readFileSync(a); writeFileSync(b, d); }
+export function appendFileSync(p, data) { const f = std.open(String(p), 'ab'); if (!f) { throw fail(E.EACCES, 'open', p); } if (typeof data === 'string') { f.puts(data); } else { f.write(data.buffer, data.byteOffset, data.byteLength); } f.close(); }
+export function readlinkSync(p) { const [r, e] = os.readlink(String(p)); if (e) { throw fail(e, 'readlink', p); } return r; }
+export function symlinkSync(target, p) { const e = os.symlink(String(target), String(p)); if (e) { throw fail(e, 'symlink', p); } }
+export function utimesSync(p, at, mt) { const e = os.utimes(String(p), +at * 1000, +mt * 1000); if (e) { throw fail(e, 'utime', p); } }
+export function rmdirSync(p) { const e = os.remove(String(p)); if (e) { throw fail(e, 'rmdir', p); } }
+export const copyFile = cb(copyFileSync), appendFile = cb(appendFileSync), readlink = cb(readlinkSync), symlink = cb(symlinkSync), utimes = cb(utimesSync), rmdir = cb(rmdirSync);
+Object.assign(promises, { copyFile: pr(copyFileSync), appendFile: pr(appendFileSync), readlink: pr(readlinkSync), symlink: pr(symlinkSync), utimes: pr(utimesSync), rmdir: pr(rmdirSync) });
+function cpSync(src, dst, o = {}) { const st = statSync(src); if (st.isDirectory()) { mkdirSync(dst, { recursive: true }); for (const n of readdirSync(src)) { cpSync(src + '/' + n, dst + '/' + n, o); } } else { copyFileSync(src, dst); } }
+export { cpSync };
+const nosys = (name) => async () => { throw Object.assign(new Error(`fs.promises.${name} is not implemented in this host`), { code: 'ENOSYS' }); };
+Object.assign(promises, { cp: pr(cpSync), chown: nosys('chown'), lchmod: nosys('lchmod'), lchown: nosys('lchown'), link: nosys('link'), lutimes: nosys('lutimes'), opendir: nosys('opendir'), statfs: nosys('statfs'), truncate: nosys('truncate'), watch: nosys('watch') });
+export const cp = cb(cpSync);
 export const constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1 };
-export default { Stats, Dirent, statSync, lstatSync, existsSync, accessSync, readdirSync, readFileSync, writeFileSync, mkdirSync, realpathSync, unlinkSync, renameSync, rmSync, chmodSync, mkdtempSync, openSync, closeSync, readSync, writeSync, fdatasyncSync, stat, lstat, readdir, readFile, writeFile, mkdir, realpath, unlink, rename, open, close, access, fdatasync, exists, read, write, promises, constants };
+export default { Stats, Dirent, statSync, lstatSync, existsSync, accessSync, readdirSync, readFileSync, writeFileSync, mkdirSync, realpathSync, unlinkSync, renameSync, rmSync, chmodSync, mkdtempSync, openSync, closeSync, readSync, writeSync, fdatasyncSync, stat, lstat, readdir, readFile, writeFile, mkdir, realpath, unlink, rename, open, close, access, fdatasync, exists, read, write, promises, constants , copyFileSync, appendFileSync, readlinkSync, symlinkSync, utimesSync, rmdirSync, copyFile, appendFile, readlink, symlink, utimes, rmdir , cpSync, cp };

@@ -201,6 +201,19 @@ static JSValue js_poll_sync(JSContext *ctx, JSValueConst this_val, int argc, JSV
 	free(out.p); free(err.p); free(in);
 	return res;
 }
+
+/* ---- UTF-8 <-> string, native. The JS TextDecoder/TextEncoder polyfill (a per-character loop) made IPC of large messages ~60x slower than Node; QuickJS's own
+ * UTF-8 routines do the same work in C. Installed as globals (__utf8Decode / __utf8Encode) so the shims can pick them up without importing this module. */
+static JSValue js_utf8_decode(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+	size_t byteoff = 0, bytelen = 0, bpe = 0, size = 0; uint8_t *p; JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[0], &byteoff, &bytelen, &bpe);
+	if (!JS_IsException(ab)) { p = JS_GetArrayBuffer(ctx, &size, ab); JS_FreeValue(ctx, ab); if (!p) { return JS_EXCEPTION; } p += byteoff; }
+	else { JS_FreeValue(ctx, JS_GetException(ctx)); p = JS_GetArrayBuffer(ctx, &size, argv[0]); if (!p) { return JS_EXCEPTION; } bytelen = size; }
+	return JS_NewStringLen(ctx, (const char *)p, bytelen);
+}
+static JSValue js_utf8_encode(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+	size_t len; const char *s = JS_ToCStringLen2(ctx, &len, argv[0], 0); if (!s) { return JS_EXCEPTION; }
+	JSValue r = JS_NewUint8ArrayCopy(ctx, (const uint8_t *)s, len); JS_FreeCString(ctx, s); return r;
+}
 static JSValue js_ignore_sigpipe(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { signal(SIGPIPE, SIG_IGN); return JS_UNDEFINED; }
 static JSValue js_errname(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
 	int e; JS_ToInt32(ctx, &e, argv[0]); if (e < 0) { e = -e; }
@@ -219,6 +232,12 @@ static const JSCFunctionListEntry funcs[] = {
 	JS_CFUNC_DEF("sockPort", 1, js_sockport), JS_CFUNC_DEF("ignoreSigpipe", 0, js_ignore_sigpipe), JS_CFUNC_DEF("errname", 1, js_errname), JS_CFUNC_DEF("pollSync", 1, js_poll_sync),
 };
 static int proc_init(JSContext *ctx, JSModuleDef *m) { return JS_SetModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); }
+void spike_init_esm(JSContext *ctx);
 void spike_init(JSContext *ctx) {
+	spike_init_esm(ctx);
+	JSValue g = JS_GetGlobalObject(ctx);
+	JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 1));
+	JS_SetPropertyStr(ctx, g, "__utf8Encode", JS_NewCFunction(ctx, js_utf8_encode, "__utf8Encode", 1));
+	JS_FreeValue(ctx, g);
 	JSModuleDef *m = JS_NewCModule(ctx, "spike:proc", proc_init); if (m) { JS_AddModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); }
 }

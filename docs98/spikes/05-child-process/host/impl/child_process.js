@@ -17,11 +17,11 @@ let keepAlive = null;
 function reap() {
 	for (const [pid, cp] of [...live]) {
 		const r = os.waitpid(pid, os.WNOHANG);
-		if (r[0] === pid) { live.delete(pid); cp._onExit(r[1]); } else if (r[0] < 0) { live.delete(pid); cp._onExit(0); }
+		if (r[0] === pid || r[0] < 0) { live.delete(pid); try { cp._onExit(r[0] === pid ? r[1] : 0); } catch (e) { setTimeout(() => { throw e; }, 0); } }       // a throwing 'exit' listener must not stop the other children from being reaped
 	}
 	if (live.size === 0 && keepAlive !== null) { os.clearTimeout(keepAlive); keepAlive = null; }
 }
-const tick = () => { reap(); keepAlive = live.size ? os.setTimeout(tick, 500) : null; };
+const tick = () => { try { reap(); } finally { keepAlive = live.size ? os.setTimeout(tick, 500) : null; } };
 os.signal(os.SIGCHLD, reap);
 function track(cp) { live.set(cp.pid, cp); if (keepAlive === null) { keepAlive = os.setTimeout(tick, 500); } }
 
@@ -177,7 +177,7 @@ export function spawnSync(command, args, options) {
 	for (const fd of closeAfter) { os.close(fd); }
 	if (pid < 0) { for (const fd of mine) { if (fd >= 0) { os.close(fd); } } return { pid: 0, output: null, stdout: null, stderr: null, status: null, signal: null, error: errnoError(pid, `spawnSync ${file}`, { path: file, spawnargs: argList }) }; }
 	let input = options.input; if (typeof input === 'string') { input = Buffer.from(input); } if (input && input.buffer) { input = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength); }
-	const r = p.pollSync({ pid, inFd: mine[0], input, outFd: mine[1], errFd: mine[2], timeoutMs: options.timeout || 0, maxBuffer: options.maxBuffer || 0 });
+	const r = p.pollSync({ pid, inFd: mine[0], input, outFd: mine[1], errFd: mine[2], timeoutMs: options.timeout || 0, maxBuffer: options.maxBuffer ?? 1024 * 1024 });
 	const enc = options.encoding && options.encoding !== 'buffer' ? options.encoding : null;
 	const conv = (ab, used) => used ? (enc ? Buffer.from(new Uint8Array(ab)).toString(enc) : Buffer.from(new Uint8Array(ab))) : null;
 	const stdout = conv(r.out, spec[1] !== 'inherit' && spec[1] !== 'ignore'), stderr = conv(r.err, spec[2] !== 'inherit' && spec[2] !== 'ignore');
