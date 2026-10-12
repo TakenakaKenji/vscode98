@@ -14,6 +14,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include "quickjs.h"
+#if defined(_WIN32)
+/* profiling timer only (QueryPerformanceCounter, available from Windows 2000; winpthreads' clock_gettime pulls in newer APIs) */
+#include <windows.h>
+static void prof_now(struct timespec *ts) { LARGE_INTEGER f, c; QueryPerformanceFrequency(&f); QueryPerformanceCounter(&c); ts->tv_sec = (long)(c.QuadPart / f.QuadPart); ts->tv_nsec = (long)((c.QuadPart % f.QuadPart) * 1000000000LL / f.QuadPart); }
+#else
+static void prof_now(struct timespec *ts) { clock_gettime(CLOCK_MONOTONIC, ts); }
+#endif
 
 /* ---------------------------------------------------------------- hash map (uint64 key -> pointer or double) */
 typedef struct { uint64_t key; int used; union { void *p; double d; } v; } Slot;
@@ -222,7 +229,7 @@ static JSValue js_execute(JSContext *ctx, JSValueConst t, int argc, JSValueConst
 	int mode = 0; if (argc > 5) { JS_ToInt32(ctx, &mode, argv[5]); } int prof = (mode & 2) != 0; mode &= 1; double opNs[8] = { 0 }; long opN[8] = { 0 }; struct timespec ts0, ts1;
 	Ctx *c = (Ctx *)calloc(1, sizeof(Ctx)); c->integer = mode == 1; c->s.px = px; c->s.w = w; c->s.h = h; c->s.bx0 = 0; c->s.by0 = 0; c->s.bx1 = w; c->s.by1 = h; c->nclips = 1; c->clips[0].c[0] = 0; c->clips[0].c[1] = 0; c->clips[0].c[2] = w; c->clips[0].c[3] = h;
 	for (int i = 0; i < count;) {
-		int op = (int)cmd[i++]; if (prof) { clock_gettime(CLOCK_MONOTONIC, &ts0); }
+		int op = (int)cmd[i++]; if (prof) { prof_now(&ts0); }
 		switch (op) {
 		case OP_FILL_RECT: (c->integer ? fill_rect_i : fill_rect)(c, cmd[i], cmd[i + 1], cmd[i + 2], cmd[i + 3], &cmd[i + 4], cmd[i + 8]); i += 9; break;
 		case OP_FILL_RRECT: (c->integer ? fill_rrect_i : fill_rrect)(c, cmd[i], cmd[i + 1], cmd[i + 2], cmd[i + 3], &cmd[i + 4], &cmd[i + 8], cmd[i + 12]); i += 13; break;
@@ -234,7 +241,7 @@ static JSValue js_execute(JSContext *ctx, JSValueConst t, int argc, JSValueConst
 		case OP_GLYPH_RUN: { int fid = (int)cmd[i]; int n = (int)cmd[i + 11]; (c->integer ? glyph_run_i : glyph_run)(c, fid, cmd[i + 1], cmd[i + 2], cmd[i + 3], cmd[i + 4], cmd[i + 5], &cmd[i + 6], cmd[i + 10], n, &cmd[i + 12]); i += 12 + n; break; }
 		default: free(c); return JS_ThrowRangeError(ctx, "bad opcode %d at %d", op, i - 1);
 		}
-		if (prof) { clock_gettime(CLOCK_MONOTONIC, &ts1); opNs[op] += (ts1.tv_sec - ts0.tv_sec) * 1e9 + (ts1.tv_nsec - ts0.tv_nsec); opN[op]++; }
+		if (prof) { prof_now(&ts1); opNs[op] += (ts1.tv_sec - ts0.tv_sec) * 1e9 + (ts1.tv_nsec - ts0.tv_nsec); opN[op]++; }
 	}
 	JSValue r = JS_NewObject(ctx); JS_SetPropertyStr(ctx, r, "rects", JS_NewInt32(ctx, (int)c->rects)); JS_SetPropertyStr(ctx, r, "glyphs", JS_NewInt32(ctx, (int)c->glyphs)); JS_SetPropertyStr(ctx, r, "glyphMisses", JS_NewInt32(ctx, (int)c->misses));
 	if (prof) { static const char *names[] = { "", "fillRect", "fillRoundRect", "pushClip", "popClip", "pushLayer", "popLayer", "glyphRun" }; JSValue o = JS_NewObject(ctx); for (int k = 1; k < 8; k++) { JSValue e = JS_NewObject(ctx); JS_SetPropertyStr(ctx, e, "ms", JS_NewFloat64(ctx, opNs[k] / 1e6)); JS_SetPropertyStr(ctx, e, "n", JS_NewInt32(ctx, (int)opN[k])); JS_SetPropertyStr(ctx, o, names[k], e); } JS_SetPropertyStr(ctx, r, "profile", o); }
