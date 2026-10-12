@@ -57,7 +57,7 @@ child.on('message', (m0) => {
 	else if (m.t === 'postMessage') { for (const fn of [...(listeners.get(m.channel) || [])]) { fn({ sender: null, ports: m.ports.map(id => ports.make(id)) }, m.message); } }
 	else if (m.t === 'portMsg') { ports.deliver(m); }
 	else if (m.t === 'portClose') { const p = ports.ports.get(m.id); if (p) { p._closed = true; p.dispatchEvent({ type: 'close' }); } }
-	else if (m.t === 'invokeResult') { const p = pending.get(m.id); pending.delete(m.id); if (m.error !== undefined) { p.rej(new Error(m.error)); } else { p.res(m.result); } }
+	else if (m.t === 'invokeResult') { const p = pending.get(m.id); pending.delete(m.id); if (opt('debug-config', '0') === '1' && m.result && m.result.windowId) { log('[harness] window config: workspace=' + JSON.stringify(m.result.workspace) + ' filesToOpen=' + JSON.stringify(m.result.filesToOpenOrCreate) + ' _=' + JSON.stringify(m.result._) + ' userDataDir=' + m.result.userDataDir); } if (m.error !== undefined) { p.rej(new Error(m.error)); } else { p.res(m.result); } }
 });
 const load = await loadRequested;
 log(`[harness] main created a window and asked to load ${load.url} after ${Math.round(performance.now() - t00)} ms`);

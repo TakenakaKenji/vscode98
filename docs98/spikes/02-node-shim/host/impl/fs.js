@@ -34,11 +34,12 @@ export function readdirSync(p, opts) {
 }
 export function readFileSync(p, opts) {
 	const encoding = enc(opts);
+	if (typeof p === 'number') { const path = fdPaths.get(p); if (path === undefined) { throw fail(E.EBADF, 'read', p); } p = path; }   // an fd instead of a path
 	if (encoding) { const s = std.loadFile(String(p)); if (s === null) { throw fail(E.ENOENT, 'open', p); } return s; }
 	const f = std.open(String(p), 'rb'); if (!f) { throw fail(E.ENOENT, 'open', p); }
 	f.seek(0, std.SEEK_END); const n = f.tell(); f.seek(0, std.SEEK_SET); const ab = new ArrayBuffer(n); f.read(ab, 0, n); f.close(); return toBuf(ab, n);
 }
-export function writeFileSync(p, data) { const f = std.open(String(p), 'wb'); if (!f) { throw fail(E.EACCES, 'open', p); } if (typeof data === 'string') { f.puts(data); } else { f.write(data.buffer, data.byteOffset, data.byteLength); } f.close(); }
+export function writeFileSync(p, data, opts) { if (typeof p === 'number') { const path = fdPaths.get(p); if (path === undefined) { throw fail(E.EBADF, 'write', p); } p = path; } const flag = opts && typeof opts === 'object' ? opts.flag : undefined; if (flag && flag.includes('x') && std.open(String(p), 'rb')) { throw fail(E.EEXIST, 'open', p); } const f = std.open(String(p), flag && flag.includes('a') ? 'ab' : 'wb'); if (!f) { throw fail(E.EACCES, 'open', p); } if (typeof data === 'string') { f.puts(data); } else { f.write(data.buffer, data.byteOffset, data.byteLength); } f.close(); }
 export function mkdirSync(p, opts) { const rec = opts && opts.recursive; if (rec) { let cur = String(p).startsWith('/') ? '' : '.'; for (const seg of String(p).split('/').filter(Boolean)) { cur += '/' + seg; const e = os.mkdir(cur, 0o777); if (e && e !== -E.EEXIST && e !== E.EEXIST) { throw fail(e, 'mkdir', cur); } } return; } const e = os.mkdir(String(p), 0o777); if (e) { throw fail(e, 'mkdir', p); } }
 export function realpathSync(p) { const [r, e] = os.realpath(String(p)); if (e) { throw fail(e, 'realpath', p); } return r; }
 export function unlinkSync(p) { const e = os.remove(String(p)); if (e) { throw fail(e, 'unlink', p); } }
@@ -47,7 +48,7 @@ export function rmSync(p, o = {}) { const [st, e] = os.lstat(String(p)); if (e) 
 export function chmodSync() { }
 export function mkdtempSync(prefix) { const p = prefix + Math.random().toString(36).slice(2, 8); mkdirSync(p); return p; }
 const fdPaths = new Map();   // fd -> path, for fstat/ftruncate/futimes (qjs:os has no f* calls)
-export function openSync(p, flags = 'r') { const f = typeof flags === 'string' ? ({ r: os.O_RDONLY, w: os.O_WRONLY | os.O_CREAT | os.O_TRUNC, a: os.O_WRONLY | os.O_CREAT | os.O_APPEND, 'r+': os.O_RDWR }[flags] ?? os.O_RDONLY) : flags; const fd = os.open(String(p), f, 0o666); if (fd < 0) { throw fail(fd, 'open', p); } fdPaths.set(fd, String(p)); return fd; }
+export function openSync(p, flags = 'r') { const f = typeof flags === 'string' ? ({ r: os.O_RDONLY, rs: os.O_RDONLY, 'r+': os.O_RDWR, w: os.O_WRONLY | os.O_CREAT | os.O_TRUNC, wx: os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_EXCL, xw: os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_EXCL, 'w+': os.O_RDWR | os.O_CREAT | os.O_TRUNC, 'wx+': os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_EXCL, a: os.O_WRONLY | os.O_CREAT | os.O_APPEND, ax: os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_EXCL, 'a+': os.O_RDWR | os.O_CREAT | os.O_APPEND, 'ax+': os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_EXCL }[flags] ?? os.O_RDONLY) : flags; const fd = os.open(String(p), f, 0o666); if (fd < 0) { throw fail(fd, 'open', p); } fdPaths.set(fd, String(p)); return fd; }
 export function closeSync(fd) { os.close(fd); fdPaths.delete(fd); }
 export function readSync(fd, buf, off = 0, len = buf.length - off, pos = null) { if (pos !== null) { os.seek(fd, pos, std.SEEK_SET); } return os.read(fd, buf.buffer, buf.byteOffset + off, len); }
 export function writeSync(fd, data, off = 0, len) { if (typeof data === 'string') { const b = new TextEncoder().encode(data); return os.write(fd, b.buffer, 0, b.length); } return os.write(fd, data.buffer, data.byteOffset + off, len ?? data.byteLength - off); }

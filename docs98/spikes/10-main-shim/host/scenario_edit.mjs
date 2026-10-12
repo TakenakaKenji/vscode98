@@ -11,8 +11,9 @@ export async function run(ctx) {
 	log('scenario: explorer rows = ' + JSON.stringify([...doc.querySelectorAll('.explorer-folders-view .monaco-list-row')].map(r => r.getAttribute('aria-label'))));
 	const row = [...doc.querySelectorAll('.explorer-folders-view .monaco-list-row')].find(r => (r.getAttribute('aria-label') || '').startsWith(name));
 	if (!row) { log('scenario: row for ' + name + ' not found'); return; }
-	const t0 = performance.now(); click(row); await settle(); log(`scenario: clicked ${name}, ${(performance.now() - t0).toFixed(0)} ms, editor lines: ${JSON.stringify([...(ed || doc).querySelectorAll('.view-line')].map(l => l.textContent))}`);
-	const ed = doc.querySelector('.editor-instance .monaco-editor') || doc.querySelector('.monaco-editor'); const lines = ed && ed.querySelector('.view-lines'); 
+	const t0 = performance.now(); click(row); await settle();
+	const ed = doc.querySelector('.editor-instance .monaco-editor') || doc.querySelector('.monaco-editor');
+	log(`scenario: clicked ${name}, ${(performance.now() - t0).toFixed(0)} ms, editor lines: ${JSON.stringify([...(ed || doc).querySelectorAll('.view-line')].map(l => l.textContent))}`);
 	const ta0 = ed && ed.querySelector('textarea'); if (ta0) { ta0.focus(); await settle(5); }
 	const ta = (doc.activeElement && doc.activeElement.localName === 'textarea') ? doc.activeElement : ed && ed.querySelector('textarea'); if (!ta) { log('scenario: no editor textarea'); return; }
 	log('scenario: typing into ' + ta.className + ' (active=' + (doc.activeElement === ta) + ')');

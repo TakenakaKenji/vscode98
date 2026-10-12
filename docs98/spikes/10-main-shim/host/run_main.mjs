@@ -1,6 +1,7 @@
 // The main process: VS Code's own electron-main bundle with `electron` replaced by electron_stub.mjs. Runs on Node and on QuickJS (via fork_main.mjs of spike 5).
 //   node run_main.mjs <appRoot> [args...]        |        qjs-spike7 fork_main.mjs <shimsDir> run_main.mjs <appRoot> [args...]
 import Module from 'node:module';
+import './node_globals98.js';
 import { installAddons } from './native_addons98.js';
 installAddons();
 const appRoot = process.argv[2];
