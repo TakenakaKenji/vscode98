@@ -46,8 +46,9 @@ export function renameSync(a, b) { const e = os.rename(String(a), String(b)); if
 export function rmSync(p, o = {}) { const [st, e] = os.lstat(String(p)); if (e) { if (o.force) { return; } throw fail(e, 'rm', p); } if ((st.mode & S_IFMT) === S_IFDIR) { for (const n of readdirSync(p)) { rmSync(p + '/' + n, o); } } os.remove(String(p)); }
 export function chmodSync() { }
 export function mkdtempSync(prefix) { const p = prefix + Math.random().toString(36).slice(2, 8); mkdirSync(p); return p; }
-export function openSync(p, flags = 'r') { const f = typeof flags === 'string' ? ({ r: os.O_RDONLY, w: os.O_WRONLY | os.O_CREAT | os.O_TRUNC, a: os.O_WRONLY | os.O_CREAT | os.O_APPEND, 'r+': os.O_RDWR }[flags] ?? os.O_RDONLY) : flags; const fd = os.open(String(p), f, 0o666); if (fd < 0) { throw fail(fd, 'open', p); } return fd; }
-export function closeSync(fd) { os.close(fd); }
+const fdPaths = new Map();   // fd -> path, for fstat/ftruncate/futimes (qjs:os has no f* calls)
+export function openSync(p, flags = 'r') { const f = typeof flags === 'string' ? ({ r: os.O_RDONLY, w: os.O_WRONLY | os.O_CREAT | os.O_TRUNC, a: os.O_WRONLY | os.O_CREAT | os.O_APPEND, 'r+': os.O_RDWR }[flags] ?? os.O_RDONLY) : flags; const fd = os.open(String(p), f, 0o666); if (fd < 0) { throw fail(fd, 'open', p); } fdPaths.set(fd, String(p)); return fd; }
+export function closeSync(fd) { os.close(fd); fdPaths.delete(fd); }
 export function readSync(fd, buf, off = 0, len = buf.length - off, pos = null) { if (pos !== null) { os.seek(fd, pos, std.SEEK_SET); } return os.read(fd, buf.buffer, buf.byteOffset + off, len); }
 export function writeSync(fd, data, off = 0, len) { if (typeof data === 'string') { const b = new TextEncoder().encode(data); return os.write(fd, b.buffer, 0, b.length); } return os.write(fd, data.buffer, data.byteOffset + off, len ?? data.byteLength - off); }
 export function fdatasyncSync() { }
@@ -74,4 +75,45 @@ const nosys = (name) => async () => { throw Object.assign(new Error(`fs.promises
 Object.assign(promises, { cp: pr(cpSync), chown: nosys('chown'), lchmod: nosys('lchmod'), lchown: nosys('lchown'), link: nosys('link'), lutimes: nosys('lutimes'), opendir: nosys('opendir'), statfs: nosys('statfs'), truncate: nosys('truncate'), watch: nosys('watch') });
 export const cp = cb(cpSync);
 export const constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1 };
-export default { Stats, Dirent, statSync, lstatSync, existsSync, accessSync, readdirSync, readFileSync, writeFileSync, mkdirSync, realpathSync, unlinkSync, renameSync, rmSync, chmodSync, mkdtempSync, openSync, closeSync, readSync, writeSync, fdatasyncSync, stat, lstat, readdir, readFile, writeFile, mkdir, realpath, unlink, rename, open, close, access, fdatasync, exists, read, write, promises, constants , copyFileSync, appendFileSync, readlinkSync, symlinkSync, utimesSync, rmdirSync, copyFile, appendFile, readlink, symlink, utimes, rmdir , cpSync, cp };
+
+// ---- additions made in spike 10 (the file service of VS Code's own main/shared process: fd level operations, streams, FileHandle) ----
+export function fstatSync(fd) { const p = fdPaths.get(fd); if (p === undefined) { throw fail(E.EBADF, 'fstat', fd); } return statSync(p); }
+export function ftruncateSync(fd, len = 0) {
+	const p = fdPaths.get(fd); if (p === undefined) { throw fail(E.EBADF, 'ftruncate', fd); }
+	if (len === 0) { const t = os.open(p, os.O_WRONLY | os.O_TRUNC, 0o666); if (t >= 0) { os.close(t); } return; }
+	const cur = readFileSync(p); const out = new Uint8Array(len); out.set(cur.subarray(0, Math.min(len, cur.length))); writeFileSync(p, out);
+}
+export function truncateSync(p, len = 0) { const fd = openSync(p, 'r+'); try { ftruncateSync(fd, len); } finally { closeSync(fd); } }
+export function fsyncSync() { } export function futimesSync(fd, at, mt) { const p = fdPaths.get(fd); if (p !== undefined) { utimesSync(p, at, mt); } }
+export function chownSync() { } export function lchownSync() { } export function linkSync(a, b) { copyFileSync(a, b); }
+export function accessSyncMode(p) { return accessSync(p); }
+export const fstat = cb(fstatSync), ftruncate = cb(ftruncateSync), truncate = cb(truncateSync), fsync = cb(fsyncSync), futimes = cb(futimesSync), chmod = cb(chmodSync), chown = cb(chownSync), link = cb(linkSync);
+class FileHandle {
+	constructor(fd) { this.fd = fd; }
+	async stat() { return fstatSync(this.fd); } async truncate(len) { ftruncateSync(this.fd, len); } async sync() { } async datasync() { } async close() { closeSync(this.fd); }
+	async read(buf, off = 0, len = buf.length - off, pos = null) { const n = readSync(this.fd, buf, off, len, pos); return { bytesRead: n, buffer: buf }; }
+	async write(data, ...rest) { const n = writeSync(this.fd, data, ...rest); return { bytesWritten: n, buffer: data }; }
+	async readFile(o) { return readFileSync(fdPaths.get(this.fd), o); } async writeFile(d) { writeFileSync(fdPaths.get(this.fd), d); }
+}
+Object.assign(promises, { open: async (p, flags) => new FileHandle(openSync(p, flags)), truncate: pr(truncateSync), link: pr(linkSync), chown: pr(chownSync), lchown: pr(lchownSync) });
+export function createWriteStream(p, o = {}) {
+	const { Writable } = globalThis.__builtins.stream; const flags = (typeof o === 'object' && o.flags) || 'w'; const fd = openSync(p, flags); let closed = false;
+	const w = new Writable({ write(chunk, encoding, done) { try { writeSync(fd, typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk); done(); } catch (e) { done(e); } }, final(done) { if (!closed) { closed = true; closeSync(fd); } done(); }, destroy(err, done) { if (!closed) { closed = true; try { closeSync(fd); } catch { /* */ } } done(err); } });
+	w.path = String(p); w.bytesWritten = 0; w.close = (done) => { w.end(); if (done) { w.once('close', done); } }; return w;
+}
+export function createReadStream(p, o = {}) {
+	const { Readable } = globalThis.__builtins.stream; const fd = openSync(p, 'r'); const chunk = (typeof o === 'object' && o.highWaterMark) || 65536; let pos = (typeof o === 'object' && o.start) || 0; const end = (typeof o === 'object' && o.end !== undefined) ? o.end + 1 : Infinity;
+	const r = new Readable({ highWaterMark: chunk, read() { try { const n = Math.min(chunk, end - pos); if (n <= 0) { closeSync(fd); this.push(null); return; } const b = new Uint8Array(n); const got = readSync(fd, b, 0, n, pos); if (!got) { closeSync(fd); this.push(null); return; } pos += got; const out = new Buf(b.buffer, 0, got); this.push(out); } catch (e) { this.destroy(e); } }, destroy(err, done) { try { closeSync(fd); } catch { /* */ } done(err); } });
+	r.path = String(p); return r;
+}
+// fs.watch by polling every 500 ms (a real host would use inotify / ReadDirectoryChangesW): non-recursive, 'rename' for appearing/disappearing entries, 'change' for modified ones
+export function watch(p, opts, listener) {
+	if (typeof opts === 'function') { listener = opts; opts = {}; } p = String(p); if (!existsSync(p)) { throw fail(E.ENOENT, 'watch', p); }
+	const w = new (globalThis.__builtins.events.EventEmitter)(); if (listener) { w.on('change', listener); }
+	const snap = () => { const m = new Map(); try { const st = statSync(p); if (st.isDirectory()) { for (const n of readdirSync(p)) { try { const s2 = statSync(p + '/' + n); m.set(n, s2.mtimeMs + ':' + s2.size); } catch { /* vanished */ } } } else { m.set(p.split('/').pop(), st.mtimeMs + ':' + st.size); } } catch { /* gone */ } return m; };
+	let prev = snap(); const t = setInterval(() => { const cur = snap(); for (const [n, sig] of cur) { if (!prev.has(n)) { w.emit('change', 'rename', n); } else if (prev.get(n) !== sig) { w.emit('change', 'change', n); } } for (const n of prev.keys()) { if (!cur.has(n)) { w.emit('change', 'rename', n); } } prev = cur; }, 500);
+	w.close = () => { clearInterval(t); w.emit('close'); }; w.ref = () => w; w.unref = () => w; return w;
+}
+export function watchFile() { } export function unwatchFile() { }
+Object.assign(constants, { COPYFILE_EXCL: 1, O_RDONLY: 0, O_WRONLY: 1, O_RDWR: 2, O_CREAT: 64, O_EXCL: 128, O_TRUNC: 512, O_APPEND: 1024, S_IFMT: 0o170000, S_IFREG: 0o100000, S_IFDIR: 0o040000, S_IFLNK: 0o120000 });
+export default { fstatSync, ftruncateSync, truncateSync, fsyncSync, futimesSync, chownSync, linkSync, fstat, ftruncate, truncate, fsync, futimes, chmod, chown, link, createWriteStream, createReadStream, watch, watchFile, unwatchFile, Stats, Dirent, statSync, lstatSync, existsSync, accessSync, readdirSync, readFileSync, writeFileSync, mkdirSync, realpathSync, unlinkSync, renameSync, rmSync, chmodSync, mkdtempSync, openSync, closeSync, readSync, writeSync, fdatasyncSync, stat, lstat, readdir, readFile, writeFile, mkdir, realpath, unlink, rename, open, close, access, fdatasync, exists, read, write, promises, constants , copyFileSync, appendFileSync, readlinkSync, symlinkSync, utimesSync, rmdirSync, copyFile, appendFile, readlink, symlink, utimes, rmdir , cpSync, cp };

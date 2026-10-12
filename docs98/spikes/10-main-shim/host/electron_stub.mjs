@@ -170,7 +170,7 @@ class UtilityProcess extends EventEmitter {
 		this.stdout = this._child.stdout; this.stderr = this._child.stderr; if (process.env.UTILITY_OUT) { for (const [st, tag] of [[this.stdout, 'out'], [this.stderr, 'err']]) { st?.on('data', (d) => fs.appendFileSync(process.env.UTILITY_OUT, `[${options.serviceName} ${tag}] ${d}`)); } } this.holder = holderOf((m) => this._child.send(clean(m)));
 		this._child.once('spawn', () => { this.pid = this._child.pid; this.emit('spawn'); });
 		this._child.on('exit', (code, signal) => { log(`utility ${options.serviceName} exit ${code} ${signal}`); this.emit('exit', code ?? 0); });
-		this._child.on('error', (e) => { log('utility error ' + e); this.emit('error', 'FatalError', e.message); });
+		this._child.on('error', (e) => { log('utility error ' + e); if (this.listenerCount('error')) { this.emit('error', 'FatalError', e.message); } });   // Electron's 'error' is for V8 fatal errors; an EventEmitter without a listener would throw
 		this._child.on('message', (m0) => { const m = decode(m0); if (handlePortMessage(m, this.holder)) { return; } if (m.t === 'upm') { this.emit('message', m.data); } });
 	}
 	postMessage(message, transfer = []) { giveTo(this.holder, transfer); this._child.send(clean({ t: 'upm', data: message, ports: transfer.map(p => p.id) })); }

@@ -1,6 +1,8 @@
 // Entry of every utility process the main process forks (Node or QuickJS): installs Electron's `process.parentPort`, the `electron` stub for the few modules that import it
 // and the port table that lets MessagePorts handed over by main work, then runs the real entry (UTIL_TARGET, normally bootstrap-fork.js).
 import Module from 'node:module';
+import { installAddons } from './native_addons98.js';
+installAddons();
 import { EventEmitter } from 'node:events';
 import { PortTable } from './ports98.js';
 import { encode, decode } from './codec98.js';
@@ -41,5 +43,7 @@ if (TRACE) {
 	process.on('exit', (c) => TRACE('exit ' + c));
 }
 
+// the QuickJS Module shim has no lookup-path internals that bootstrap-node.js wraps
+Module.globalPaths ??= []; Module._resolveLookupPaths ??= () => []; Module._nodeModulePaths ??= () => [];
 process.argv[1] = process.env.UTIL_TARGET;   // as under Electron: argv = [exe, modulePath, ...args]
 await import(process.env.UTIL_TARGET);

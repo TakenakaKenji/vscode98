@@ -60,6 +60,7 @@ export class Module {
 	load(filename) {
 		this.filename = filename; this.paths = Module._nodeModulePaths(dirname(filename));
 		if (extname(filename) === '.json') { this.exports = JSON.parse(readText(filename)); }
+		else if (extname(filename) === '.node' && typeof globalThis.__loadNativeAddon === 'function') { this.exports = globalThis.__loadNativeAddon(filename); }   // native addons: host-provided stand-ins (10-main-shim/host/native_addons98.js)
 		else if (isEsmFile(filename)) {
 			const overlay = overlayDir ? `${overlayDir}/${filename.replace(/\//g, '__')}.cjs` : '';
 			if (overlay && kind(overlay) === 1) { this._compile(readText(overlay), filename); } else if (typeof globalThis.__requireEsm === 'function') { this.exports = globalThis.__requireEsm(filename); } else { throw esmError(filename); }
