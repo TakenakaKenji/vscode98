@@ -95,6 +95,8 @@ class BufferImpl extends Uint8Array {
 	}
 	static alloc(n, fill = 0) { const b = new BufferImpl(n); if (fill) { b.fill(fill); } return b; }
 	static allocUnsafe(n) { return new BufferImpl(n); }
+	static allocUnsafeSlow(n) { return new BufferImpl(n); }
+	static isEncoding(e) { return ['utf8', 'utf-8', 'hex', 'base64', 'ascii', 'latin1', 'binary'].includes(String(e).toLowerCase()); }
 	static isBuffer(b) { return b instanceof BufferImpl; }
 	static byteLength(s) { return typeof s === 'string' ? new TextEncoder().encode(s).length : s.byteLength; }
 	static concat(list, total) { total ??= list.reduce((n, b) => n + b.length, 0); const out = new BufferImpl(total); let o = 0; for (const b of list) { out.set(b, o); o += b.length; } return out; }
@@ -104,6 +106,7 @@ class BufferImpl extends Uint8Array {
 		if (enc === 'base64') { let bin = ''; v.forEach(x => bin += String.fromCharCode(x)); return btoa(bin); }
 		return new TextDecoder().decode(v);
 	}
+	copy(target, targetStart = 0, sourceStart = 0, sourceEnd = this.length) { const part = this.subarray(sourceStart, sourceEnd); target.set(part.subarray(0, Math.max(0, target.length - targetStart)), targetStart); return Math.min(part.length, target.length - targetStart); }
 	toJSON() { return { type: 'Buffer', data: Array.from(this) }; }
 	equals(o) { return this.length === o.length && this.every((x, i) => x === o[i]); }
 	slice(s, e) { return this.subarray(s, e); }
