@@ -169,6 +169,7 @@ export class Layout {
 			cw = wSpec.kw === 'max-content' ? mx : wSpec.kw === 'min-content' ? mn : Math.min(Math.max(mn, avail), mx); cw = this.clampSize(wSpec, cw);
 		} else { cw = this.clampSize(wSpec, cbw - box.hx - box.ml - box.mr); }
 		cw = Math.max(0, cw);
+		if (opts.forceW === undefined && (box.kind === 'block' || box.kind === 'flex') && (box.autoML || box.autoMR)) { const rem = cbw - cw - box.hx - (box.autoML ? 0 : box.ml) - (box.autoMR ? 0 : box.mr); if (box.autoML && box.autoMR) { box.ml = Math.max(0, rem / 2); box.mr = rem < 0 ? rem : box.ml; } else if (box.autoML) { box.ml = Math.max(0, rem); } else { box.mr = Math.max(0, rem); } }
 		let ch = null; if (opts.forceH !== undefined && opts.forceH !== null) { ch = Math.max(0, opts.forceH - box.vy); } else if (hSpec.size !== null) { ch = this.clampSize(hSpec, hSpec.size); }
 		const res = { mtOut: box.mt, mbOut: box.mb };
 		let contentH;
@@ -190,7 +191,7 @@ export class Layout {
 			if (c.oof) { c.static = { x: 0, y: y + (pending ?? 0), parentBox: box }; c.ox = box.bl + box.pl; c.oy = box.bt + box.pt + y + (pending ?? 0); i++; continue; }
 			if (c.kind === 'text' || c.kind === 'inline' || c.kind === 'inline-block' || c.kind === 'br') {
 				let j = i; const run = []; while (j < kids.length && (kids[j].oof || kids[j].kind === 'text' || kids[j].kind === 'inline' || kids[j].kind === 'inline-block' || kids[j].kind === 'br')) { run.push(kids[j]); j++; }
-				const out = this.layoutInline(box, run, cw, y + (pending ?? 0));
+				const out = this.layoutInline(box, run, cw, y + (pending ?? 0), ch);
 				if (out.height > 0 || out.hasContent) { const adj = pending ?? 0; if (first && topAdj) { /* line boxes never collapse with the parent: parent's margin stays */ } y += adj; pending = null; for (const ln of out.lines) { ln.y += y; } this.shiftFrags(out, y); y += out.height; first = false; if (out.lastBaseline !== null) { lastBaseline = y - out.height + out.lastBaseline; } }
 				else { this.shiftFrags(out, y + (pending ?? 0)); }
 				i = j; continue;
@@ -212,7 +213,7 @@ export class Layout {
 	shiftFrags(out, dy) { for (const f of out.frags) { f.y += dy; } for (const a of out.atomics) { a.box.oy += dy; } for (const o of out.oofs) { o.box.oy += dy; if (o.box.static) { o.box.static.y += dy; } } for (const r of out.inlineRects) { for (const q of r.rects) { q.y += dy; } } }
 
 	// ---- inline layout --------------------------------------------------------------------------------------------------------------------
-	layoutInline(container, run, cw, y0) {
+	layoutInline(container, run, cw, y0, chDefinite = null) {
 		const items = []; const tmp = { children: run, v: container.v }; this.inlineItems(tmp, items);
 		const v = container.v; const align = v['text-align']; const cvFont = this.fontOf(container); const cvSize = v['font-size']; const cvMet = fontMetrics(cvFont, cvSize);
 		const lhOf = (vv, met) => { const l = vv['line-height']; if (l === 'normal' || l === undefined) { return met.lineHeightNormal; } if (l && l.num !== undefined) { return l.num * vv['font-size']; } const r = resolveLen(l, vv['font-size']); return r === null ? met.lineHeightNormal : r; };
@@ -241,7 +242,7 @@ export class Layout {
 			else if (it.t === 'oof') { it.box.static = { x, y: 0, parentBox: container, line }; oofs.push(it); it.box.ox = container.bl + container.pl + x; it.box.oy = container.bt + container.pt + line.y; }
 			else if (it.t === 'br') { hasContent = true; line.hasStrutContent = true; nextLine(); }
 			else if (it.t === 'atomic') {
-				const b = it.box; startInlineBoxes(); this.metrics(b, cw); this.layoutBlock(b, cw, null, {}); const ow = b.w + b.ml + b.mr;
+				const b = it.box; startInlineBoxes(); this.metrics(b, cw); this.layoutBlock(b, cw, chDefinite, {}); const ow = b.w + b.ml + b.mr;
 				if (x + ow > cw + 1e-6 && line.items.length > 0 && this.ws(v).wrap) { nextLine(); startInlineBoxes(); }
 				const vv = b.v; let baseline = b.h + b.mb; if (b.lastBaseline !== null && b.lastBaseline !== undefined && vv['overflow-x'] === 'visible' && vv['overflow-y'] === 'visible') { baseline = b.lastBaseline + b.mt; } else { baseline = b.h + b.mt; }
 				const asc = baseline, desc = b.h + b.mt + b.mb - baseline; contribute(asc, desc);

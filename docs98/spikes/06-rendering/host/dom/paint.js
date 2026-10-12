@@ -16,6 +16,8 @@ class Surface {
 // blend src (r,g,b with alpha a in 0..1) over the pixel at index i
 function blend(px, i, r, g, b, a) {
 	if (a <= 0) { return; }
+	if (a >= 1) { px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = 255; return; }
+	if (px[i + 3] === 255) { const ia = 1 - a; px[i] = r * a + px[i] * ia; px[i + 1] = g * a + px[i + 1] * ia; px[i + 2] = b * a + px[i + 2] * ia; return; }
 	const da = px[i + 3] / 255; const oa = a + da * (1 - a);
 	if (oa <= 0) { return; }
 	px[i] = (r * a + px[i] * da * (1 - a)) / oa; px[i + 1] = (g * a + px[i + 1] * da * (1 - a)) / oa; px[i + 2] = (b * a + px[i + 2] * da * (1 - a)) / oa; px[i + 3] = oa * 255;
@@ -28,10 +30,16 @@ class Painter {
 	fillRect(x, y, w, h, color, alphaMul = 1) {
 		if (!color || color[3] <= 0 || w <= 0 || h <= 0) { return; } this.stats.rects++;
 		const c = this.clip; const x0 = Math.max(c[0], x), y0 = Math.max(c[1], y), x1 = Math.min(c[2], x + w), y1 = Math.min(c[3], y + h); if (x1 <= x0 || y1 <= y0) { return; }
-		const S = this.S, px = S.px; const ix0 = Math.floor(x0), iy0 = Math.floor(y0), ix1 = Math.ceil(x1), iy1 = Math.ceil(y1);
-		for (let yy = iy0; yy < iy1; yy++) {
-			const cy = Math.min(yy + 1, y1) - Math.max(yy, y0); for (let xx = ix0; xx < ix1; xx++) { const cx = Math.min(xx + 1, x1) - Math.max(xx, x0); const cov = cx * cy; if (cov <= 0) { continue; } blend(px, (yy * S.w + xx) * 4, color[0], color[1], color[2], color[3] * alphaMul * cov); }
+		const S = this.S, px = S.px, W = S.w; const cr = color[0], cg = color[1], cb = color[2], ca = color[3] * alphaMul;
+		// interior pixels with full coverage take a fast path (opaque: plain stores; translucent: constant-alpha blend); the 1px fringe keeps per-pixel coverage
+		const fx0 = Math.ceil(x0), fx1 = Math.floor(x1), fy0 = Math.ceil(y0), fy1 = Math.floor(y1);
+		if (fx1 > fx0 && fy1 > fy0) {
+			if (ca >= 1) { for (let yy = fy0; yy < fy1; yy++) { let i = (yy * W + fx0) * 4; for (let xx = fx0; xx < fx1; xx++, i += 4) { px[i] = cr; px[i + 1] = cg; px[i + 2] = cb; px[i + 3] = 255; } } }
+			else { for (let yy = fy0; yy < fy1; yy++) { let i = (yy * W + fx0) * 4; for (let xx = fx0; xx < fx1; xx++, i += 4) { blend(px, i, cr, cg, cb, ca); } } }
 		}
+		const edge = (xa, ya, xb, yb) => { for (let yy = ya; yy < yb; yy++) { const cy = Math.min(yy + 1, y1) - Math.max(yy, y0); if (cy <= 0) { continue; } for (let xx = xa; xx < xb; xx++) { const cx = Math.min(xx + 1, x1) - Math.max(xx, x0); const cov = cx * cy; if (cov > 0) { blend(px, (yy * W + xx) * 4, cr, cg, cb, ca * cov); } } } };
+		const ix0 = Math.floor(x0), iy0 = Math.floor(y0), ix1 = Math.ceil(x1), iy1 = Math.ceil(y1);
+		if (fx1 > fx0 && fy1 > fy0) { edge(ix0, iy0, ix1, fy0); edge(ix0, fy1, ix1, iy1); edge(ix0, fy0, fx0, fy1); edge(fx1, fy0, ix1, fy1); } else { edge(ix0, iy0, ix1, iy1); }
 	}
 	fillRoundRect(x, y, w, h, radii, color, alphaMul = 1) {   // radii: [tl, tr, br, bl] in px
 		if (!color || color[3] <= 0 || w <= 0 || h <= 0) { return; } if (!radii || radii.every(r => r <= 0)) { return this.fillRect(x, y, w, h, color, alphaMul); }
@@ -51,23 +59,32 @@ class Painter {
 		const line = (x0, y0, x1, y1) => { if (y0 !== y1) { edges.push([x0, y0, x1, y1]); } };
 		const quad = (x0, y0, x1, y1, x2, y2) => { const n = 8; let px = x0, py = y0; for (let i = 1; i <= n; i++) { const t = i / n, u = 1 - t; const x = u * u * x0 + 2 * u * t * x1 + t * t * x2, y = u * u * y0 + 2 * u * t * y1 + t * t * y2; line(px, py, x, y); px = x; py = y; } };
 		const cubic = (x0, y0, x1, y1, x2, y2, x3, y3) => { const n = 10; let px = x0, py = y0; for (let i = 1; i <= n; i++) { const t = i / n, u = 1 - t; const x = u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3, y = u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3; line(px, py, x, y); px = x; py = y; } };
-		for (const c of path.commands) { switch (c.type) { case 'M': sx = cx = c.x; sy = cy = c.y; break; case 'L': line(cx, cy, c.x, c.y); cx = c.x; cy = c.y; break; case 'Q': quad(cx, cy, c.x1, c.y1, c.x, c.y); cx = c.x; cy = c.y; break; case 'C': cubic(cx, cy, c.x1, c.y1, c.x2, c.y2, c.x, c.y); cx = c.x; cy = c.y; break; case 'Z': line(cx, cy, sx, sy); cx = sx; cy = sy; break; } }
+		for (const c of path.commands) { switch (c.type) { case 'M': if (cx !== sx || cy !== sy) { line(cx, cy, sx, sy); } sx = cx = c.x; sy = cy = c.y; break; case 'L': line(cx, cy, c.x, c.y); cx = c.x; cy = c.y; break; case 'Q': quad(cx, cy, c.x1, c.y1, c.x, c.y); cx = c.x; cy = c.y; break; case 'C': cubic(cx, cy, c.x1, c.y1, c.x2, c.y2, c.x, c.y); cx = c.x; cy = c.y; break; case 'Z': line(cx, cy, sx, sy); cx = sx; cy = sy; break; } }
+		if (cx !== sx || cy !== sy) { line(cx, cy, sx, sy); }      // CFF outlines (Inter) have no explicit Z: close the last contour
 		if (!edges.length) { g = { empty: true }; this.glyphCache.set(key, g); return g; }
 		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity; for (const e of edges) { minX = Math.min(minX, e[0], e[2]); maxX = Math.max(maxX, e[0], e[2]); minY = Math.min(minY, e[1], e[3]); maxY = Math.max(maxY, e[1], e[3]); }
-		const left = Math.floor(minX) - 1, top = Math.floor(minY) - 1, w = Math.ceil(maxX) + 1 - left, h = Math.ceil(maxY) + 1 - top; const acc = new Float32Array(w * h + 2);
-		for (const [x0r, y0r, x1r, y1r] of edges) {   // font-rs style signed-area accumulation
-			let x0 = x0r - left, y0 = y0r - top, x1 = x1r - left, y1 = y1r - top; let dir = 1; if (y0 > y1) { [x0, y0, x1, y1] = [x1, y1, x0, y0]; dir = -1; }
-			const dxdy = (x1 - x0) / (y1 - y0); let x = x0; const yStart = Math.max(0, Math.floor(y0)), yEnd = Math.min(h, Math.ceil(y1));
-			if (y0 < 0) { x -= y0 * dxdy; }
-			for (let y = yStart; y < yEnd; y++) {
-				const dy = Math.min(y + 1, y1) - Math.max(y, y0); const xnext = x + dxdy * dy; const d = dy * dir; let xa = Math.min(x, xnext), xb = Math.max(x, xnext);
-				const x0f = Math.floor(xa), x0i = x0f, x1ceil = Math.ceil(xb), x1i = x1ceil; const row = y * w;
-				if (x1i <= x0i + 1) { const xmf = 0.5 * (x + xnext) - x0f; acc[row + x0i] += d - d * xmf; acc[row + x0i + 1] += d * xmf; }
-				else { const s = 1 / (xb - xa); const x0fr = xa - x0f; const a0 = 0.5 * s * (1 - x0fr) * (1 - x0fr); const x1f = xb - x1ceil + 1; const am = 0.5 * s * x1f * x1f; acc[row + x0i] += d * a0; if (x1i === x0i + 2) { acc[row + x0i + 1] += d * (1 - a0 - am); } else { const a1 = s * (1.5 - x0fr); acc[row + x0i + 1] += d * (a1 - a0); for (let xi = x0i + 2; xi < x1i - 1; xi++) { acc[row + xi] += d * s; } const a2 = a1 + (x1i - x0i - 3) * s; acc[row + x1i - 1] += d * (1 - a2 - am); } acc[row + x1i] += d * am; }
-				x = xnext;
+		const left = Math.floor(minX) - 1, top = Math.floor(minY) - 1, w = Math.ceil(maxX) + 1 - left, h = Math.ceil(maxY) + 1 - top;
+		// non-zero winding rule by scanline sampling (4 sub-scanlines per pixel, exact horizontal span coverage): fonts such as Inter keep overlapping contours,
+		// which a signed-area accumulator would cancel into holes
+		const cov = new Uint8Array(w * h); const SUB = 4; const rowAcc = new Float32Array(w + 1);
+		const E = edges.map(([x0r, y0r, x1r, y1r]) => (y0r < y1r ? { x0: x0r - left, y0: y0r - top, x1: x1r - left, y1: y1r - top, dir: 1 } : { x0: x1r - left, y0: y1r - top, x1: x0r - left, y1: y0r - top, dir: -1 }));
+		E.forEach(e => { e.dxdy = (e.x1 - e.x0) / (e.y1 - e.y0); });
+		for (let y = 0; y < h; y++) {
+			rowAcc.fill(0);
+			for (let sy = 0; sy < SUB; sy++) {
+				const ys = y + (sy + 0.5) / SUB; const xs = [];
+				for (const e of E) { if (ys >= e.y0 && ys < e.y1) { xs.push([e.x0 + (ys - e.y0) * e.dxdy, e.dir]); } }
+				if (xs.length < 2) { continue; } xs.sort((p, q) => p[0] - q[0]);
+				let wind = 0;
+				for (let i = 0; i < xs.length - 1; i++) {
+					wind += xs[i][1]; if (wind === 0) { continue; }
+					const xa = Math.max(0, xs[i][0]), xb = Math.min(w, xs[i + 1][0]); if (xb <= xa) { continue; }
+					const ia = Math.floor(xa), ib = Math.floor(xb);
+					if (ia === ib) { rowAcc[ia] += xb - xa; } else { rowAcc[ia] += ia + 1 - xa; for (let xi = ia + 1; xi < ib; xi++) { rowAcc[xi] += 1; } if (ib < w) { rowAcc[ib] += xb - ib; } }
+				}
 			}
+			for (let x = 0; x < w; x++) { cov[y * w + x] = Math.min(255, Math.round(rowAcc[x] / SUB * 255)); }
 		}
-		const cov = new Uint8Array(w * h); for (let y = 0; y < h; y++) { let a = 0; for (let x = 0; x < w; x++) { a += acc[y * w + x]; cov[y * w + x] = Math.min(255, Math.round(Math.abs(a) * 255)); } }
 		g = { left, top, w, h, cov }; this.glyphCache.set(key, g); return g;
 	}
 	drawText(frag, dx, dy, alphaMul) {
