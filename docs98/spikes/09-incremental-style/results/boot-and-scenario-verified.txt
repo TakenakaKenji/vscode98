@@ -1,0 +1,52 @@
+importing the workbench...
+imported after 5521 ms
+import 5521 ms (RSS 222 MB after), total until stable 586281 ms, elements 968, layouts 163 (579031 ms incl. style; native engine pack 1891 + C 464 + apply 151 ms), RSS 609 MB (peak 609 MB)
+missing: [["css: unparsable selector",98]]
+unsupported: [["float",477],["display:grid",220]]
+console: 78 messages, 28 distinct
+  x1 error: %c  ERR color: #f33 Error while creating IndexedDB     at <anonymous> (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:960730:24)
+  x1 error: %c  ERR color: #f33 [IndexedDB Storage vscode-web-state-db-global] connect() error: indexedDB is not defined
+  x1 error: %c  ERR color: #f33 [IndexedDB Storage vscode-web-state-db-global-shared] connect() error: indexedDB is not defined
+  x1 error: %c  ERR color: #f33 [IndexedDB Storage vscode-web-state-db-empty-window] connect() error: indexedDB is not defined
+  x1 error: %c  ERR color: #f33 [IndexedDB Storage global] create(): indexedDB is not defined:     at <anonymous> (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:960730:24)
+  x1 error: %c  ERR color: #f33 [IndexedDB Storage global-shared] create(): indexedDB is not defined:     at <anonymous> (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:960730:24)
+  x1 error: %c  ERR color: #f33 [IndexedDB Storage empty-window] create(): indexedDB is not defined:     at <anonymous> (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:960730:24)
+  x1 warn: %c WARN color: #993 [AgentHost:remote] No remote agent connection available. Not connecting.
+  x1 error: %c  ERR color: #f33 could not load module filename '/out/vs/workbench/services/keybinding/browser/keyboardLayouts/layout.contribution.linux.js'
+  x47 error: %c  ERR color: #f33     at _FileSystemProviderError (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:59009:11)
+  x2 error: %c  ERR color: #f33     at getExtensionsControlManifest (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:389067:17)
+  x2 error: %c  ERR color: #f33     at _ErrorNoTelemetry (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:344:11)
+layout passes: 163, 579031 ms total (style 575863, layout 3126); elements per pass min 23 max 983
+restyle estimate with perfect invalidation: 4675 element restyles instead of 128207 (3.6 %)
+passes by estimated dirty elements: 0-0: 17, 1-5: 76, 6-25: 41, 26-100: 19, 101-300: 6, 301-max: 4
+style passes: 161 incremental, 2 full {"first pass":1,"too many dirty elements ":1}; elements restyled 6786 of 128207 (rule matching redone for 4845); style time: incremental passes 569996 ms, full passes 5867 ms
+style verification against a full restyle: 0 mismatches
+mutations that triggered passes: {"ins":2492,"rem":480,"text":0,"attr:class":2804,"attr:style":2085,"attr:other":3495}
+passes with no structural/attribute change (text or nothing): 0
+slowest passes:
+   7077 ms (208 mutations, est 62/968; style incremental: index 864 + plan 49 ms, 62 restyled (62 rematched), marked 62)
+   7071 ms (237 mutations, est 66/967; style incremental: index 929 + plan 60 ms, 967 restyled (135 rematched), marked 135)
+   7065 ms (2 mutations, est 2/968; style incremental: index 0 + plan 1 ms, 2 restyled (2 rematched), marked 2)
+   6226 ms (2 mutations, est 2/968; style incremental: index 0 + plan 1 ms, 2 restyled (2 rematched), marked 2)
+   5913 ms (1 mutations, est 1/968; style incremental: index 0 + plan 1 ms, 1 restyled (1 rematched), marked 1)
+errors: 11 (2 distinct)
+  x4 unhandledRejection:     at <anonymous> (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:960730:24)
+  x7 unhandledRejection:     at _FileSystemProviderError (/tmp/claude-0/out-web/vs/code/browser/workbench/workbench.js:59009:11)
+scenario:
+  close the onboarding dialog (click X): 0 passes, 0 ms (style 0, layout 0), element restyles now 0 (rematched 0) vs ideal 0, wall 191 ms, 968 elements
+  Ctrl+N (new untitled file): 0 passes, 0 ms (style 0, layout 0), element restyles now 0 (rematched 0) vs ideal 0, wall 189 ms, 968 elements
+  -> .monaco-editor elements: 3, textarea: true, active element: button
+  type 'c': 4 passes, 22310 ms (style 22233, layout 76), element restyles now 408 (rematched 408) vs ideal 198, wall 22333 ms, 922 elements
+  type 'o': 5 passes, 25554 ms (style 25465, layout 89), element restyles now 15 (rematched 15) vs ideal 15, wall 25576 ms, 922 elements
+  type 'n': 5 passes, 25701 ms (style 25610, layout 91), element restyles now 16 (rematched 16) vs ideal 16, wall 25722 ms, 922 elements
+  type 's': 5 passes, 25536 ms (style 25431, layout 105), element restyles now 16 (rematched 16) vs ideal 16, wall 25562 ms, 922 elements
+  type 't': 5 passes, 25363 ms (style 25272, layout 90), element restyles now 16 (rematched 16) vs ideal 16, wall 25381 ms, 922 elements
+  type ' ': 5 passes, 26647 ms (style 26543, layout 103), element restyles now 16 (rematched 16) vs ideal 16, wall 26673 ms, 922 elements
+  type 'x': 5 passes, 26398 ms (style 26293, layout 105), element restyles now 16 (rematched 16) vs ideal 16, wall 26418 ms, 922 elements
+  -> editor text: "const x"
+  typing, per character: 4.9 passes, 25358 ms (style 25264, layout 94), element restyles now 72 vs ideal 42
+  F1 (command palette): 15 passes, 98948 ms (style 98601, layout 342), element restyles now 1034 (rematched 1010) vs ideal 793, wall 99090 ms, 1421 elements
+  -> quick input visible: true
+  Escape: 2 passes, 15344 ms (style 15305, layout 38), element restyles now 377 (rematched 353) vs ideal 141, wall 15550 ms, 1421 elements
+  click Search (activity bar): 49 passes, 397492 ms (style 396489, layout 988), element restyles now 2280 (rematched 2276) vs ideal 2065, wall 397647 ms, 1553 elements
+style verification against a full restyle, boot + scenario: 0 mismatches
