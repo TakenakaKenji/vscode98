@@ -35,6 +35,12 @@ Start here. Every doc in `docs98/` is listed below with a one-line summary. Upda
 | `inventory/data/` | Raw JSON from traces and baselines (`data/baseline/`) |
 | `inventory/scripts/` | The scan scripts that produced the numbers (`scan_imports.py`, `scan_electron.py`, `scan_web_and_lang.sh`, `trace_renderer.mjs`, `trace_scenarios.mjs` + `run_scenarios.sh`, `trace_webview.mjs`, process hook `node_hook.cjs` (+ `node_hook_esm.mjs`, `analyze_proc_trace.py`), shared `trace_common.mjs`/`cdp_input.mjs`; baseline: `stage_bundled_app.ts`, `run_baseline.sh`, `measure_baseline.mjs`) |
 
+## Phase 1 spikes
+
+| File | What it covers |
+|---|---|
+| [spikes/01-js-engine/README.md](spikes/01-js-engine/README.md) | **Measured** spike 1, step 1: QuickJS-ng 0.17 compiles the whole production bundle unmodified (workbench 2.8 to 3.4 s, 0.2 s from bytecode); missing `Intl`/`WebAssembly`/`structuredClone`; esbuild lowers to ES2015 but not ES5; Win 7 OK / XP-98 need a sync-layer port. Code: `parse_bench.c`, `feature_probe.js` |
+
 ## Key facts to remember (quick reference)
 
 - Electron is imported in only ~52 files (47 in `electron-main`); the renderer reaches it through one preload bridge (`src/vs/base/parts/sandbox/electron-browser/preload.ts`).
@@ -45,6 +51,7 @@ Start here. Every doc in `docs98/` is listed below with a one-line summary. Upda
 - **Scenario trace (measured):** startup + 9 features = 312 distinct instrumented members; editor typing needs full legacy keyboard events; terminal uses `OffscreenCanvas` + Canvas 2D (no WebGL); webviews are an iframe-in-iframe over a `vscode-webview:` scheme + service worker (content measured in `runtime-trace-webview.md`: table/list/inline layout, 144 CSS properties, KaTeX web fonts).
 - **Process-side trace (measured):** the whole app calls only 119 distinct Node functions (~13 modules) and 102 Electron methods/events (incl. `webContents`/`session`); renderer↔main IPC is one multiplexed `vscode:message` channel + ~3 MessagePort handoffs; programs launched: `rg`, `git`, `tsserver`, shells. Language-server children traced: they add the `fork()` IPC channel (`process.send`) and very heavy synchronous `fs.statSync` use but few new functions.
 - **Bundle baseline (measured):** the desktop bundle is 58 MB of minified ES2024 ES modules in 30 files (workbench 20.6 MB); renderer reaches a restored workbench ~2.0 s after start, of which ~1.3 s is loading the workbench bundle; idle with an empty workspace is ~1.5 GB RSS / ~0.84 GB PSS across 10 processes.
+- **Spike 1 step 1 (measured):** QuickJS-ng compiles all 30 bundle files with zero syntax changes; compiling the workbench takes 2.8 to 3.4 s on a 2.1 GHz Xeon (V8 loads and runs it in 1.3 s) but only 0.2 s from precompiled bytecode; `Intl`, `WebAssembly`, `structuredClone` are missing; execution speed still unmeasured.
 - Build targets are ES2024 (no downleveling today).
 - Open proposals: D-003 (custom host), D-004/5/6 (engine, render, IPC), D-008 (scope out AI/cloud features) in [05-decisions.md](05-decisions.md).
 

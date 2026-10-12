@@ -1,0 +1,302 @@
+[
+ {
+  "file": "vs/sessions/sessions.desktop.main.js",
+  "srcMB": 20.7,
+  "compileMs": 3395,
+  "heapMB": 91.1,
+  "funcs": 116703,
+  "bytecodeMB": 59.7,
+  "reloadMs": 209,
+  "peakRSSMB": 269
+ },
+ {
+  "file": "vs/workbench/workbench.desktop.main.js",
+  "srcMB": 19.7,
+  "compileMs": 2880,
+  "heapMB": 86.4,
+  "funcs": 111049,
+  "bytecodeMB": 56.6,
+  "reloadMs": 246,
+  "peakRSSMB": 258
+ },
+ {
+  "file": "vs/platform/agentHost/node/agentHostMain.js",
+  "srcMB": 3.5,
+  "compileMs": 270,
+  "heapMB": 15.5,
+  "funcs": 16792,
+  "bytecodeMB": 10.1,
+  "reloadMs": 26,
+  "peakRSSMB": 48
+ },
+ {
+  "file": "vs/workbench/api/node/extensionHostProcess.js",
+  "srcMB": 2.2,
+  "compileMs": 214,
+  "heapMB": 10.7,
+  "funcs": 14180,
+  "bytecodeMB": 6.4,
+  "reloadMs": 35,
+  "peakRSSMB": 34
+ },
+ {
+  "file": "vs/workbench/api/worker/extensionHostWorkerMain.js",
+  "srcMB": 1.9,
+  "compileMs": 152,
+  "heapMB": 9.3,
+  "funcs": 12379,
+  "bytecodeMB": 5.5,
+  "reloadMs": 17,
+  "peakRSSMB": 30
+ },
+ {
+  "file": "nls.messages.js",
+  "srcMB": 1.4,
+  "compileMs": 23,
+  "heapMB": 3.0,
+  "funcs": 1,
+  "bytecodeMB": 1.5,
+  "reloadMs": 5,
+  "peakRSSMB": 11
+ },
+ {
+  "file": "vs/code/electron-utility/sharedProcess/sharedProcessMain.js",
+  "srcMB": 1.4,
+  "compileMs": 107,
+  "heapMB": 6.8,
+  "funcs": 8149,
+  "bytecodeMB": 4.2,
+  "reloadMs": 10,
+  "peakRSSMB": 22
+ },
+ {
+  "file": "mainImpl.js",
+  "srcMB": 1.2,
+  "compileMs": 106,
+  "heapMB": 7.1,
+  "funcs": 7796,
+  "bytecodeMB": 4.6,
+  "reloadMs": 10,
+  "peakRSSMB": 23
+ },
+ {
+  "file": "vs/code/node/cliProcessMain.js",
+  "srcMB": 0.7,
+  "compileMs": 49,
+  "heapMB": 3.5,
+  "funcs": 4258,
+  "bytecodeMB": 2.0,
+  "reloadMs": 5,
+  "peakRSSMB": 13
+ },
+ {
+  "file": "vs/editor/common/services/editorWebWorkerMain.js",
+  "srcMB": 0.3,
+  "compileMs": 25,
+  "heapMB": 1.6,
+  "funcs": 1778,
+  "bytecodeMB": 0.9,
+  "reloadMs": 2,
+  "peakRSSMB": 7
+ },
+ {
+  "file": "vs/platform/terminal/node/ptyHostMain.js",
+  "srcMB": 0.3,
+  "compileMs": 22,
+  "heapMB": 1.8,
+  "funcs": 2302,
+  "bytecodeMB": 1.1,
+  "reloadMs": 2,
+  "peakRSSMB": 8
+ },
+ {
+  "file": "cli.js",
+  "srcMB": 0.2,
+  "compileMs": 15,
+  "heapMB": 1.2,
+  "funcs": 1325,
+  "bytecodeMB": 0.7,
+  "reloadMs": 1,
+  "peakRSSMB": 6
+ },
+ {
+  "file": "vs/platform/files/node/watcher/watcherMain.js",
+  "srcMB": 0.2,
+  "compileMs": 12,
+  "heapMB": 1.1,
+  "funcs": 1465,
+  "bytecodeMB": 0.6,
+  "reloadMs": 1,
+  "peakRSSMB": 6
+ },
+ {
+  "file": "vs/platform/localTranscription/node/localTranscriptionMain.js",
+  "srcMB": 0.2,
+  "compileMs": 10,
+  "heapMB": 0.9,
+  "funcs": 1144,
+  "bytecodeMB": 0.5,
+  "reloadMs": 1,
+  "peakRSSMB": 5
+ },
+ {
+  "file": "vs/platform/profiling/electron-browser/profileAnalysisWorkerMain.js",
+  "srcMB": 0.2,
+  "compileMs": 11,
+  "heapMB": 0.9,
+  "funcs": 1038,
+  "bytecodeMB": 0.5,
+  "reloadMs": 1,
+  "peakRSSMB": 5
+ },
+ {
+  "file": "vs/workbench/contrib/debug/node/telemetryApp.js",
+  "srcMB": 0.2,
+  "compileMs": 12,
+  "heapMB": 0.9,
+  "funcs": 1101,
+  "bytecodeMB": 0.5,
+  "reloadMs": 1,
+  "peakRSSMB": 5
+ },
+ {
+  "file": "vs/workbench/contrib/notebook/common/services/notebookWebWorkerMain.js",
+  "srcMB": 0.2,
+  "compileMs": 16,
+  "heapMB": 1.2,
+  "funcs": 1537,
+  "bytecodeMB": 0.7,
+  "reloadMs": 1,
+  "peakRSSMB": 6
+ },
+ {
+  "file": "vs/workbench/services/textMate/browser/backgroundTokenization/worker/textMateTokenizationWorker.workerMain.js",
+  "srcMB": 0.2,
+  "compileMs": 19,
+  "heapMB": 1.2,
+  "funcs": 1476,
+  "bytecodeMB": 0.7,
+  "reloadMs": 2,
+  "peakRSSMB": 6
+ },
+ {
+  "file": "bootstrap-fork.js",
+  "srcMB": 0.1,
+  "compileMs": 6,
+  "heapMB": 0.6,
+  "funcs": 574,
+  "bytecodeMB": 0.4,
+  "reloadMs": 1,
+  "peakRSSMB": 5
+ },
+ {
+  "file": "main.js",
+  "srcMB": 0.1,
+  "compileMs": 5,
+  "heapMB": 0.6,
+  "funcs": 515,
+  "bytecodeMB": 0.4,
+  "reloadMs": 1,
+  "peakRSSMB": 5
+ },
+ {
+  "file": "vs/platform/agentHost/node/diffWorkerMain.js",
+  "srcMB": 0.1,
+  "compileMs": 8,
+  "heapMB": 0.8,
+  "funcs": 918,
+  "bytecodeMB": 0.4,
+  "reloadMs": 1,
+  "peakRSSMB": 5
+ },
+ {
+  "file": "vs/workbench/contrib/output/common/outputLinkComputerMain.js",
+  "srcMB": 0.1,
+  "compileMs": 8,
+  "heapMB": 0.7,
+  "funcs": 861,
+  "bytecodeMB": 0.4,
+  "reloadMs": 1,
+  "peakRSSMB": 5
+ },
+ {
+  "file": "vs/workbench/services/languageDetection/browser/languageDetectionWebWorkerMain.js",
+  "srcMB": 0.1,
+  "compileMs": 10,
+  "heapMB": 0.8,
+  "funcs": 888,
+  "bytecodeMB": 0.4,
+  "reloadMs": 1,
+  "peakRSSMB": 5
+ },
+ {
+  "file": "vs/workbench/services/search/worker/localFileSearchMain.js",
+  "srcMB": 0.1,
+  "compileMs": 13,
+  "heapMB": 0.8,
+  "funcs": 962,
+  "bytecodeMB": 0.4,
+  "reloadMs": 1,
+  "peakRSSMB": 5
+ },
+ {
+  "file": "vs/base/parts/sandbox/electron-browser/preload-aux.js",
+  "srcMB": 0.0,
+  "compileMs": 0,
+  "heapMB": 0.1,
+  "funcs": 6,
+  "bytecodeMB": 0.0,
+  "reloadMs": 0,
+  "peakRSSMB": 3
+ },
+ {
+  "file": "vs/base/parts/sandbox/electron-browser/preload.js",
+  "srcMB": 0.0,
+  "compileMs": 0,
+  "heapMB": 0.1,
+  "funcs": 28,
+  "bytecodeMB": 0.0,
+  "reloadMs": 0,
+  "peakRSSMB": 3
+ },
+ {
+  "file": "vs/code/electron-browser/workbench/workbench.js",
+  "srcMB": 0.0,
+  "compileMs": 1,
+  "heapMB": 0.2,
+  "funcs": 38,
+  "bytecodeMB": 0.0,
+  "reloadMs": 0,
+  "peakRSSMB": 3
+ },
+ {
+  "file": "vs/platform/browserView/electron-browser/preload-browserView.js",
+  "srcMB": 0.0,
+  "compileMs": 2,
+  "heapMB": 0.3,
+  "funcs": 148,
+  "bytecodeMB": 0.1,
+  "reloadMs": 0,
+  "peakRSSMB": 4
+ },
+ {
+  "file": "vs/sessions/electron-browser/sessions.js",
+  "srcMB": 0.0,
+  "compileMs": 1,
+  "heapMB": 0.1,
+  "funcs": 21,
+  "bytecodeMB": 0.0,
+  "reloadMs": 0,
+  "peakRSSMB": 3
+ },
+ {
+  "file": "vs/workbench/contrib/webview/browser/pre/service-worker.js",
+  "srcMB": 0.0,
+  "compileMs": 1,
+  "heapMB": 0.1,
+  "funcs": 45,
+  "bytecodeMB": 0.0,
+  "reloadMs": 0,
+  "peakRSSMB": 3
+ }
+]

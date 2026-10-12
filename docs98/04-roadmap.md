@@ -21,16 +21,17 @@ Status values: `not started`, `in progress`, `done`, `blocked`.
 
 **Exit criterion:** we can state, with data, the size of the DOM/CSS/Node/Electron surface the host must provide.
 
-## Phase 1 — Feasibility spikes — `not started`
+## Phase 1 — Feasibility spikes — `in progress`
 
 Small experiments to de-risk the three components before committing.
 
 | Spike | Question |
 |---|---|
-| JS engine | Can QuickJS(-ng) (or another engine) load the compiled workbench bundle? How slow? What ES features are missing? |
+| JS engine (spike 1) | Can QuickJS(-ng) (or another engine) load the compiled workbench bundle? How slow? What ES features are missing? **Step 1 done (compile-only):** all 30 bundle files compile unmodified, workbench in 2.8 to 3.4 s (0.2 s from precompiled bytecode); gaps are `Intl`, `WebAssembly`, `structuredClone`; ES2015 is the lowering floor → [spikes/01-js-engine/](spikes/01-js-engine/README.md). Step 2 (execution speed via `tsserver` + Node shim) not started |
+| WebAssembly (added) | Syntax highlighting needs WASM (`vscode-oniguruma`, tree-sitter) and QuickJS has none: embed a WASM interpreter (e.g. wasm3) or replace those packages with native bindings? Not started |
 | Rendering | Can a minimal DOM + flexbox + GDI renderer draw a simple Monaco editor view? |
 | Node shim | Can the extension host boot on a minimal `fs`/`child_process`/`net` shim? |
-| Build | Can we produce a downleveled, single-bundle build of the workbench? |
+| Build | Can we produce a downleveled, single-bundle build of the workbench? Partly answered by spike 1: esbuild lowers the workbench to ES2015 cleanly, ES5 is impossible; behavior of lowered code unverified |
 
 **Exit criterion:** decisions D-004 (JS engine), D-005 (render strategy), D-006 (process/IPC model) recorded in [05-decisions.md](05-decisions.md).
 

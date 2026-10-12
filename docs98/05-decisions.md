@@ -20,6 +20,7 @@ Format: ID, date, status (`accepted`, `proposed`, `rejected`, `superseded`), dec
 ## D-004 — JS engine — proposed (pending Phase 1)
 - **Candidate:** QuickJS / QuickJS-ng. Others to compare: older V8 builds, Duktape, other embeddable engines.
 - **Criteria:** buildable for Win 7/XP/98, ES level support, speed, memory, multi-context/worker support.
+- **Evidence so far (spike 1, step 1, 2026-10-12):** QuickJS-ng 0.17.0 compiles all 30 bundle files unmodified (language level OK); workbench compile 2.8 to 3.4 s but 0.2 s from precompiled bytecode (so ship bytecode); 86 MB compiled heap for the workbench; lacks `Intl`, `WebAssembly`, `structuredClone` (must be supplied); its Windows sync layer uses Vista+ APIs (fine on Win 7, to be replaced for XP/98). **Execution speed not yet measured.** ES5-only engines are excluded (esbuild cannot lower below ES2015). Details: [spikes/01-js-engine/README.md](spikes/01-js-engine/README.md). Still `proposed`.
 
 ## D-005 — Render strategy — proposed (pending Phase 1)
 - **Candidate:** Minimal DOM + CSS layout engine drawing via GDI.
