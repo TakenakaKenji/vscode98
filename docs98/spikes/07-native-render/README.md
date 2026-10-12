@@ -60,6 +60,20 @@ Changes to spike 6 (all output-neutral, checked by identical framebuffers agains
 - **Quirks of the JS layout found by reading it while porting (kept as is so the two stay identical; not verified on a page and not fixed):** inline boxes that wrap over several lines get width 0 for all but the last line rectangle; `finishLine` runs twice on the last line when a trailing empty line is dropped (double alignment shift); inline-blocks nested in an inline span are never absolutized; the anonymous flex text box copies its parent's `background-color` (it would be painted twice). One real bug was fixed in both: `shiftFrags` did not shift the text baseline (no test page exercised it).
 - **32-bit builds are slower in C too** (cold full-frame execute 130 to 190 ms instead of 45 to 60 ms), mostly the `double` blend math without SSE2; on a Pentium II/III (no SSE2) this would need an integer blend path.
 
+## CPU baseline: no SSE2 (measured afterwards)
+
+Nothing in the C needs SSE2; it is a compiler-flag choice. The whole host (QuickJS-ng, spike 5 shims, `render.c`, `layout.c`) was rebuilt for a Pentium-class x87 target: `-m32 -march=i586 -mno-sse -mno-sse2 -mfpmath=387` (QuickJS rebuilt with the same flags). `objdump` finds **0 SSE and 0 CMOV instructions** in the binary (the default `-m32` build has no SSE but 1,064 CMOV, which Pentium MMX/K6/486 lack), and all 5 pages still give identical geometry and byte-identical framebuffers. These ran on a modern CPU, which executes the x87 code; I have not run it on an emulated or real old CPU.
+
+Workbench replay on QuickJS-ng, warm, native layout + native paint:
+
+| Build | Layout (pack + C + copy) | Paint execute (C, one 1280×800 frame) |
+|---|---|---|
+| x86-64 | 20 to 40 ms | 45 to 60 ms |
+| x86-32, SSE2 | 26 to 37 ms | 130 to 142 ms |
+| x86-32, i586 x87 (no SSE, no CMOV) | 28 to 43 ms | 300 to 315 ms |
+
+Layout is barely affected; the rasterizer is the only floating-point-bound hot path (per-pixel `double` blending, `floor`/`fmin` calls). The fix is an integer rasterizer (8-bit alpha blending, fixed-point edges), which would drop the exact byte-equality with the JS reference in favour of a ±1 tolerance. Not done.
+
 ## Reproduce
 
 Needs QuickJS-ng built with cmake in `$QJS/build` (and `build32` for the 32-bit build), the spike 6 prerequisites (Node, Playwright Chromium for the Chromium comparison only, Inter/DejaVu/Liberation fonts), the Monaco bundle (`node docs98/spikes/06-rendering/host/build_monaco.mjs <dir>`) and a captured workbench (`capture_workbench.sh`, see spike 6). From the repo root:
