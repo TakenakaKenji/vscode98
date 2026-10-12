@@ -47,17 +47,21 @@ static int errno_from_win(DWORD e) {
 #define MAXSLOT 1024
 #define FIRST_FD 100
 
-typedef struct Fd {
+typedef struct Fd Fd;
+struct Fd {
 	int num; HANDLE h; int ovl;                 /* ovl: opened FILE_FLAG_OVERLAPPED (reads/writes completed by the event loop) */
 	JSValue on_read, on_write;                  /* JS_UNDEFINED when unset */
 	/* read side */
 	uint8_t *rbuf; DWORD rlen, roff; int rpending, reof, rerr;
 	OVERLAPPED rov; HANDLE rev;                 /* manual-reset: signalled when a chunk / EOF / error is ready to be taken by read() */
 	HANDLE thread, twake; volatile LONG tstate; /* thread backend: 0 idle, 1 reading, 2 result ready */
+	wchar_t *pipename; int is_server; int server_of;   /* shadow instances (a backlog, so that clients connecting in the same tick find a free instance) point at the listening fd */
+	           /* named-pipe server: `h` is the instance waiting for a client; reads mean ConnectNamedPipe, not data */
 	/* write side (overlapped handles only; others write synchronously) */
 	uint8_t *wbuf; DWORD wlen; uint8_t *wq; DWORD wqlen, wqcap; int wpending, werr;
-	OVERLAPPED wov; HANDLE wev;
-} Fd;
+	OVERLAPPED wov; HANDLE wev; int shutting;   /* shutdown(SHUT_WR) requested: close the handle once the queued writes are out */
+};
+static void shutdown_finish(Fd *f);
 static Fd *slots[MAXSLOT];
 static JSContext *g_ctx;
 static HANDLE ready_ev;                         /* kept signalled while a write handler can fire immediately */
@@ -78,7 +82,7 @@ static char *narrow(const wchar_t *w) {
 /* ------------------------------------------------------------------------------------------------------------------------------------ slots */
 static Fd *slot_new(int num, HANDLE h, int ovl) {
 	if (num < 0 || num >= MAXSLOT || slots[num]) { return NULL; }
-	Fd *f = calloc(1, sizeof(Fd)); f->num = num; f->h = h; f->ovl = ovl; f->on_read = f->on_write = JS_UNDEFINED;
+	Fd *f = calloc(1, sizeof(Fd)); f->num = num; f->server_of = -1; f->h = h; f->ovl = ovl; f->on_read = f->on_write = JS_UNDEFINED;
 	f->rev = CreateEvent(NULL, TRUE, FALSE, NULL); f->wev = CreateEvent(NULL, TRUE, FALSE, NULL); f->twake = NULL;
 	slots[num] = f; return f;
 }
@@ -120,7 +124,15 @@ static DWORD WINAPI reader_thread(LPVOID arg) {
 	return 0;
 }
 static void start_read(Fd *f) {
-	if (f->rpending || f->rlen > f->roff || f->reof || f->rerr) { return; }
+	if (f->rpending || f->rlen > f->roff || f->reof || f->rerr || f->h == INVALID_HANDLE_VALUE) { return; }
+	if (f->is_server) {
+		ResetEvent(f->rev); memset(&f->rov, 0, sizeof f->rov); f->rov.hEvent = f->rev;
+		if (ConnectNamedPipe(f->h, &f->rov)) { f->rpending = 1; return; }
+		DWORD err = GetLastError();
+		if (err == ERROR_IO_PENDING) { f->rpending = 1; return; }
+		if (err == ERROR_PIPE_CONNECTED) { f->rlen = 1; SetEvent(f->rev); return; }      /* a client was faster than we were */
+		f->rerr = -errno_from_win(err); SetEvent(f->rev); return;
+	}
 	if (!f->rbuf) { f->rbuf = malloc(CHUNK); }
 	ResetEvent(f->rev);
 	if (!f->ovl) {                                           /* helper thread does the blocking read */
@@ -137,6 +149,7 @@ static void start_read(Fd *f) {
 /* moves a finished read into rlen/reof/rerr */
 static void harvest(Fd *f) {
 	if (!f->rpending) { return; }
+	if (f->is_server) { DWORD n; if (GetOverlappedResult(f->h, &f->rov, &n, FALSE)) { f->rpending = 0; f->rlen = 1; } else if (GetLastError() != ERROR_IO_INCOMPLETE) { f->rpending = 0; f->rerr = -E_IO; } return; }
 	if (!f->ovl) { if (f->tstate != 2) { return; } f->rpending = 0; return; }
 	DWORD n = 0;
 	if (GetOverlappedResult(f->h, &f->rov, &n, FALSE)) { f->rpending = 0; if (n == 0) { f->reof = 1; } else { f->rlen = n; f->roff = 0; } }
@@ -159,8 +172,15 @@ static void write_harvest(Fd *f) {
 	if (GetOverlappedResult(f->h, &f->wov, &n, FALSE)) { f->wpending = 0; f->wlen = 0; }
 	else { DWORD err = GetLastError(); if (err == ERROR_IO_INCOMPLETE) { return; } f->wpending = 0; f->werr = -errno_from_win(err); }
 	write_kick(f);
+	shutdown_finish(f);
 }
 static int write_has_room(Fd *f) { return f->wqlen < WCAP / 2; }
+/* A pipe has no half-close: shutdown(SHUT_WR) becomes "send what is queued, then close the handle"; the peer sees EOF, and so does our own reader. */
+static void shutdown_finish(Fd *f) {
+	if (!f->shutting || f->wpending || f->wqlen || f->h == INVALID_HANDLE_VALUE) { return; }
+	if (f->ovl && f->rpending) { CancelIo(f->h); DWORD n; GetOverlappedResult(f->h, &f->rov, &n, TRUE); f->rpending = 0; }
+	if (f->num > 2) { CloseHandle(f->h); } f->h = INVALID_HANDLE_VALUE; f->reof = 1; SetEvent(f->rev);
+}
 
 /* ------------------------------------------------------------------------------------------------------------------------------------ JS: descriptors */
 static int arg_fd(JSContext *ctx, JSValueConst v) { int fd = -1; JS_ToInt32(ctx, &fd, v); return fd; }
@@ -192,6 +212,7 @@ static JSValue js_write(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		int64_t done = 0; while (done < len) { DWORD n = 0; if (!WriteFile(f->h, buf + off + done, (DWORD)(len - done > 1 << 20 ? 1 << 20 : len - done), &n, NULL)) { return JS_NewInt32(ctx, done ? (int)done : -errno_from_win(GetLastError())); } done += n; }
 		return JS_NewInt32(ctx, (int)done);
 	}
+	if (f->h == INVALID_HANDLE_VALUE) { return JS_NewInt32(ctx, -E_PIPE); }
 	if (f->wpending) { write_harvest(f); }
 	if (f->werr) { int e = f->werr; return JS_NewInt32(ctx, e); }
 	if (len == 0) { return JS_NewInt32(ctx, 0); }
@@ -207,15 +228,16 @@ static void cancel_io(Fd *f) {
 	if (f->ovl && f->wpending) { CancelIo(f->h); DWORD n; GetOverlappedResult(f->h, &f->wov, &n, TRUE); f->wpending = 0; }
 }
 static JSValue js_close(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
-	int fd = arg_fd(ctx, argv[0]); Fd *f = slots[fd >= 0 && fd < MAXSLOT ? fd : 0]; if (!f || f->num != fd) { return JS_NewInt32(ctx, -E_BADF); }
+	int fd = arg_fd(ctx, argv[0]);
+	for (int i = 0; i < MAXSLOT; i++) { if (slots[i] && slots[i]->server_of == fd && fd >= 0) { JSValue a[1] = { JS_NewInt32(ctx, i) }; JS_FreeValue(ctx, js_close(ctx, JS_UNDEFINED, 1, a)); } } Fd *f = slots[fd >= 0 && fd < MAXSLOT ? fd : 0]; if (!f || f->num != fd) { return JS_NewInt32(ctx, -E_BADF); }
 	if (f->ovl) { if (f->wpending) { DWORD n; GetOverlappedResult(f->h, &f->wov, &n, TRUE); f->wpending = 0; } }  /* let queued bytes reach the peer before closing */
-	cancel_io(f);
-	if (fd > 2) { CloseHandle(f->h); }
+	if (f->h != INVALID_HANDLE_VALUE) { cancel_io(f); }
+	if (fd > 2 && f->h != INVALID_HANDLE_VALUE) { CloseHandle(f->h); }
 	JS_FreeValue(ctx, f->on_read); JS_FreeValue(ctx, f->on_write);
 	CloseHandle(f->rev); CloseHandle(f->wev);
 	if (f->thread && f->tstate == 1) { /* blocked in ReadFile on a handle we no longer own: abandon the thread and its buffer until the process exits */ }
 	else { free(f->rbuf); if (f->thread) { TerminateThread(f->thread, 0); CloseHandle(f->thread); CloseHandle(f->twake); } }
-	free(f->wbuf); free(f->wq); slots[fd] = NULL; free(f);
+	free(f->wbuf); free(f->wq); free(f->pipename); slots[fd] = NULL; free(f);
 	return JS_NewInt32(ctx, 0);
 }
 static JSValue set_handler(JSContext *ctx, JSValueConst *argv, int is_read) {
@@ -427,6 +449,7 @@ static int win_collect(HANDLE *out, int max) {
 	int n = 0, want_ready = 0;
 	for (int i = 0; i < MAXSLOT && n < max - 2; i++) {
 		Fd *f = slots[i]; if (!f) { continue; }
+		if (f->server_of >= 0) { Fd *pf = slots[f->server_of]; if (pf && !JS_IsUndefined(pf->on_read) && (f->rpending || f->rlen > f->roff)) { out[n++] = f->rev; } continue; }
 		if (!JS_IsUndefined(f->on_read)) { if (f->rlen > f->roff || f->reof || f->rerr || f->rpending) { out[n++] = f->rev; } else { start_read(f); if (f->rpending || f->reof || f->rerr) { out[n++] = f->rev; } } }
 		if (!JS_IsUndefined(f->on_write)) { if (f->ovl && f->wpending) { out[n++] = f->wev; } else { want_ready = 1; } }
 	}
@@ -448,6 +471,11 @@ static int win_dispatch(JSContext *ctx, HANDLE h) {
 	}
 	for (int i = 0; i < MAXSLOT; i++) {
 		Fd *f = slots[i]; if (!f) { continue; }
+		if (h == f->rev && f->server_of >= 0) {
+			Fd *pf = slots[f->server_of]; harvest(f);
+			if (pf && !JS_IsUndefined(pf->on_read) && f->rlen > f->roff) { JSValue fn = JS_DupValue(ctx, pf->on_read); call_js(ctx, fn, 0, NULL); JS_FreeValue(ctx, fn); }
+			return 1;
+		}
 		if (h == f->rev && !JS_IsUndefined(f->on_read)) {
 			harvest(f);
 			if (f->rlen > f->roff || f->reof || f->rerr) { JSValue fn = JS_DupValue(ctx, f->on_read); call_js(ctx, fn, 0, NULL); JS_FreeValue(ctx, fn); }
@@ -468,9 +496,55 @@ static int win_active(void) {
 	return 0;
 }
 
+/* ------------------------------------------------------------------------------------------------------------------------------------ named-pipe servers and clients (net.createServer / net.connect with a path) */
+static HANDLE new_pipe_instance(const wchar_t *name, int first) {
+	return CreateNamedPipeW(name, PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | (first ? FILE_FLAG_FIRST_PIPE_INSTANCE : 0), PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, CHUNK, CHUNK, 0, NULL);
+}
+static JSValue js_listen_unix(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {     /* listenUnix(path) -> { fd } | -errno; the path must be \\.\pipe\name */
+	const char *path = JS_ToCString(ctx, argv[0]); if (!path) { return JS_EXCEPTION; } wchar_t *name = wide(path); JS_FreeCString(ctx, path);
+	if (wcsncmp(name, L"\\\\.\\pipe\\", 9) != 0) { free(name); return JS_NewInt32(ctx, -E_INVAL); }
+	HANDLE h = new_pipe_instance(name, 1); if (h == INVALID_HANDLE_VALUE) { DWORD e = GetLastError(); free(name); return JS_NewInt32(ctx, e == ERROR_ACCESS_DENIED || e == ERROR_PIPE_BUSY ? -E_ADDRINUSE : -errno_from_win(e)); }
+	int fd = alloc_fd(h, 1); if (fd < 0) { CloseHandle(h); free(name); return JS_NewInt32(ctx, fd); }
+	Fd *f = slots[fd]; f->is_server = 1; f->pipename = name;
+	for (int i = 1; i < 4; i++) {                                                  /* backlog of waiting instances */
+		HANDLE h2 = new_pipe_instance(name, 0); if (h2 == INVALID_HANDLE_VALUE) { break; } int fd2 = alloc_fd(h2, 1); if (fd2 < 0) { CloseHandle(h2); break; }
+		Fd *g = slots[fd2]; g->is_server = 1; g->server_of = fd; g->pipename = _wcsdup(name); start_read(g);
+	}
+	JSValue o = JS_NewObject(ctx); JS_SetPropertyStr(ctx, o, "fd", JS_NewInt32(ctx, fd)); JS_SetPropertyStr(ctx, o, "port", JS_NewInt32(ctx, 0)); return o;
+}
+static Fd *server_ready(int primary_fd) {                                                      /* a listening instance (primary or backlog) that has a client */
+	for (int i = 0; i < MAXSLOT; i++) { Fd *g = slots[i]; if (g && g->is_server && (g->num == primary_fd || g->server_of == primary_fd)) { if (g->rpending) { harvest(g); } if (g->rlen > g->roff) { return g; } } }
+	return NULL;
+}
+static JSValue js_accept(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+	int pfd = arg_fd(ctx, argv[0]); Fd *f = lookup(pfd); if (!f || !f->is_server || f->server_of >= 0) { return JS_NewInt32(ctx, -E_BADF); }
+	Fd *r = server_ready(pfd); if (!r) { start_read(f); return JS_NewInt32(ctx, -E_AGAIN); }
+	HANDLE conn = r->h, next = new_pipe_instance(r->pipename, 0); if (next == INVALID_HANDLE_VALUE) { return JS_NewInt32(ctx, -E_NOMEM); }
+	int fd = alloc_fd(conn, 1); if (fd < 0) { CloseHandle(next); return JS_NewInt32(ctx, fd); }
+	r->h = next; r->rlen = r->roff = 0; r->rpending = 0; start_read(r);
+	return JS_NewInt32(ctx, fd);
+}
+static JSValue js_connect_unix(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {    /* connectUnix(path) -> { fd } | -errno (connects synchronously) */
+	const char *path = JS_ToCString(ctx, argv[0]); if (!path) { return JS_EXCEPTION; } wchar_t *name = wide(path); JS_FreeCString(ctx, path);
+	HANDLE h = INVALID_HANDLE_VALUE; DWORD err = 0;
+	for (int attempt = 0; attempt < 5; attempt++) {
+		h = CreateFileW(name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+		if (h != INVALID_HANDLE_VALUE) { break; } err = GetLastError(); if (err != ERROR_PIPE_BUSY) { break; } WaitNamedPipeW(name, 2000);
+	}
+	free(name); if (h == INVALID_HANDLE_VALUE) { return JS_NewInt32(ctx, err == ERROR_FILE_NOT_FOUND ? -E_NOENT : err == ERROR_PIPE_BUSY ? -E_CONNREFUSED : -errno_from_win(err)); }
+	int fd = alloc_fd(h, 1); if (fd < 0) { CloseHandle(h); return JS_NewInt32(ctx, fd); }
+	JSValue o = JS_NewObject(ctx); JS_SetPropertyStr(ctx, o, "fd", JS_NewInt32(ctx, fd)); return o;
+}
+
 /* ------------------------------------------------------------------------------------------------------------------------------------ misc JS API */
 static JSValue js_noop0(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { return JS_UNDEFINED; }
 static JSValue js_noop_ok(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { return JS_NewInt32(ctx, 0); }
+static JSValue js_shutdown(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+	Fd *f = lookup(arg_fd(ctx, argv[0])); if (!f) { return JS_NewInt32(ctx, -E_BADF); }
+	int how = 1; if (argc > 1) { JS_ToInt32(ctx, &how, argv[1]); }
+	if (how >= 1 && f->ovl && !f->is_server) { f->shutting = 1; if (f->wpending) { write_harvest(f); } shutdown_finish(f); }
+	return JS_NewInt32(ctx, 0);
+}
 static JSValue js_nosys(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { return JS_NewInt32(ctx, -E_NOSYS); }
 static JSValue js_errname(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
 	int e; JS_ToInt32(ctx, &e, argv[0]); if (e < 0) { e = -e; }
@@ -498,8 +572,8 @@ static const JSCFunctionListEntry funcs[] = {
 	JS_CFUNC_DEF("pipe", 1, js_pipe), JS_CFUNC_DEF("socketpair", 0, js_socketpair), JS_CFUNC_DEF("read", 4, js_read), JS_CFUNC_DEF("write", 4, js_write), JS_CFUNC_DEF("close", 1, js_close),
 	JS_CFUNC_DEF("setReadHandler", 2, js_set_read_handler), JS_CFUNC_DEF("setWriteHandler", 2, js_set_write_handler), JS_CFUNC_DEF("spawn", 1, js_spawn), JS_CFUNC_DEF("watchExit", 2, js_watch_exit),
 	JS_CFUNC_DEF("kill", 2, js_kill), JS_CFUNC_DEF("exePath", 0, js_exe_path), JS_CFUNC_DEF("getpid", 0, js_getpid), JS_CFUNC_DEF("pollSync", 1, js_poll_sync), JS_CFUNC_DEF("errname", 1, js_errname),
-	JS_CFUNC_DEF("setNonblock", 2, js_noop_ok), JS_CFUNC_DEF("setCloexec", 2, js_noop_ok), JS_CFUNC_DEF("ignoreSigpipe", 0, js_noop0), JS_CFUNC_DEF("shutdown", 2, js_noop_ok),
-	JS_CFUNC_DEF("listen", 2, js_nosys), JS_CFUNC_DEF("listenUnix", 1, js_nosys), JS_CFUNC_DEF("accept", 1, js_nosys), JS_CFUNC_DEF("connect", 2, js_nosys), JS_CFUNC_DEF("connectUnix", 1, js_nosys),
+	JS_CFUNC_DEF("setNonblock", 2, js_noop_ok), JS_CFUNC_DEF("setCloexec", 2, js_noop_ok), JS_CFUNC_DEF("ignoreSigpipe", 0, js_noop0), JS_CFUNC_DEF("shutdown", 2, js_shutdown),
+	JS_CFUNC_DEF("listen", 2, js_nosys), JS_CFUNC_DEF("listenUnix", 1, js_listen_unix), JS_CFUNC_DEF("accept", 1, js_accept), JS_CFUNC_DEF("connect", 2, js_nosys), JS_CFUNC_DEF("connectUnix", 1, js_connect_unix),
 	JS_CFUNC_DEF("soError", 1, js_noop_ok), JS_CFUNC_DEF("sockPort", 1, js_noop_ok),
 };
 static int proc_init(JSContext *ctx, JSModuleDef *m) { return JS_SetModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); }

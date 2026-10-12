@@ -7,7 +7,7 @@
  *
  * JS API (module spike:win):
  *   create(width, height, title) -> id           top-level window with a client area of exactly width x height
- *   setHandler(fn)                               fn(type, a, b, c, d); types below
+ *   setHandler(fn)                               fn(windowId, type, a, b, c, d, mods); mods: 1 shift, 2 ctrl, 4 alt, 8 win, 16 caps lock
  *   present(id, rgba:ArrayBuffer|TypedArray, w, h, x, y, rw, rh)   copy the rectangle (x,y,rw,rh) of an RGBA w*h image into the window and show it
  *   setTitle(id, s) / setCursor(id, name) / size(id) -> [w,h] / destroy(id) / screenSize() -> [w,h] / clipboardGet() / clipboardSet(s)
  * events: 'mousemove'(x,y,buttons) 'mousedown'(x,y,button,buttons) 'mouseup'(...) 'dblclick'(x,y,button) 'wheel'(x,y,delta,horizontal) 'keydown'(vk,scan,extended,repeat) 'keyup'(vk,scan,extended)
@@ -33,10 +33,11 @@ static Win *by_hwnd(HWND h) { for (int i = 0; i < MAXWIN; i++) { if (wins[i] && 
 static int id_of(Win *w) { for (int i = 0; i < MAXWIN; i++) { if (wins[i] == w) { return i + 1; } } return 0; }
 static void emit(Win *w, const char *type, int a, int b, int c, int d) {
 	if (JS_IsUndefined(g_handler)) { return; }
-	JSValue args[6] = { JS_NewInt32(g_ctx, id_of(w)), JS_NewString(g_ctx, type), JS_NewInt32(g_ctx, a), JS_NewInt32(g_ctx, b), JS_NewInt32(g_ctx, c), JS_NewInt32(g_ctx, d) };
-	JSValue r = JS_Call(g_ctx, g_handler, JS_UNDEFINED, 6, args);
+	int mods = ((GetKeyState(VK_SHIFT) & 0x8000) ? 1 : 0) | ((GetKeyState(VK_CONTROL) & 0x8000) ? 2 : 0) | ((GetKeyState(VK_MENU) & 0x8000) ? 4 : 0) | (((GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000) ? 8 : 0) | ((GetKeyState(VK_CAPITAL) & 1) ? 16 : 0);
+	JSValue args[7] = { JS_NewInt32(g_ctx, id_of(w)), JS_NewString(g_ctx, type), JS_NewInt32(g_ctx, a), JS_NewInt32(g_ctx, b), JS_NewInt32(g_ctx, c), JS_NewInt32(g_ctx, d), JS_NewInt32(g_ctx, mods) };
+	JSValue r = JS_Call(g_ctx, g_handler, JS_UNDEFINED, 7, args);
 	if (JS_IsException(r)) { js_std_dump_error(g_ctx); }
-	JS_FreeValue(g_ctx, r); for (int i = 0; i < 6; i++) { JS_FreeValue(g_ctx, args[i]); }
+	JS_FreeValue(g_ctx, r); for (int i = 0; i < 7; i++) { JS_FreeValue(g_ctx, args[i]); }
 }
 static int buttons_state(WPARAM wp) { return (wp & MK_LBUTTON ? 1 : 0) | (wp & MK_RBUTTON ? 2 : 0) | (wp & MK_MBUTTON ? 4 : 0); }
 static void alloc_dib(Win *w, int cw, int ch) {
