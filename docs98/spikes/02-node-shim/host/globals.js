@@ -133,3 +133,6 @@ globalThis.URL ??= class URL {
 	get href() { const q = this.searchParams.toString(); return this.protocol + (this.host || this.protocol === 'file:' ? '//' : '') + (this.username ? this.username + (this.password ? ':' + this.password : '') + '@' : '') + this.host + this.pathname + (q ? '?' + q : this.search) + this.hash; }
 	toString() { return this.href; } toJSON() { return this.href; }
 };
+
+// QuickJS's console lacks some methods that Node/browsers have (Emscripten glue and VS Code call console.warn/info/debug).
+for (const m of ['warn', 'info', 'debug', 'trace']) { if (typeof console[m] !== 'function') { console[m] = typeof console.error === 'function' && (m === 'warn' || m === 'trace') ? console.error : console.log; } }
