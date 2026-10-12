@@ -9,9 +9,11 @@ a = "static int js_os_poll_internal(JSContext *ctx, int timeout_ms, int flags)\n
 assert a in src
 win = src.index("#if defined(_WIN32)\nstatic int js_os_poll_internal")
 src = sub("            if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->port_list))\n                return -1; /* no more events */",
-          "            if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->port_list) && !(js_win_waiter.active && js_win_waiter.active()))\n                return -1; /* no more events */", "static int js_os_poll_internal")
+          "            if (list_empty(&ts->os_rw_handlers) && list_empty(&ts->port_list) && !(js_win_waiter.active && js_win_waiter.active()) && !(js_win_waiter.wants_messages && js_win_waiter.wants_messages()))\n                return -1; /* no more events */", "static int js_os_poll_internal")
 src = sub("    if (count > 0) {\n        DWORD ret, timeout = INFINITE;",
-          "    if (js_win_waiter.collect && count < (int)countof(handles))\n        count += js_win_waiter.collect(handles + count, (int)countof(handles) - count);\n    if (count > 0) {\n        DWORD ret, timeout = INFINITE;", "static int js_os_poll_internal")
+          "    if (js_win_waiter.collect && count < (int)countof(handles))\n        count += js_win_waiter.collect(handles + count, (int)countof(handles) - count);\n    int has_windows = js_win_waiter.wants_messages && js_win_waiter.wants_messages();\n    if (count > 0 || has_windows) {\n        DWORD ret, timeout = INFINITE;", "static int js_os_poll_internal")
+src = sub("        ret = WaitForMultipleObjects(count, handles, FALSE, timeout);\n",
+          "        ret = has_windows ? MsgWaitForMultipleObjects(count, handles, FALSE, timeout, QS_ALLINPUT) : WaitForMultipleObjects(count, handles, FALSE, timeout);\n        if (has_windows && ret == WAIT_OBJECT_0 + (DWORD)count) { js_win_waiter.pump(ctx); goto done; }\n", "static int js_os_poll_internal")
 src = sub("        if (ret < (DWORD)count) {\n",
           "        if (ret < (DWORD)count && js_win_waiter.dispatch) {\n            int r = js_win_waiter.dispatch(ctx, handles[ret]);\n            if (r < 0) return -1;\n            if (r > 0) goto done;\n        }\n        if (ret < (DWORD)count) {\n", "static int js_os_poll_internal")
 # the header and the table definition go right after the first #include of the file

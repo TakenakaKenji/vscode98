@@ -5,6 +5,8 @@ import * as std from 'qjs:std';
 import * as os from 'qjs:os';
 import Module from 'node:module';
 import cp from 'node:child_process';
+import nodePath from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import '../../06-rendering/host/dom/intl_shim.js';
 import * as opentype from '/home/user/vscode98/node_modules/opentype.js/dist/opentype.mjs';
 import { installEnvironment } from '../../06-rendering/host/dom/env.js';
@@ -20,10 +22,10 @@ import { encode, decode } from './codec98.js';
 
 const nodeProcess = globalThis.process;
 const args = nodeProcess.argv.slice(2); const opt = (n, d) => { const i = args.indexOf('--' + n); return i >= 0 ? args[i + 1] : d; };
-const appRoot = args[0].startsWith('/') ? args[0] : os.getcwd()[0] + '/' + args[0]; const seconds = Number(opt('seconds', 60)); const W = 1280, H = 800;
-const userDataDir = opt('user-data-dir', '/tmp/claude-0/ud98q'), extDir = opt('extensions-dir', '/tmp/claude-0/ext98');
-const here = import.meta.url.replace(/^file:\/\//, '').replace(/\/[^/]*$/, '');
-const fileOf = (u) => u.replace(/^vscode-file:\/\/vscode-app/, '').replace(/[?#].*$/, '');
+const appRoot = nodePath.resolve(args[0]); const seconds = Number(opt('seconds', 60)); const W = 1280, H = 800;
+const userDataDir = nodePath.resolve(opt('user-data-dir', nodePath.join(globalThis.__builtins.os.tmpdir(), 'ud98'))), extDir = nodePath.resolve(opt('extensions-dir', nodePath.join(globalThis.__builtins.os.tmpdir(), 'ext98')));
+const here = nodePath.dirname(fileURLToPath(import.meta.url));
+const fileOf = (u) => fileURLToPath('file://' + u.replace(/^vscode-file:\/\/vscode-app/, '').replace(/[?#].*$/, ''));   // vscode-file://vscode-app/<file URL path>, also /C:/dir on Windows
 const readBytes = (f) => { const h = std.open(f, 'rb'); if (!h) { throw new Error('ENOENT ' + f); } h.seek(0, std.SEEK_END); const n = h.tell(); h.seek(0, std.SEEK_SET); const ab = new ArrayBuffer(n); h.read(ab, 0, n); h.close(); return ab; };
 globalThis.__readFileBytes = readBytes;
 const rss = () => { const m = /VmRSS:\s+(\d+)/.exec(std.loadFile('/proc/self/status') || ''); const h = /VmHWM:\s+(\d+)/.exec(std.loadFile('/proc/self/status') || ''); return { rss: m ? Math.round(+m[1] / 1024) : 0, peak: h ? Math.round(+h[1] / 1024) : 0 }; };
@@ -35,11 +37,11 @@ const t00 = performance.now(); const mainLog = []; log('[harness] start');
 // ---- vscode-file://vscode-app/<abs path> -> file path, for import()
 Module.registerHooks({ resolve(specifier, context, nextResolve) { if (specifier.startsWith('vscode-file://vscode-app/')) { return { url: 'file://' + specifier.slice('vscode-file://vscode-app'.length).replace(/[?#].*$/, ''), shortCircuit: true }; } return nextResolve(specifier, context); } });
 // ---- user settings for a headless run: no trust prompt (the git extension is limited in untrusted workspaces), no welcome page, no telemetry or update checks
-{ const dir = userDataDir + '/User'; let cur = ''; for (const seg of dir.split('/').filter(Boolean)) { cur += '/' + seg; os.mkdir(cur, 0o777); }
+{ const dir = nodePath.join(userDataDir, 'User'); const mk = (d) => { if (os.stat(d)[1] !== 0) { mk(nodePath.dirname(d)); os.mkdir(d, 0o777); } }; mk(dir);
 	if (opt('seed-settings', '1') === '1' && !std.loadFile(dir + '/settings.json')) { const f = std.open(dir + '/settings.json', 'w'); f.puts(JSON.stringify({ 'security.workspace.trust.enabled': false, 'workbench.startupEditor': 'none', 'telemetry.telemetryLevel': 'off', 'update.mode': 'none', 'extensions.autoUpdate': false, 'extensions.autoCheckUpdates': false }, null, 2)); f.close(); } }
 // ---- main process
 const mainArgs = ['--user-data-dir', userDataDir, '--extensions-dir', extDir, '--disable-gpu', '--disable-telemetry', ...(opt('workspace') ? [opt('workspace')] : [])];
-const child = cp.fork(here + '/run_main.mjs', [appRoot, ...mainArgs], { serialization: 'json', stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...nodeProcess.env, APP98_ROOT: appRoot, ELECTRON_STUB_LOG: opt('stub-log', '/tmp/claude-0/stubq.log') } });
+const child = cp.fork(nodePath.join(here, 'run_main.mjs'), [appRoot, ...mainArgs], { serialization: 'json', stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...nodeProcess.env, APP98_ROOT: appRoot, ELECTRON_STUB_LOG: opt('stub-log', nodePath.join(globalThis.__builtins.os.tmpdir(), 'electron-stub.log')) } });
 log('[harness] forked main pid ' + child.pid); const echo = opt('echo-main', '0') === '1'; child.stdout.on('data', (d) => { mainLog.push(String(d)); if (echo) { std.err.puts('[main] ' + String(d)); } }); child.stderr.on('data', (d) => { mainLog.push(String(d)); if (echo) { std.err.puts('[main!] ' + String(d)); } });
 child.on('exit', (c) => { mainLog.push(`[main exited ${c}]`); });
 // ---- ipcRenderer transport
@@ -66,10 +68,10 @@ child.on('message', (m0) => {
 const load = await loadRequested;
 log(`[harness] main created a window and asked to load ${load.url} after ${Math.round(performance.now() - t00)} ms`);
 const pageFile = fileOf(load.url);
-const BASE = 'vscode-file://vscode-app' + appRoot;
+const BASE = 'vscode-file://vscode-app' + pathToFileURL(appRoot).pathname;
 const env = installEnvironment({ width: W, height: H, opentype, readUrl: (u) => readBytes(fileOf(u)) }); const doc = env.document;
 let layoutTiming = null; if (opt('layout', 'js') === 'native') { const m = await import('../../07-native-render/host/native_layout.js'); env.layoutEngine = m.engine; layoutTiming = m.timing; }
-installWebShims(env, { baseUrl: BASE, readFile: (p) => readBytes(appRoot + '/out/' + p) });
+installWebShims(env, { baseUrl: BASE, readFile: (p) => readBytes(nodePath.join(appRoot, 'out', p)) });
 Object.assign(env.window.location, { href: load.url });
 const html = std.loadFile(pageFile).replace(/<!doctype[^>]*>/i, '').replace(/<!--[\s\S]*?-->/g, '');
 const headM = /<head[^>]*>([\s\S]*?)<\/head>/i.exec(html), bodyM = /<body([^>]*)>([\s\S]*?)<\/body>/i.exec(html);

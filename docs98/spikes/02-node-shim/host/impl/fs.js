@@ -2,8 +2,10 @@
 // Notes for a real implementation: no fs.watch/watchFile here (needs ReadDirectoryChangesW etc.), no file descriptors beyond os.open fds, no Buffer I/O beyond a tiny shim.
 import * as os from 'qjs:os';
 import * as std from 'qjs:std';
+import * as nodePath from './path.js';
 
 const S_IFMT = 0o170000, S_IFDIR = 0o040000, S_IFREG = 0o100000, S_IFLNK = 0o120000;
+const lstatRaw = os.lstat ?? os.stat;   // QuickJS has no lstat on Windows (no symlink support there: stat is what lstat would return)
 const E = std.Error;   // errno constants live on std.Error in QuickJS (E.ENOENT etc. do not exist)
 const CODES = { [E.ENOENT]: 'ENOENT', [E.EEXIST]: 'EEXIST', [E.ENOTDIR]: 'ENOTDIR', [E.EACCES]: 'EACCES', [E.EISDIR]: 'EISDIR', [E.EINVAL]: 'EINVAL', [E.EBADF]: 'EBADF', [E.ENOTEMPTY]: 'ENOTEMPTY', [E.EPERM]: 'EPERM' };
 function fail(errno, syscall, path) { if (globalThis.__fsDebug) { std.err.puts(`FSFAIL ${CODES[-errno] || CODES[errno] || errno} ${syscall} ${path}\n`); } const e = new Error(`${CODES[-errno] || CODES[errno] || 'E' + errno}: ${syscall} '${path}'`); e.errno = -Math.abs(errno); e.code = CODES[Math.abs(errno)] || 'EUNKNOWN'; e.syscall = syscall; e.path = path; return e; }
@@ -24,13 +26,13 @@ const toBuf = (ab, n) => new Buf(ab, 0, n);
 const enc = (o) => typeof o === 'string' ? o : o && o.encoding;
 
 export function statSync(p, opts) { const [o, e] = os.stat(String(p)); if (e) { if (opts && opts.throwIfNoEntry === false && e === E.ENOENT) { return undefined; } throw fail(e, 'stat', p); } return new Stats(o); }
-export function lstatSync(p, opts) { const [o, e] = os.lstat(String(p)); if (e) { if (opts && opts.throwIfNoEntry === false && e === E.ENOENT) { return undefined; } throw fail(e, 'lstat', p); } return new Stats(o); }
+export function lstatSync(p, opts) { const [o, e] = lstatRaw(String(p)); if (e) { if (opts && opts.throwIfNoEntry === false && e === E.ENOENT) { return undefined; } throw fail(e, 'lstat', p); } return new Stats(o); }
 export function existsSync(p) { return os.stat(String(p))[1] === 0; }
 export function accessSync(p) { const e = os.stat(String(p))[1]; if (e) { throw fail(e, 'access', p); } }
 export function readdirSync(p, opts) {
 	const [names, e] = os.readdir(String(p)); if (e) { throw fail(e, 'scandir', p); }
 	const list = names.filter(n => n !== '.' && n !== '..');
-	return opts && opts.withFileTypes ? list.map(n => new Dirent(n, (os.lstat(p + '/' + n)[0] || { mode: 0 }).mode, String(p))) : list;
+	return opts && opts.withFileTypes ? list.map(n => new Dirent(n, (lstatRaw(p + '/' + n)[0] || { mode: 0 }).mode, String(p))) : list;
 }
 export function readFileSync(p, opts) {
 	const encoding = enc(opts);
@@ -40,11 +42,18 @@ export function readFileSync(p, opts) {
 	f.seek(0, std.SEEK_END); const n = f.tell(); f.seek(0, std.SEEK_SET); const ab = new ArrayBuffer(n); f.read(ab, 0, n); f.close(); return toBuf(ab, n);
 }
 export function writeFileSync(p, data, opts) { if (typeof p === 'number') { const path = fdPaths.get(p); if (path === undefined) { throw fail(E.EBADF, 'write', p); } p = path; } const flag = opts && typeof opts === 'object' ? opts.flag : undefined; if (flag && flag.includes('x') && std.open(String(p), 'rb')) { throw fail(E.EEXIST, 'open', p); } const f = std.open(String(p), flag && flag.includes('a') ? 'ab' : 'wb'); if (!f) { throw fail(E.EACCES, 'open', p); } if (typeof data === 'string') { f.puts(data); } else { f.write(data.buffer, data.byteOffset, data.byteLength); } f.close(); }
-export function mkdirSync(p, opts) { const rec = opts && opts.recursive; if (rec) { let cur = String(p).startsWith('/') ? '' : '.'; for (const seg of String(p).split('/').filter(Boolean)) { cur += '/' + seg; const e = os.mkdir(cur, 0o777); if (e && e !== -E.EEXIST && e !== E.EEXIST) { throw fail(e, 'mkdir', cur); } } return; } const e = os.mkdir(String(p), 0o777); if (e) { throw fail(e, 'mkdir', p); } }
+function mkdirRec(dir) {                 // creates dir and its missing parents; returns the first directory created (like Node), or undefined
+	const [st, e0] = os.stat(dir); if (!e0) { if ((st.mode & S_IFMT) === S_IFDIR) { return undefined; } throw fail(E.EEXIST, 'mkdir', dir); }
+	const parent = nodePath.dirname(dir); let first;
+	if (parent !== dir) { first = mkdirRec(parent); }
+	const e = os.mkdir(dir, 0o777); if (e && e !== -E.EEXIST && e !== E.EEXIST) { throw fail(e, 'mkdir', dir); }
+	return first ?? dir;
+}
+export function mkdirSync(p, opts) { const rec = opts && opts.recursive; if (rec) { return mkdirRec(nodePath.resolve(String(p))); } const e = os.mkdir(String(p), 0o777); if (e) { throw fail(e, 'mkdir', p); } }
 export function realpathSync(p) { const [r, e] = os.realpath(String(p)); if (e) { throw fail(e, 'realpath', p); } return r; }
 export function unlinkSync(p) { const e = os.remove(String(p)); if (e) { throw fail(e, 'unlink', p); } }
 export function renameSync(a, b) { const e = os.rename(String(a), String(b)); if (e) { throw fail(e, 'rename', a); } }
-export function rmSync(p, o = {}) { const [st, e] = os.lstat(String(p)); if (e) { if (o.force) { return; } throw fail(e, 'rm', p); } if ((st.mode & S_IFMT) === S_IFDIR) { for (const n of readdirSync(p)) { rmSync(p + '/' + n, o); } } os.remove(String(p)); }
+export function rmSync(p, o = {}) { const [st, e] = lstatRaw(String(p)); if (e) { if (o.force) { return; } throw fail(e, 'rm', p); } if ((st.mode & S_IFMT) === S_IFDIR) { for (const n of readdirSync(p)) { rmSync(p + '/' + n, o); } } os.remove(String(p)); }
 export function chmodSync() { }
 export function mkdtempSync(prefix) { const p = prefix + Math.random().toString(36).slice(2, 8); mkdirSync(p); return p; }
 const fdPaths = new Map();   // fd -> path, for fstat/ftruncate/futimes (qjs:os has no f* calls)
@@ -64,8 +73,8 @@ export const promises = { stat: pr(statSync), lstat: pr(lstatSync), readdir: pr(
 // ---- additions made in spike 5 (git and other ESM-only dependencies import these by name) ----
 export function copyFileSync(a, b) { const d = readFileSync(a); writeFileSync(b, d); }
 export function appendFileSync(p, data) { const f = std.open(String(p), 'ab'); if (!f) { throw fail(E.EACCES, 'open', p); } if (typeof data === 'string') { f.puts(data); } else { f.write(data.buffer, data.byteOffset, data.byteLength); } f.close(); }
-export function readlinkSync(p) { const [r, e] = os.readlink(String(p)); if (e) { throw fail(e, 'readlink', p); } return r; }
-export function symlinkSync(target, p) { const e = os.symlink(String(target), String(p)); if (e) { throw fail(e, 'symlink', p); } }
+export function readlinkSync(p) { if (!os.readlink) { throw fail(E.EINVAL, 'readlink', p); } const [r, e] = os.readlink(String(p)); if (e) { throw fail(e, 'readlink', p); } return r; }
+export function symlinkSync(target, p) { if (!os.symlink) { throw fail(E.EPERM, 'symlink', p); } const e = os.symlink(String(target), String(p)); if (e) { throw fail(e, 'symlink', p); } }
 export function utimesSync(p, at, mt) { const e = os.utimes(String(p), +at * 1000, +mt * 1000); if (e) { throw fail(e, 'utime', p); } }
 export function rmdirSync(p) { const e = os.remove(String(p)); if (e) { throw fail(e, 'rmdir', p); } }
 export const copyFile = cb(copyFileSync), appendFile = cb(appendFileSync), readlink = cb(readlinkSync), symlink = cb(symlinkSync), utimes = cb(utimesSync), rmdir = cb(rmdirSync);

@@ -3,6 +3,8 @@
 // Anything not implemented yet is a logging no-op (set ELECTRON_STUB_LOG=file) so a run shows what the real main process asks of Electron.
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
+import path from 'node:path';
+import osMod from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { encode, decode } from './codec98.js';
 
@@ -43,7 +45,12 @@ class App extends EventEmitter {
 	}
 	whenReady() { return Promise.resolve(); } isReady() { return true; }
 	getPreferredSystemLanguages() { return ['en-US']; } getLocale() { return 'en-US'; } getSystemLocale() { return 'en-US'; } getLocaleCountryCode() { return 'US'; }
-	getPath(name) { return this._paths[name] ?? ({ home: process.env.HOME || '/root', temp: '/tmp', userData: this._paths.userData || '/tmp/userData98', appData: '/tmp', logs: (this._paths.userData || '/tmp/userData98') + '/logs', exe: process.execPath, desktop: '/root/Desktop', documents: '/root/Documents', downloads: '/root/Downloads', crashDumps: '/tmp/crashDumps98' })[name] ?? '/tmp'; }
+	getPath(name) {
+		if (this._paths[name]) { return this._paths[name]; }
+		const home = osMod.homedir(), temp = osMod.tmpdir(), userData = this._paths.userData || path.join(temp, 'userData98');
+		return ({ home, temp, userData, appData: osMod.platform() === 'win32' ? (process.env.APPDATA || path.join(home, 'AppData', 'Roaming')) : temp, logs: path.join(userData, 'logs'), exe: process.execPath,
+			desktop: path.join(home, 'Desktop'), documents: path.join(home, 'Documents'), downloads: path.join(home, 'Downloads'), crashDumps: path.join(temp, 'crashDumps98') })[name] ?? temp;
+	}
 	setPath(name, p) { this._paths[name] = p; }
 	getAppPath() { return process.env.APP98_ROOT || process.cwd(); }
 	getName() { return 'code-oss'; } getVersion() { return '1.0.0'; }

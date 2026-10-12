@@ -6,7 +6,10 @@ import * as os from 'qjs:os';
 
 export function installEsm(outDir) {
 	const Module = globalThis.__builtins.module; const P = globalThis.__builtins.path;   // `path` is win32 flavoured on Windows
-	const shimDirs = [P.join(outDir, 'shims') + P.sep, P.join(outDir + '.impl') + P.sep];
+	// Module NAMES are canonical: '/' separators on Windows too (the C runtime accepts them and QuickJS's own relative-import handling only knows '/'); a module must never be
+	// loaded under two spellings, it would be instantiated twice. import.meta.filename and require() see the native form.
+	const WIN = os.platform === 'win32', canon = (n) => WIN ? n.replace(/\\/g, '/') : n, native = (n) => WIN ? P.normalize(n) : n;
+	const shimDirs = [canon(P.join(outDir, 'shims')) + '/', canon(P.join(outDir + '.impl')) + '/'];
 	const dirname = (p) => P.dirname(p);
 	const kind = (p) => { const [o, e] = os.stat(p); return e ? 0 : (o.mode & 0o170000) === 0o040000 ? 2 : 1; };
 	const toUrl = (name) => P.isAbsolute(name) ? P.toFileUrl(name) : name;
@@ -33,7 +36,7 @@ export function installEsm(outDir) {
 		let next = defaultResolve;
 		for (const h of Module.__hooks) { if (h && typeof h.resolve === 'function') { const prev = next; next = (s, c) => h.resolve(s, c ?? ctx, prev); } }
 		const r = next(spec, ctx);
-		return fromUrl(r.url);
+		return canon(fromUrl(r.url));
 	};
 
 	const pkgType = (file) => { for (let d = dirname(file); d && d !== dirname(d); d = dirname(d)) { const pj = P.join(d, 'package.json'); if (kind(pj) === 1) { try { return JSON.parse(std.loadFile(pj)).type || null; } catch { return null; } } } return null; };
@@ -47,11 +50,11 @@ export function installEsm(outDir) {
 			return { format: 'module', source, url: name };
 		}
 		if (!P.isAbsolute(name) || shimDirs.some(d => name.startsWith(d))) { return undefined; }
-		if (name.endsWith('.mjs')) { return { format: 'module', source: std.loadFile(name), url: toUrl(name), filename: name, dirname: dirname(name) }; }
+		if (name.endsWith('.mjs')) { return { format: 'module', source: std.loadFile(name), url: toUrl(name), filename: native(name), dirname: dirname(native(name)) }; }
 		if (name.endsWith('.json')) { return { format: 'commonjs', exports: JSON.parse(std.loadFile(name)) }; }
 		let esm = false;
 		if (name.endsWith('.js')) { const t = pkgType(name); esm = t === 'module' || (t === null && looksLikeEsm(std.loadFile(name))); }
-		if (esm) { return { format: 'module', source: std.loadFile(name), url: toUrl(name), filename: name, dirname: dirname(name) }; }   // read here so import.meta.dirname/filename can be set
+		if (esm) { return { format: 'module', source: std.loadFile(name), url: toUrl(name), filename: native(name), dirname: dirname(native(name)) }; }   // read here so import.meta.dirname/filename can be set
 		return { format: 'commonjs', exports: Module._load(name, null, false) };
 	};
 }

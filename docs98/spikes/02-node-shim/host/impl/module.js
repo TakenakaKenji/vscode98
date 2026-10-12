@@ -78,7 +78,11 @@ Module._extensions = { '.js': null, '.json': null, '.node': null };
 Module.builtinModules = ['assert', 'async_hooks', 'buffer', 'child_process', 'cluster', 'console', 'constants', 'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks', 'process', 'punycode', 'querystring', 'readline', 'repl', 'stream', 'string_decoder', 'sys', 'timers', 'tls', 'tty', 'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib'];
 Module.isBuiltin = (name) => { const n = String(name).replace(/^node:/, ''); return String(name).startsWith('node:') || Module.builtinModules.includes(n.split('/')[0]) && (n.indexOf('/') < 0 || ['fs/promises', 'path/posix', 'path/win32', 'stream/promises', 'stream/web', 'stream/consumers', 'timers/promises', 'util/types', 'dns/promises', 'readline/promises', 'assert/strict'].includes(n)); };
 Module.wrap = (s) => '(function (exports, require, module, __filename, __dirname) { ' + s + '\n});';
-Module._nodeModulePaths = (from) => { const parts = resolve(from).split('/').filter(Boolean); const out = []; for (let i = parts.length; i >= 0; i--) { if (parts[i - 1] === 'node_modules') { continue; } out.push('/' + parts.slice(0, i).join('/') + (i ? '/' : '') + 'node_modules'); } return out; };
+Module._nodeModulePaths = (from) => {      // every ancestor's node_modules, nearest first (not for a directory that is itself called node_modules)
+	const out = []; let d = resolve(from);
+	for (;;) { if (nodePath.basename(d) !== 'node_modules') { out.push(join(d, 'node_modules')); } const up = dirname(d); if (up === d) { break; } d = up; }
+	return out;
+};
 Module._resolveLookupPaths = (request, parent) => (request.startsWith('./') || request.startsWith('../') ? [parent && parent.filename ? dirname(parent.filename) : '.'] : (parent && parent.paths ? parent.paths.slice() : Module._nodeModulePaths(os.getcwd()[0])));
 Module._resolveFilename = function (request, parent, isMain, options) {
 	if (Module.isBuiltin(request)) { return request; }

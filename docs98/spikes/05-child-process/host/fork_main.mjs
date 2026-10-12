@@ -8,7 +8,8 @@ import '../../02-node-shim/host/globals.js';
 
 // NOTE: no top-level await (see spike 2: with TLA `qjs` only runs one job per poll and microtasks stall until the next timer fires).
 async function boot() {
-const [outDir, script, ...rest] = scriptArgs.slice(1);
+const [outDirArg, script, ...rest] = scriptArgs.slice(1);
+const outDir = (os.platform === 'win32' ? outDirArg.replace(/\\/g, '/') : outDirArg);   // canonical module-name spelling (see esm_loader.mjs)
 const here = scriptArgs[0];
 std.setenv('VSCODE_WILL_SEND_MESSAGE_PORT', '1');
 if (std.getenv('NLS_MESSAGES')) { globalThis._VSCODE_NLS_MESSAGES = JSON.parse(std.loadFile(std.getenv('NLS_MESSAGES'))); globalThis._VSCODE_NLS_LANGUAGE = 'en'; }
