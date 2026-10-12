@@ -44,7 +44,7 @@ export function resolveStyles(doc, env, log) {
 		} else if (el.__dd !== passId) { return; }
 		for (const c of el.__children) { if (c.nodeType === 1) { walk(c, cs, anc, childForced); } }
 	};
-	if (root) { walk(root, null, null, 0); } doc.__styleCount = total; doc.__styleReady = true; doc.__logOverflow = false; info.ms = performance.now() - t0; doc.__styleInfo = info;
+	if (root) { walk(root, null, null, 0); } doc.__styleCount = total; doc.__styleReady = true; { const ae = doc.__activeElement && doc.__activeElement.isConnected ? doc.__activeElement : null; doc.__styledActive = ae; doc.__styledChain = []; for (let a = ae; a && a.nodeType === 1; a = a.parentNode) { doc.__styledChain.push(a); } } doc.__logOverflow = false; info.ms = performance.now() - t0; doc.__styleInfo = info;
 	if (doc.__verifyStyles) { verifyStyles(doc, env, index); }
 }
 /** Test oracle: restyle everything from scratch (without the ancestor filter) and record every difference to the cached styles in doc.__styleMismatches. */

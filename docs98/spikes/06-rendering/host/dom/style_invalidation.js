@@ -144,13 +144,21 @@ export function planRestyle(doc, log, inv, delta, total) {
 	}
 	// ---- text changes only matter for :empty
 	for (const [, what, node] of log) { if (what === 'text' && inv.struct.empty.any) { const p = node.parentNode; if (p && p.nodeType === 1 && connected(p)) { mark(p, inv.struct.empty.left ? 3 : 2); } } }
-	// ---- state changes (focus)
+	// ---- focus: compare the focus chain (active element and its ancestors) of the previous style pass with the current one; the log cannot say where a removed element used to be
+	const activeNow = doc.__activeElement && doc.__activeElement.isConnected ? doc.__activeElement : null; const chainBefore = doc.__styledChain || [];
+	if ((doc.__styledActive || null) !== activeNow) {
+		const chainNow = []; for (let a = activeNow; a && a.nodeType === 1; a = a.parentNode) { chainNow.push(a); } const setBefore = new Set(chainBefore), setNow = new Set(chainNow); const focusEls = new Set([doc.__styledActive, activeNow]);
+		for (const el of [...chainBefore, ...chainNow]) {
+			if (!connected(el) || (setBefore.has(el) && setNow.has(el) && !focusEls.has(el))) { continue; }
+			const keys = focusEls.has(el) ? [':focus', ':focus-visible', ':focus-within'] : [':focus-within']; mark(el, 2);
+			for (const k of keys) { if (inv.ctxKeys.has(k)) { mark(el, 3); } if (inv.sibKeys.has(k) || inv.sibKeysDeep.has(k)) { markFollowing(el, inv.sibKeysDeep.has(k) ? 3 : 2); } }
+			if (inv.hasRules.length) { touchHas(el.parentNode, new Set(keys)); }
+		}
+	}
+	// ---- other state changes
 	for (const [, what, node, arg] of log) {
-		if (what !== 'state' || !connected(node)) { continue; }
-		const keys = arg === 'focus' ? [':focus', ':focus-visible', ':focus-within'] : [':' + arg]; mark(node, 2);
-		for (const k of keys) { if (inv.ctxKeys.has(k)) { mark(node, 3); } if (inv.sibKeys.has(k) || inv.sibKeysDeep.has(k)) { markFollowing(node, inv.sibKeysDeep.has(k) ? 3 : 2); } }
-		if (arg === 'focus') { const kw = ':focus-within'; if (inv.ctxKeys.has(kw) || inv.selfStateKeys.has(kw) || inv.sibKeys.has(kw) || inv.sibKeysDeep.has(kw) || inv.hasRules.some(h => h.argKeys.has(kw))) { for (let a = node.parentNode; a && a.nodeType === 1; a = a.parentNode) { mark(a, inv.ctxKeys.has(kw) ? 3 : 2); } } }
-		if (inv.hasRules.length) { touchHas(node.parentNode, new Set(keys)); }
+		if (what !== 'state' || arg === 'focus' || !connected(node)) { continue; }
+		const k = ':' + arg; mark(node, 2); if (inv.ctxKeys.has(k)) { mark(node, 3); } if (inv.sibKeys.has(k) || inv.sibKeysDeep.has(k)) { markFollowing(node, inv.sibKeysDeep.has(k) ? 3 : 2); } if (inv.hasRules.length) { touchHas(node.parentNode, new Set([k])); }
 	}
 	if (marks.size > total * 0.4) { return { full: `too many dirty elements (${marks.size} of ${total})` }; }
 	return { marks };
