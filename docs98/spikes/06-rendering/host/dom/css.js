@@ -5,8 +5,8 @@ import { splitDecls, CSSStyleDeclaration, noteMissing } from './dom.js';
 
 // ---- parsing ----------------------------------------------------------------------------------------------------------------------------------
 export function stripComments(t) { return t.indexOf('/*') < 0 ? t : t.replace(/\/\*[\s\S]*?\*\//g, ''); }
-function readBlock(t, i) { /* t[i] === '{' → index after matching '}' */ let d = 0, q = ''; for (; i < t.length; i++) { const c = t[i]; if (q) { if (c === q && t[i - 1] !== '\\') { q = ''; } continue; } if (c === '"' || c === "'") { q = c; } else if (c === '{') { d++; } else if (c === '}') { d--; if (d === 0) { return i + 1; } } } return t.length; }
-function readPrelude(t, i) { let d = 0, q = ''; for (; i < t.length; i++) { const c = t[i]; if (q) { if (c === q && t[i - 1] !== '\\') { q = ''; } continue; } if (c === '"' || c === "'") { q = c; } else if (c === '(' ) { d++; } else if (c === ')') { d--; } else if (d === 0 && (c === '{' || c === ';')) { return i; } } return t.length; }
+function readBlock(t, i) { /* t[i] === '{' → index after matching '}' */ let d = 0, q = ''; for (; i < t.length; i++) { const c = t[i]; if (q) { if (c === '\\') { i++; } else if (c === q) { q = ''; } continue; } if (c === '"' || c === "'") { q = c; } else if (c === '{') { d++; } else if (c === '}') { d--; if (d === 0) { return i + 1; } } } return t.length; }
+function readPrelude(t, i) { let d = 0, q = ''; for (; i < t.length; i++) { const c = t[i]; if (q) { if (c === '\\') { i++; } else if (c === q) { q = ''; } continue; } if (c === '"' || c === "'") { q = c; } else if (c === '(' ) { d++; } else if (c === ')') { d--; } else if (d === 0 && (c === '{' || c === ';')) { return i; } } return t.length; }
 export function parseDeclarations(text) {
 	const out = [];
 	for (const d of splitDecls(stripComments(text))) { const m = /^([^:]+):([\s\S]*)$/.exec(d); if (!m) { continue; } let n = m[1].trim(), v = m[2].trim(), imp = false; if (/!\s*important\s*$/i.test(v)) { v = v.replace(/!\s*important\s*$/i, '').trim(); imp = true; } if (!n.startsWith('--')) { n = n.toLowerCase(); } if (v !== '') { out.push({ name: n, value: v, important: imp }); } }
@@ -150,6 +150,7 @@ export const LONGHANDS_OF = {
 };
 /** expand one declaration into longhand [name, value] pairs. Unknown shorthands pass through unchanged. */
 export function expandShorthand(name, value) {
+	if (name === 'font') { value = value.replace(/\s*\/\s*/g, '/'); }
 	const parts = splitValues(value);
 	switch (name) {
 		case 'margin': case 'padding': { const v = box4(parts); return SIDES.map((s, i) => [`${name}-${s}`, v[i]]); }
@@ -195,12 +196,13 @@ for (const n of ['visibility', 'cursor', 'white-space', 'text-align', 'word-brea
 const init = (names, v) => { for (const n of names.split(' ')) { T[n].init = v; } };
 init('display', 'inline'); init('position', 'static'); init('visibility', 'visible'); init('float clear text-transform pointer-events', 'none'); T.clear.init = 'none'; T['pointer-events'].init = 'auto'; T['box-sizing'].init = 'content-box'; init('text-align', 'start'); init('white-space word-break overflow-wrap word-wrap', 'normal'); T['overflow-wrap'].init = 'normal'; init('vertical-align', 'baseline'); init('list-style-type', 'disc'); init('font-style', 'normal');
 init('overflow-x overflow-y', 'visible'); init('user-select -webkit-user-select', 'auto'); init('cursor', 'auto'); init('text-overflow', 'clip'); init('resize', 'none'); init('flex-direction', 'row'); init('flex-wrap', 'nowrap'); init('align-items align-self align-content', 'normal'); T['align-self'].init = 'auto'; init('justify-content', 'normal'); init('direction', 'ltr'); init('tab-size', '8'); init('contain', 'none'); init('text-decoration-line', 'none'); init('text-decoration-style', 'solid'); init('background-repeat', 'repeat'); init('background-image', 'none'); init('border-top-style border-right-style border-bottom-style border-left-style outline-style', 'none'); init('transform filter backdrop-filter mask-image box-shadow text-shadow', 'none'); init('font-feature-settings font-variation-settings', 'normal'); init('caret-color', 'auto'); init('text-rendering', 'auto'); init('background-position', '0% 0%'); init('background-size', 'auto'); init('object-fit', 'fill'); init('content-visibility', 'visible'); init('table-layout', 'auto'); init('isolation', 'auto'); init('mix-blend-mode', 'normal');
-def('top right bottom left width height margin-top margin-right margin-bottom margin-left flex-basis row-gap column-gap', 0, 'auto', 'len'); for (const n of ['row-gap', 'column-gap']) { T[n].init = 'normal'; } T['flex-basis'].init = 'auto';
+def('top right bottom left width height margin-top margin-right margin-bottom margin-left flex-basis row-gap column-gap', 0, 'auto', 'len'); for (const n of ['row-gap', 'column-gap']) { T[n].init = 'normal'; } for (const n of ['margin-top', 'margin-right', 'margin-bottom', 'margin-left']) { T[n].init = 0; } T['flex-basis'].init = 'auto';
 def('min-width min-height padding-top padding-right padding-bottom padding-left border-top-width border-right-width border-bottom-width border-left-width outline-width border-top-left-radius border-top-right-radius border-bottom-right-radius border-bottom-left-radius outline-offset', 0, 0, 'len');
 for (const n of ['border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width', 'outline-width']) { T[n].init = 3; }
 def('max-width max-height', 0, 'none', 'len'); def('letter-spacing word-spacing', 1, 'normal', 'len'); def('text-indent', 1, 0, 'len'); def('line-height', 1, 'normal', 'len'); def('font-size', 1, 16, 'len'); def('font-weight', 1, 400, 'num'); def('font-family', 1, 'serif', 'str');
 def('opacity flex-grow', 0, 1, 'num'); T['flex-grow'].init = 0; def('flex-shrink', 0, 1, 'num'); def('z-index', 0, 'auto', 'int'); def('order', 0, 0, 'int');
 def('color', 1, [0, 0, 0, 1], 'color'); def('background-color border-top-color border-right-color border-bottom-color border-left-color outline-color text-decoration-color', 0, 'currentcolor', 'color'); T['background-color'].init = [0, 0, 0, 0];
+def('content', 0, 'normal', 'str');
 export const PROPS = T;
 const keywordFontSizes = { 'xx-small': 9, 'x-small': 10, small: 13, medium: 16, large: 18, 'x-large': 24, 'xx-large': 32, 'xxx-large': 48 };
 
@@ -260,7 +262,7 @@ export function matchedDeclarations(el, index, inlineDecls, pseudo) {
 	const cands = [];
 	const consider = (list) => { if (list) { for (const e of list) { if ((e.pseudoElement || null) !== (pseudo || null)) { continue; } if (matchesComplex(el, e.complex)) { cands.push(e); } } } };
 	const id = el.getAttribute('id'); if (id) { consider(index.byId.get(id)); }
-	const cl = el.getAttribute('class'); if (cl) { for (const c of cl.split(/\s+/)) { if (c) { consider(index.byClass.get(c)); } } }
+	const cls = el.classes(); for (let i = 0; i < cls.length; i++) { consider(index.byClass.get(cls[i])); }
 	consider(index.byTag.get(el.localName)); consider(index.universal);
 	cands.sort((a, b) => (a.ua === b.ua ? 0 : a.ua ? -1 : 1) || cmpSpec(a.spec, b.spec) || a.order - b.order);
 	return cands;
@@ -279,13 +281,14 @@ export function substituteVars(value, vars, depth = 0) {
 /** Compute the style of one element (or pseudo-element) given its parent's computed style. Returns { values (camel-free dashed keys → computed), vars (Map) } */
 export function computeStyle(el, parentCS, index, env, pseudo) {
 	const cands = matchedDeclarations(el, index, null, pseudo);
-	const vars = new Map(parentCS ? parentCS.vars : []);
+	if (pseudo && cands.length === 0) { return null; }
+	let vars = parentCS ? parentCS.vars : new Map(); let varsOwned = !parentCS;      // copy-on-write: the workbench has ~1500 custom properties on one ancestor
 	const winners = new Map();    // longhand → { value, important, pendingShorthand }
-	const apply = (decls, rank) => { for (const d of decls) { const prev = winners.get(d.name); if (!prev || (d.important && !prev.important) || (d.important === prev.important && rank >= prev.rank)) { winners.set(d.name, { ...d, rank }); } } };
+	const apply = (decls, rank) => { for (const d of decls) { const prev = winners.get(d.name); if (!prev || (d.important && !prev.important) || (d.important === prev.important && rank >= prev.rank)) { winners.set(d.name, { name: d.name, value: d.value, important: d.important, pendingShorthand: d.pendingShorthand, rank }); } } };
 	let rank = 0; for (const c of cands) { apply(c.decls, rank++); }
 	if (!pseudo && el.__style && el.__style.__map.size) { const inl = []; for (const [k, e] of el.__style.__map) { inl.push({ name: k, value: e.v, important: e.important }); } apply(expandDecls(inl), 1e9); }
 	// custom properties first
-	for (const [k, d] of winners) { if (k.startsWith('--')) { const v = d.value.includes('var(') ? substituteVars(d.value, vars) : d.value; if (v !== null) { vars.set(k, v.trim()); } else { vars.delete(k); } } }
+	for (const [k, d] of winners) { if (k.startsWith('--')) { const v = d.value.includes('var(') ? substituteVars(d.value, vars) : d.value; if (!varsOwned) { vars = new Map(vars); varsOwned = true; } if (v !== null) { vars.set(k, v.trim()); } else { vars.delete(k); } } }
 	const out = {}; const parentVals = parentCS ? parentCS.values : null;
 	const ctx = { fontSize: parentVals ? parentVals['font-size'] : 16, rootFontSize: env.rootFontSize ?? 16, vw: env.vw, vh: env.vh };
 	// resolve declared values
@@ -300,14 +303,16 @@ export function computeStyle(el, parentCS, index, env, pseudo) {
 	if (fs !== undefined && !/^(inherit|unset)$/i.test(fs)) { if (/^initial$/i.test(fs)) { fontSize = 16; } else if (keywordFontSizes[fs.toLowerCase()] !== undefined) { fontSize = keywordFontSizes[fs.toLowerCase()]; } else if (fs === 'smaller') { fontSize = fontSize / 1.2; } else if (fs === 'larger') { fontSize = fontSize * 1.2; } else { const l = parseLength(fs, { ...ctx, fontSize: parentVals ? parentVals['font-size'] : 16 }); const px = l !== null && typeof l === 'object' && l.pct !== undefined ? l.pct / 100 * (parentVals ? parentVals['font-size'] : 16) : (typeof l === 'number' ? l : null); if (px !== null) { fontSize = px; } } }
 	ctx.fontSize = fontSize;
 	const color0 = declared.get('color'); let color = parentVals ? parentVals.color : T.color.init; if (color0 !== undefined && !/^(inherit|unset)$/i.test(color0)) { const c = /^initial$/i.test(color0) ? T.color.init : parseColor(color0, color); if (c) { color = c; } }
-	for (const k in T) {
-		const p = T[k]; let d = declared.get(k);
-		if (k === 'font-size') { out[k] = fontSize; continue; } if (k === 'color') { out[k] = color; continue; }
-		if (d !== undefined && /^(initial)$/i.test(d)) { d = undefined; out[k] = initialOf(p); continue; }
-		const inherit = d !== undefined ? /^(inherit)$/i.test(d) || (/^unset$/i.test(d) && p.inh) : p.inh;
-		if (d === undefined || /^(inherit|unset|revert|revert-layer)$/i.test(d)) { out[k] = (inherit && parentVals) ? parentVals[k] : initialOf(p); if (d !== undefined && !inherit) { out[k] = initialOf(p); } continue; }
-		out[k] = parseValue(p, d, ctx, color) ?? (p.inh && parentVals ? parentVals[k] : initialOf(p));
+	for (const k of NONINH) { out[k] = INIT[k]; }
+	for (const k of INH) { out[k] = parentVals ? parentVals[k] : INIT[k]; }
+	for (const [k, d] of declared) {
+		const p = T[k]; if (!p || k === 'font-size' || k === 'color') { continue; }
+		if (/^initial$/i.test(d)) { out[k] = INIT[k]; continue; }
+		if (/^inherit$/i.test(d) || (p.inh && /^unset$/i.test(d))) { out[k] = parentVals ? parentVals[k] : INIT[k]; continue; }
+		if (/^(unset|revert|revert-layer)$/i.test(d)) { out[k] = INIT[k]; continue; }
+		out[k] = parseValueCached(p, k, d, ctx, color) ?? (p.inh && parentVals ? parentVals[k] : INIT[k]);
 	}
+	out['font-size'] = fontSize; out.color = color;
 	// border widths are 0 when the style is none/hidden
 	for (const s of SIDES) { const st = out[`border-${s}-style`]; if (st === 'none' || st === 'hidden') { out[`border-${s}-width`] = 0; } else if (out[`border-${s}-width`] && typeof out[`border-${s}-width`] === 'string') { out[`border-${s}-width`] = { thin: 1, medium: 3, thick: 5 }[out[`border-${s}-width`]] ?? 3; } if (out[`border-${s}-color`] === 'currentcolor') { out[`border-${s}-color`] = color; } }
 	if (out['outline-color'] === 'currentcolor') { out['outline-color'] = color; } if (out['text-decoration-color'] === 'currentcolor') { out['text-decoration-color'] = color; }
@@ -317,6 +322,14 @@ export function computeStyle(el, parentCS, index, env, pseudo) {
 	return { values: out, vars };
 }
 const initialOf = (p) => Array.isArray(p.init) ? p.init.slice() : p.init;
+const INIT = {}, INH = [], NONINH = []; for (const k in T) { INIT[k] = initialOf(T[k]); (T[k].inh ? INH : NONINH).push(k); }
+const parseCache = new Map();
+function parseValueCached(p, k, d, ctx, color) {
+	const ctxDep = p.kind === 'len' || /em|ex|ch|vw|vh|vmin|vmax|calc|min\(|max\(|clamp|currentcolor|color-mix/i.test(d);
+	const key = ctxDep ? k + '|' + d + '|' + ctx.fontSize + '|' + (color ? color.join(',') : '') : k + '|' + d;
+	let v = parseCache.get(key); if (v !== undefined) { return v; }
+	v = parseValue(p, d, ctx, color); if (v === null || v === undefined) { v = null; } if (parseCache.size > 50000) { parseCache.clear(); } parseCache.set(key, v); return v;
+}
 function parseValue(p, d, ctx, color) {
 	switch (p.kind) {
 		case 'kw': return d.toLowerCase();

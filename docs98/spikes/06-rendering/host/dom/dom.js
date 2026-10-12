@@ -148,7 +148,7 @@ export class CSSStyleDeclaration {
 	[Symbol.iterator]() { return this.__map.keys(); }
 	__changed() { const o = this.__owner; if (o) { if (!o.__syncingStyleAttr) { o.__syncingStyleAttr = true; try { o.__attrs.set('style', this.cssText); } finally { o.__syncingStyleAttr = false; } } o.__invalidate('style'); } }
 }
-export function splitDecls(t) { const out = []; let depth = 0, cur = '', q = ''; for (let i = 0; i < t.length; i++) { const c = t[i]; if (q) { cur += c; if (c === q && t[i - 1] !== '\\') { q = ''; } continue; } if (c === '"' || c === "'") { q = c; cur += c; continue; } if (c === '(') { depth++; } else if (c === ')') { depth--; } if (c === ';' && depth === 0) { if (cur.trim()) { out.push(cur.trim()); } cur = ''; } else { cur += c; } } if (cur.trim()) { out.push(cur.trim()); } return out; }
+export function splitDecls(t) { const out = []; let depth = 0, cur = '', q = ''; for (let i = 0; i < t.length; i++) { const c = t[i]; if (q) { cur += c; if (c === '\\') { cur += t[i + 1] ?? ''; i++; } else if (c === q) { q = ''; } continue; } if (c === '"' || c === "'") { q = c; cur += c; continue; } if (c === '(') { depth++; } else if (c === ')') { depth--; } if (c === ';' && depth === 0) { if (cur.trim()) { out.push(cur.trim()); } cur = ''; } else { cur += c; } } if (cur.trim()) { out.push(cur.trim()); } return out; }
 /** Chromium re-serialises values it parsed: numbers keep 6 significant digits (%g style), strings use double quotes. Needed so inline style attributes compare equal. */
 function fmtNum(x) { if (!Number.isFinite(x) || x === 0) { return String(x); } const exp = Math.floor(Math.log10(Math.abs(x))); if (exp < -4 || exp >= 6) { let m = x.toExponential(5); m = m.replace(/\.?0+e/, 'e'); return m.replace(/e([+-])(\d)$/, 'e$10$2'); } return String(Number(x.toPrecision(6))); }
 export function normalizeValue(v) { return v.replace(/'((?:[^'\\]|\\.)*)'/g, (m, s) => s.includes('"') ? m : '"' + s + '"').replace(/(^|[^\w.#-])(-?\d*\.?\d+(?:e[+-]?\d+)?)(?=[a-z%]*\b|$)/gi, (m, pre, num) => { const x = parseFloat(num); return pre + (num.replace(/^[-+]?0*\.?0*$/, '') === '' ? num : (String(x).length > 6 || /e/i.test(num) ? fmtNum(x) : num)); }); }
@@ -170,16 +170,17 @@ export class Element extends Node {
 	get style() { return this.__style ??= new CSSStyleDeclaration(this); }
 	set style(v) { this.style.cssText = String(v); }
 	get attributes() { const el = this; const list = [...this.__attrs].map(([name, value]) => ({ name, value, localName: name, ownerElement: el })); list.getNamedItem = (n) => list.find(a => a.name === n) ?? null; return list; }
+	classes() { return this.__cls ??= (this.__attrs.get('class') || '').split(/\s+/).filter(Boolean); }
 	getAttribute(n) { n = n.toLowerCase(); return this.__attrs.has(n) ? this.__attrs.get(n) : null; }
 	getAttributeNS(ns, n) { return this.getAttribute(n); }
 	setAttribute(n, v) {
-		n = String(n).toLowerCase(); v = String(v); const old = this.__attrs.get(n); this.__attrs.set(n, v);
+		n = String(n).toLowerCase(); v = String(v); const old = this.__attrs.get(n); this.__attrs.set(n, v); if (n === 'class') { this.__cls = null; }
 		if (n === 'style' && !this.__syncingStyleAttr) { this.__syncingStyleAttr = true; try { this.style.cssText = v; } finally { this.__syncingStyleAttr = false; } }
 		this.__invalidate(n === 'class' || n === 'id' || n === 'style' || n.startsWith('data-') || n.startsWith('aria-') || n === 'type' || n === 'disabled' || n === 'hidden' ? 'style' : 'layout');
 		this.__queueMutation({ type: 'attributes', target: this, attributeName: n, oldValue: old ?? null });
 	}
 	setAttributeNS(ns, n, v) { this.setAttribute(n, v); }
-	removeAttribute(n) { n = n.toLowerCase(); if (this.__attrs.delete(n)) { if (n === 'style' && !this.__syncingStyleAttr) { this.style.cssText = ''; } this.__invalidate('style'); this.__queueMutation({ type: 'attributes', target: this, attributeName: n, oldValue: null }); } }
+	removeAttribute(n) { n = n.toLowerCase(); if (n === 'class') { this.__cls = null; } if (this.__attrs.delete(n)) { if (n === 'style' && !this.__syncingStyleAttr) { this.style.cssText = ''; } this.__invalidate('style'); this.__queueMutation({ type: 'attributes', target: this, attributeName: n, oldValue: null }); } }
 	removeAttributeNS(ns, n) { this.removeAttribute(n); }
 	hasAttribute(n) { return this.__attrs.has(n.toLowerCase()); } hasAttributes() { return this.__attrs.size > 0; }
 	toggleAttribute(n, force) { const has = this.hasAttribute(n); const want = force === undefined ? !has : !!force; if (want && !has) { this.setAttribute(n, ''); } else if (!want && has) { this.removeAttribute(n); } return want; }

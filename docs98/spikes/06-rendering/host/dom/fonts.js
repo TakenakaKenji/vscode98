@@ -11,6 +11,8 @@ const FILES = {   // family (lowercase) -> [regular, bold, italic, bold italic]
 	'liberation serif': ['/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf', '/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf', '/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf', '/usr/share/fonts/truetype/liberation/LiberationSerif-BoldItalic.ttf'],
 	'inter': ['/usr/share/fonts/opentype/inter/Inter-Regular.otf', '/usr/share/fonts/opentype/inter/Inter-Bold.otf', '/usr/share/fonts/opentype/inter/Inter-Italic.otf', '/usr/share/fonts/opentype/inter/Inter-BoldItalic.otf'],
 };
+const INTER_NAMES = { 100: 'Thin', 200: 'ExtraLight', 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'SemiBold', 700: 'Bold', 800: 'ExtraBold', 900: 'Black' };
+const interFile = (weight, ital) => { const w = Math.max(100, Math.min(900, Math.round((weight || 400) / 100) * 100)); const n = INTER_NAMES[w]; return `/usr/share/fonts/opentype/inter/Inter-${ital ? (n === 'Regular' ? '' : n) + 'Italic' : n}.otf`; };
 const ALIASES = { arial: 'liberation sans', helvetica: 'liberation sans', 'courier new': 'liberation mono', courier: 'liberation mono', 'times new roman': 'liberation serif', times: 'liberation serif', monospace: 'dejavu sans mono', 'sans-serif': 'inter', serif: 'dejavu serif', 'system-ui': 'inter', '-apple-system': 'inter', 'ui-monospace': 'dejavu sans mono', 'ui-sans-serif': 'inter', 'segoe ui': 'inter', 'ubuntu': 'inter', 'cantarell': 'inter' };
 const custom = new Map();   // @font-face: family(lowercase) -> [{ weight, style, font }]
 const loaded = new Map();
@@ -23,12 +25,12 @@ function loadFile(path) {
 }
 /** Resolve a CSS font-family list + weight/style to a parsed font (first family available; falls back to the generic serif). */
 export function resolveFont(familyList, weight, style) {
-	const key = familyList + '|' + (weight >= 600 ? 'b' : 'r') + '|' + (style === 'italic' || style === 'oblique' ? 'i' : 'n'); let f = loadedKeyCache.get(key); if (f !== undefined) { return f; }
+	const key = familyList + '|' + (/inter|sans|system|ui|apple|segoe|ubuntu/i.test(familyList) ? Math.round((weight || 400) / 100) : (weight >= 600 ? 'b' : 'r')) + '|' + (style === 'italic' || style === 'oblique' ? 'i' : 'n'); let f = loadedKeyCache.get(key); if (f !== undefined) { return f; }
 	const bold = weight >= 600, ital = style === 'italic' || style === 'oblique';
 	for (let fam of familyList.split(',')) {
 		fam = fam.trim().replace(/^["']|["']$/g, '').toLowerCase(); if (!fam) { continue; }
 		const c = custom.get(fam); if (c) { const m = c.find(e => (e.weight >= 600) === bold) ?? c[0]; f = m.font; break; }
-		const real = FILES[fam] ? fam : ALIASES[fam]; if (real && FILES[real]) { const files = FILES[real]; const idx = (bold ? 1 : 0) + (ital ? 2 : 0); f = loadFile(files[idx]) ?? loadFile(files[0]); if (f) { break; } }
+		const real = FILES[fam] ? fam : ALIASES[fam]; if (real === 'inter') { f = loadFile(interFile(weight, ital)) ?? loadFile(interFile(400, false)); if (f) { break; } } else if (real && FILES[real]) { const files = FILES[real]; const idx = (bold ? 1 : 0) + (ital ? 2 : 0); f = loadFile(files[idx]) ?? loadFile(files[0]); if (f) { break; } }
 	}
 	if (!f) { f = loadFile(FILES['dejavu serif'][bold ? 1 : 0]); }
 	loadedKeyCache.set(key, f); return f;
@@ -43,6 +45,15 @@ export function fontMetrics(font, size) {
 export function advance(font, cp, size) {
 	let a = font.__adv.get(cp); if (a === undefined) { const g = font.charToGlyph(String.fromCodePoint(cp)); a = (g.advanceWidth ?? 0) / font.unitsPerEm; font.__adv.set(cp, a); }
 	return a * size;
+}
+/** GPOS/kern pair adjustment in px between two code points (opentype.js: pair lookups only; class-based and contextual kerning, e.g. Inter's, is not covered). */
+export function kern(font, a, b, size) {
+	if (a === 32 || b === 32) { return 0; }
+	if (font.__kt === undefined) { try { font.__kt = font.position && font.position.getKerningTables ? font.position.getKerningTables('latn') : null; } catch { font.__kt = null; } if (font.__kt && !font.__kt.length) { font.__kt = null; } font.__kc = new Map(); }
+	if (!font.__kt) { return 0; }
+	const key = a * 0x110000 + b; let v = font.__kc.get(key);
+	if (v === undefined) { v = font.position.getKerningValue(font.__kt, font.charToGlyph(String.fromCodePoint(a)).index, font.charToGlyph(String.fromCodePoint(b)).index) / font.unitsPerEm; font.__kc.set(key, v); }
+	return v * size;
 }
 export function textWidth(font, text, size, letterSpacing = 0) { let w = 0; for (const ch of text) { w += advance(font, ch.codePointAt(0), size) + letterSpacing; } return w; }
 export function glyphPath(font, cp, size) { return font.charToGlyph(String.fromCodePoint(cp)).getPath(0, 0, size); }

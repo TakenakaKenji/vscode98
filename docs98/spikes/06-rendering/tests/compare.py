@@ -30,7 +30,7 @@ def err(p):
     t, o = T[p], O[p]
     return max(abs((t[k] or 0) - (o[k] or 0)) for k in 'xywh')
 for tl in tol: print(f'boxes (non-empty, {len(vis)}) within {tl}px on x,y,w,h: {sum(1 for p in vis if err(p) <= tl)}')
-bad = sorted([p for p in vis if err(p) > 1], key=err, reverse=True)
+bad = sorted([p for p in vis if err(p) > 1], key=(lambda p: (T[p].get('depth', 0), p)) if '--topdown' in sys.argv else err, reverse='--topdown' not in sys.argv)
 for p in bad[:verbose]:
     t, o = T[p], O[p]; print(f"  err {err(p):7.1f}  {p.split('/')[-1]:14s} .{t['cls'][:40]:40s} chromium ({t['x']:.1f},{t['y']:.1f},{t['w']:.1f},{t['h']:.1f})  ours ({o['x']:.1f},{o['y']:.1f},{o['w']:.1f},{o['h']:.1f})")
 for k in ('offsetW', 'offsetH'): print(k, 'matches:', sum(1 for p in common if 'offsetW' in T[p] and abs(T[p][k] - O[p][k]) <= 1), '/', len(common))

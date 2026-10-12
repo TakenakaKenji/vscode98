@@ -85,7 +85,7 @@ function elementSiblings(el) { const p = el.parentNode; return p ? p.__children.
 function matchCompound(el, c, ctx) {
 	if (c.tag && el.localName !== c.tag && el.localName.toLowerCase() !== c.tag) { return false; }
 	if (c.id !== null && el.getAttribute('id') !== c.id) { return false; }
-	if (c.classes.length) { const cl = el.getAttribute('class'); if (cl === null) { return false; } const set = cl.split(/\s+/); for (const k of c.classes) { if (!set.includes(k)) { return false; } } }
+	if (c.classes.length) { const set = el.classes(); if (!set.length) { return false; } for (const k of c.classes) { if (!set.includes(k)) { return false; } } }
 	for (const a of c.attrs) {
 		const v = el.getAttribute(a.name); if (v === null) { return false; } if (!a.op) { continue; }
 		const l = a.flag === 'i' ? v.toLowerCase() : v, w = a.flag === 'i' ? a.value.toLowerCase() : a.value;

@@ -2,12 +2,13 @@
 // backgrounds (with border-radius), solid borders, inline-box backgrounds, text (glyph outlines from opentype.js rasterised with an analytic coverage accumulator and
 // cached per font/glyph/size/sub-pixel offset), underline/line-through, overflow clipping, scroll offsets, translate/scale transforms (translation exact), group opacity.
 // Not painted (recorded in `unpainted`): gradients, images, canvas, box-shadow, outlines, rounded borders, text-shadow, filters, blend modes.
-import { resolveFont, advance, fontMetrics } from './fonts.js';
+import { resolveFont, advance, fontMetrics, kern } from './fonts.js';
 import { parseContent } from './layout.js';
 
 export const unpainted = new Map();
 const note = (k) => unpainted.set(k, (unpainted.get(k) || 0) + 1);
 
+export let textGamma = 1; const GAMMA = new Uint8Array(256); export function setTextGamma(g) { textGamma = g; for (let i = 0; i < 256; i++) { GAMMA[i] = Math.round(255 * Math.pow(i / 255, g)); } } setTextGamma(1);
 class Surface {
 	constructor(w, h) { this.w = w; this.h = h; this.px = new Uint8ClampedArray(w * h * 4); }
 	fill(r, g, b, a) { for (let i = 0; i < this.px.length; i += 4) { this.px[i] = r; this.px[i + 1] = g; this.px[i + 2] = b; this.px[i + 3] = a; } }
@@ -73,11 +74,12 @@ class Painter {
 		const v = frag.v, color = v.color; if (!color || color[3] <= 0 || v.visibility === 'hidden') { return; }
 		const font = frag.font, size = frag.size, ls = frag.ls; const S = this.S, c = this.clip; let x = frag.ax + dx; const by = Math.round(frag.abaseline + dy);
 		const wsp = typeof v['word-spacing'] === 'number' ? v['word-spacing'] : 0;
+		let prevCp = 0;
 		for (const ch of frag.text) {
-			const cp = ch.codePointAt(0); const adv = advance(font, cp, size);
+			const cp = ch.codePointAt(0); const adv = advance(font, cp, size); if (ls === 0 && prevCp) { x += kern(font, prevCp, cp, size); } prevCp = cp;
 			if (cp !== 32 && cp !== 160 && cp !== 9) {
 				const fx = Math.round((x - Math.floor(x)) * 4) / 4; const g = this.glyph(font, cp, size, fx); this.stats.glyphs++;
-				if (!g.empty) { const gx = Math.floor(x) + g.left, gy = by + g.top; for (let yy = 0; yy < g.h; yy++) { const py = gy + yy; if (py < c[1] || py >= c[3]) { continue; } for (let xx = 0; xx < g.w; xx++) { const px_ = gx + xx; if (px_ < c[0] || px_ >= c[2]) { continue; } const cv = g.cov[yy * g.w + xx]; if (cv) { blend(S.px, (py * S.w + px_) * 4, color[0], color[1], color[2], color[3] * alphaMul * cv / 255); } } } }
+				if (!g.empty) { const gx = Math.floor(x) + g.left, gy = by + g.top; for (let yy = 0; yy < g.h; yy++) { const py = gy + yy; if (py < c[1] || py >= c[3]) { continue; } for (let xx = 0; xx < g.w; xx++) { const px_ = gx + xx; if (px_ < c[0] || px_ >= c[2]) { continue; } let cv = g.cov[yy * g.w + xx]; if (cv) { cv = GAMMA[cv]; blend(S.px, (py * S.w + px_) * 4, color[0], color[1], color[2], color[3] * alphaMul * cv / 255); } } } }
 			}
 			x += adv + ls + (cp === 32 ? wsp : 0);
 		}

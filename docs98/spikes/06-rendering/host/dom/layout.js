@@ -2,10 +2,11 @@
 // inline-block and replaced elements, absolute/fixed/relative positioning, flexbox (single and multi-line), overflow/scroll geometry, translate/scale transforms.
 // Not implemented (recorded in `unsupported`): floats, tables (laid out as blocks), grid, multi-column, writing modes, bidi, ::first-line/letter.
 import { buildRuleIndex, computeStyle, resolveLen, PROPS } from './css.js';
-import { resolveFont, fontMetrics, advance } from './fonts.js';
+import { resolveFont, fontMetrics, advance, kern } from './fonts.js';
 import { noteMissing } from './dom.js';
 
 export const unsupported = new Map();
+const box_oof = (v) => v.position === 'absolute' || v.position === 'fixed';
 const unsup = (k) => { unsupported.set(k, (unsupported.get(k) || 0) + 1); };
 
 // ---- style pass -------------------------------------------------------------------------------------------------------------------------------
@@ -13,7 +14,7 @@ export function resolveStyles(doc, env) {
 	const index = buildRuleIndex(doc, env); doc.__ruleIndex = index; let n = 0;
 	const walk = (el, parentCS) => {
 		const cs = computeStyle(el, parentCS, index, env, null); el.__cs = cs; n++;
-		for (const pe of ['before', 'after']) { const pcs = computeStyle(el, cs, index, env, pe); const c = pcs.values.content; el['__' + pe] = (c && c !== 'none' && c !== 'normal') ? pcs : null; }
+		for (const pe of ['before', 'after']) { const pcs = computeStyle(el, cs, index, env, pe); const c = pcs && pcs.values.content; el['__' + pe] = (c && c !== 'none' && c !== 'normal') ? pcs : null; }
 		for (const c of el.__children) { if (c.nodeType === 1) { walk(c, cs); } }
 	};
 	const root = doc.documentElement; if (root) { walk(root, null); } doc.__styleCount = n;
@@ -47,6 +48,7 @@ export class Layout {
 	build(el, parent) {
 		const cs = el.__cs; if (!cs) { return null; } const v = cs.values; let d = v.display; if (d === 'none') { return null; }
 		if (d === 'contents') { for (const c of el.__children) { this.buildChild(c, parent); } return null; }
+		if (parent && (parent.display === 'flex' || parent.display === 'inline-flex') && !(box_oof(v))) { d = ({ inline: 'block', 'inline-block': 'block', 'inline-flex': 'flex', 'inline-table': 'table' })[d] ?? d; }
 		let kind = isBlockLevel(d) ? (d === 'flex' ? 'flex' : 'block') : d === 'inline-block' || d === 'inline-flex' || d === 'inline-table' || d === 'inline-grid' ? 'inline-block' : 'inline';
 		if (d === 'inline-flex') { kind = 'inline-block'; }
 		if (d === 'grid' || d === 'inline-grid') { unsup('display:grid'); } if (d === 'table' || d.startsWith('table-')) { unsup('display:table'); }
@@ -84,7 +86,8 @@ export class Layout {
 	}
 	specSize(box, prop, cbSize) {   // content-box size from width/height/min/max (null = auto/none)
 		const v = box.v, bb = v['box-sizing'] === 'border-box', extra = prop === 'width' ? box.hx : box.vy; const conv = (x) => { if (x === 'auto' || x === 'none' || x === undefined || x === 'min-content' || x === 'max-content' || x === 'fit-content') { return null; } if (cbSize === null && x && (x.pct !== undefined || (x.calc && JSON.stringify(x.calc).includes('"pct"')))) { return null; } const l = resolveLen(x, cbSize ?? 0); return l === null ? null : Math.max(0, bb ? l - extra : l); };
-		return { size: conv(v[prop]), min: conv(v['min-' + prop]) ?? 0, max: conv(v['max-' + prop]), kw: typeof v[prop] === 'string' ? v[prop] : null };
+		let max = conv(v['max-' + prop]); const mk = v['max-' + prop]; if (prop === 'width' && typeof mk === 'string' && (mk === 'fit-content' || mk === 'max-content' || mk === 'min-content') && box.kind !== 'text') { max = mk === 'min-content' ? this.minContent(box) : this.maxContent(box); }
+		return { size: conv(v[prop]), min: conv(v['min-' + prop]) ?? 0, max, kw: typeof v[prop] === 'string' ? v[prop] : null };
 	}
 	clampSize(s, x) { let r = x; if (s.max !== null) { r = Math.min(r, s.max); } return Math.max(r, s.min); }
 
@@ -142,7 +145,7 @@ export class Layout {
 		}
 		return Math.max(best, cur);
 	}
-	measure(font, text, size, ls, v) { let w = 0; const ws = v ? v['word-spacing'] : 0; for (const ch of text) { const cp = ch.codePointAt(0); w += advance(font, cp, size) + ls + (cp === 32 && typeof ws === 'number' ? ws : 0); } return w; }
+	measure(font, text, size, ls, v) { let w = 0, prev = 0; const ws = v ? v['word-spacing'] : 0; for (const ch of text) { const cp = ch.codePointAt(0); w += advance(font, cp, size) + ls + (cp === 32 && typeof ws === 'number' ? ws : 0); if (ls === 0 && prev) { w += kern(font, prev, cp, size); } prev = cp; } return w; }
 	replacedSize(box) {
 		const el = box.el, n = el.localName, v = box.v; if (box.__rs) { return box.__rs; } let w = 0, h = 0; const attr = (a) => { const x = el.getAttribute(a); return x === null ? null : parseFloat(x); };
 		if (n === 'canvas') { w = attr('width') ?? 300; h = attr('height') ?? 150; } else if (n === 'img' || n === 'video' || n === 'svg' || n === 'iframe') { w = attr('width') ?? (n === 'iframe' ? 300 : 0); h = attr('height') ?? (n === 'iframe' ? 150 : 0); }
@@ -155,6 +158,7 @@ export class Layout {
 
 	// ---- block layout
 	layoutBlock(box, cbw, cbh, opts = {}) {
+		box.frags = null; box.inlineRects = null;      // a box can be laid out more than once (flex re-layout, shrink-to-fit): start from a clean fragment list
 		this.metrics(box, cbw);
 		const wSpec = this.specSize(box, 'width', cbw), hSpec = this.specSize(box, 'height', cbh);
 		let cw;
@@ -192,7 +196,7 @@ export class Layout {
 				i = j; continue;
 			}
 			// block-level child
-			const r = this.layoutBlock(c, cw, null); c.res = r;
+			const r = this.layoutBlock(c, cw, ch); c.res = r;
 			const mt = r.mtOut ?? c.mt; let gap;
 			if (first && topAdj) { res.mtOut = this.collapse(box.mt, mt); gap = 0; } else if (pending === null) { gap = mt; } else { gap = this.collapse(pending, mt); }
 			if (!(first && topAdj)) { y += gap; } else { y += 0; }
@@ -214,7 +218,7 @@ export class Layout {
 		const lhOf = (vv, met) => { const l = vv['line-height']; if (l === 'normal' || l === undefined) { return met.lineHeightNormal; } if (l && l.num !== undefined) { return l.num * vv['font-size']; } const r = resolveLen(l, vv['font-size']); return r === null ? met.lineHeightNormal : r; };
 		const frags = [], atomics = [], oofs = [], lines = [], inlineRects = [], stack = [];
 		let line = null; const lines_ = lines; let x = 0; let hasContent = false; let prevSpace = true;
-		const newLine = () => { line = { y: 0, h: 0, items: [], baseline: 0, strutAsc: 0, strutDesc: 0, x0: 0, width: 0 }; lines_.push(line); x = 0; prevSpace = true; const strutLh = lhOf(v, cvMet); const half = (strutLh - (cvMet.ascent + cvMet.descent)) / 2; line.maxAsc = cvMet.ascent + half; line.maxDesc = cvMet.descent + half; line.hasStrutContent = false; };
+		const newLine = () => { line = { y: 0, h: 0, items: [], baseline: 0, strutAsc: 0, strutDesc: 0, x0: 0, width: 0 }; lines_.push(line); x = 0; prevSpace = true; const strutLh = lhOf(v, cvMet); const hl = strutLh - (cvMet.ascent + cvMet.descent), half = Math.floor(hl / 2); line.maxAsc = cvMet.ascent + half; line.maxDesc = cvMet.descent + (hl - half); line.hasStrutContent = false; };
 		const startInlineBoxes = () => { for (const b of stack) { if (!b.__lineRect || b.__lineRect.line !== line) { const rect = { line, x: x, y: 0, w: 0, h: 0 }; b.__lineRect = rect; b.__rects.rects.push(rect); } } };
 		const contribute = (asc, desc) => { line.maxAsc = Math.max(line.maxAsc, asc); line.maxDesc = Math.max(line.maxDesc, desc); };
 		const placeFrag = (f) => { line.items.push(f); frags.push(f); };
@@ -232,7 +236,7 @@ export class Layout {
 		const spaceCache = new Map();
 		for (let idx = 0; idx < items.length; idx++) {
 			const it = items[idx];
-			if (it.t === 'open') { const b = it.box; const font = this.fontOf(b), size = b.v['font-size']; const m = fontMetrics(font, size); b.__rects = { box: b, rects: [], m: { asc: m.ascent, desc: m.descent } }; inlineRects.push(b.__rects); b.__lineRect = null; stack.push(b); startInlineBoxes(); const e = b.ml + b.bl + b.pl; const q = b.__lineRect; x += e; hasContent = hasContent || e > 0; const lh = lhOf(b.v, m); const half = (lh - (m.ascent + m.descent)) / 2; contribute(m.ascent + half, m.descent + half); }
+			if (it.t === 'open') { const b = it.box; const font = this.fontOf(b), size = b.v['font-size']; const m = fontMetrics(font, size); b.__rects = { box: b, rects: [], m: { asc: m.ascent, desc: m.descent } }; inlineRects.push(b.__rects); b.__lineRect = null; stack.push(b); startInlineBoxes(); const e = b.ml + b.bl + b.pl; const q = b.__lineRect; x += e; hasContent = hasContent || e > 0; const lh = lhOf(b.v, m); const hl = lh - (m.ascent + m.descent), half = Math.floor(hl / 2); contribute(m.ascent + half, m.descent + (hl - half)); }
 			else if (it.t === 'close') { const b = it.box; const e = b.mr + b.br + b.pr; x += e; stack.pop(); if (b.__lineRect) { b.__lineRect.endX = x; b.__lineRect.w = x - b.__lineRect.x; b.__lineRect.sx = b.__lineRect.x; } }
 			else if (it.t === 'oof') { it.box.static = { x, y: 0, parentBox: container, line }; oofs.push(it); it.box.ox = container.bl + container.pl + x; it.box.oy = container.bt + container.pt + line.y; }
 			else if (it.t === 'br') { hasContent = true; line.hasStrutContent = true; nextLine(); }
@@ -244,14 +248,14 @@ export class Layout {
 				const f = { t: 'atomic', box: b, x, w: ow, boxBaseline: baseline }; b.ox = 0; placeFrag(f); atomics.push(f); x += ow; hasContent = true; prevSpace = false; line.hasStrutContent = true;
 			}
 			else if (it.t === 'text') {
-				const v2 = it.v, wsm = this.ws(v2), font = this.fontOf({ v: v2 }), size = v2['font-size'], met = fontMetrics(font, size); const ls = typeof v2['letter-spacing'] === 'number' ? v2['letter-spacing'] : 0; const lh = lhOf(v2, met); const half = (lh - (met.ascent + met.descent)) / 2;
+				const v2 = it.v, wsm = this.ws(v2), font = this.fontOf({ v: v2 }), size = v2['font-size'], met = fontMetrics(font, size); const ls = typeof v2['letter-spacing'] === 'number' ? v2['letter-spacing'] : 0; const lh = lhOf(v2, met); const hl = lh - (met.ascent + met.descent), half = Math.floor(hl / 2), halfB = hl - half;
 				const wsp = typeof v2['word-spacing'] === 'number' ? v2['word-spacing'] : 0; const tabSize = parseFloat(v2['tab-size']) || 8; const tr = v2['text-transform'];
 				let text = it.text; if (tr === 'uppercase') { text = text.toUpperCase(); } else if (tr === 'lowercase') { text = text.toLowerCase(); } else if (tr === 'capitalize') { text = text.replace(/(^|\s)(\S)/g, (_, a, b) => a + b.toUpperCase()); }
 				const breakAll = v2['word-break'] === 'break-all' || v2['word-break'] === 'break-word'; const overflowWrap = v2['overflow-wrap'] === 'break-word' || v2['overflow-wrap'] === 'anywhere' || v2['word-wrap'] === 'break-word';
 				// tokenise into words / spaces / newlines
 				const toks = []; { let i = 0; const n = text.length; while (i < n) { const c = text[i]; if (c === '\n' && wsm.newlines) { toks.push({ k: 'nl' }); i++; } else if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f') { let j = i; while (j < n && (text[j] === ' ' || text[j] === '\t' || ((text[j] === '\n' || text[j] === '\r' || text[j] === '\f') && !(text[j] === '\n' && wsm.newlines)))) { j++; } if (wsm.collapse) { toks.push({ k: 'sp', s: ' ', src: i, srcEnd: j }); } else { toks.push({ k: 'sp', s: text.slice(i, j), src: i, srcEnd: j }); } i = j === i ? i + 1 : j; } else { let j = i; while (j < n && !' \t\n\r\f'.includes(text[j])) { j++; } toks.push({ k: 'w', s: text.slice(i, j), src: i, srcEnd: j }); i = j; } } }
 				let cur = null;   // fragment being extended on the current line
-				const startFrag = (srcPos) => { startInlineBoxes(); cur = { t: 'text', box: it.box, node: it.box.el, v: v2, text: '', x, w: 0, y: 0, asc: met.ascent, desc: met.descent, src: srcPos, srcEnd: srcPos, font, size, ls, trailingSpaceW: 0, line }; placeFrag(cur); contribute(met.ascent + half, met.descent + half); };
+				const startFrag = (srcPos) => { startInlineBoxes(); cur = { t: 'text', box: it.box, node: it.box.el, v: v2, text: '', x, w: 0, y: 0, asc: met.ascent, desc: met.descent, src: srcPos, srcEnd: srcPos, font, size, ls, trailingSpaceW: 0, line }; placeFrag(cur); contribute(met.ascent + half, met.descent + halfB); };
 				const addText = (s, srcStart, srcEnd, isSpace) => { if (!cur || cur.line !== line) { startFrag(srcStart); } const wdt = this.measure(font, s, size, ls, v2) + (isSpace ? wsp * (s.split(' ').length - 1) : 0); cur.text += s; cur.w += wdt; cur.srcEnd = srcEnd; x += wdt; hasContent = true; line.hasStrutContent = true; return wdt; };
 				for (let ti = 0; ti < toks.length; ti++) {
 					const tk = toks[ti];
@@ -360,7 +364,7 @@ export class Layout {
 				if (stretch) { const target = ln.cross - it.mCross[0] - it.mCross[1]; if (row) { this.layoutBlock(it, cw, ch, { forceW: it.main + it.extraMain, forceH: Math.max(this.clampSize(it.crossSpec, target - it.vy) + it.vy, 0) }); } else { this.layoutBlock(it, cw, ch, { forceW: this.clampSize(it.crossSpec, target - it.hx) + it.hx, forceH: it.main + it.extraMain }); } }
 				else if (!row && it.crossSpec.size === null) { /* column item, cross = width: shrink-to-fit for non-stretch alignment */ const avail = ln.cross - it.mCross[0] - it.mCross[1]; const w = Math.min(Math.max(this.minContent(it), avail - it.hx), this.maxContent(it)) + it.hx; this.layoutBlock(it, cw, ch, { forceW: w, forceH: it.main + it.extraMain }); }
 			}
-			let p = startMain; const seq = rev ? [...ln.items].reverse() : ln.items; let pm = rev ? ln.avail - startMain : startMain;
+			let p = startMain; const seq = ln.items; let pm = rev ? ln.avail - startMain : startMain;
 			for (const it of seq) {
 				const outerMain = it.main + it.extraMain + it.mMain[0] + it.mMain[1];
 				let mainOff; if (rev) { pm -= outerMain; mainOff = pm + it.mMain[0]; pm -= between + mainGap; } else { mainOff = p + it.mMain[0]; p += outerMain + between + mainGap; }
