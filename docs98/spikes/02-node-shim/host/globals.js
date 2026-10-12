@@ -143,7 +143,7 @@ globalThis.URLSearchParams ??= class URLSearchParams {
 globalThis.URL ??= class URL {
 	constructor(url, base) {
 		let u = String(url);
-		if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(u)) { if (base === undefined) { throw new TypeError('Invalid URL: ' + u); } const b = new URL(String(base)); u = u.startsWith('//') ? b.protocol + u : u.startsWith('/') ? b.origin + u : b.origin + b.pathname.replace(/[^/]*$/, '') + u; }
+		if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(u)) { if (base === undefined) { throw new TypeError('Invalid URL: ' + u); } let bs = String(base); if (bs.startsWith('/')) { bs = 'file://' + bs; } const b = new URL(bs); const org = b.protocol + '//' + b.host; u = u.startsWith('//') ? b.protocol + u : u.startsWith('/') ? org + u : org + b.pathname.replace(/[^/]*$/, '') + u; }
 		const m = /^([a-zA-Z][a-zA-Z0-9+.-]*:)(?:\/\/([^/?#]*))?([^?#]*)(\?[^#]*)?(#.*)?$/.exec(u); if (!m) { throw new TypeError('Invalid URL: ' + u); }
 		this.protocol = m[1].toLowerCase(); const auth = m[2] ?? ''; const at = auth.lastIndexOf('@'); const hostport = at >= 0 ? auth.slice(at + 1) : auth; if (at >= 0) { const [us, pw = ''] = auth.slice(0, at).split(':'); this.username = us; this.password = pw; } else { this.username = ''; this.password = ''; }
 		const pm = /^(.*?)(?::(\d+))?$/.exec(hostport); this.hostname = pm[1].toLowerCase(); this.port = pm[2] ?? ''; this.host = this.hostname + (this.port ? ':' + this.port : '');

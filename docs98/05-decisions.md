@@ -16,6 +16,7 @@ Format: ID, date, status (`accepted`, `proposed`, `rejected`, `superseded`), dec
 - **Why:** The workbench is ~1.1M lines written directly against the DOM; a native rewrite would lose most features. Goal is the full feature set.
 - **Alternatives rejected:** (1) native toolkit rewrite — too large, loses extension compatibility; (2) WebView2/Tauri — requires newer Windows, defeats the goal; (3) plain Electron backport — can't reach XP/98.
 - **Risk:** Performance of a small JS engine and a custom renderer; breadth of CSS needed. Phase 1 spikes test this.
+- **Evidence (spike 8, 2026-10-12):** the unmodified web workbench boots on our DOM/CSS/layout/renderer on QuickJS-ng and responds to input (Welcome page, views, chat, dialogs, quick input, typing in Monaco). Cost: 131 full restyle passes per boot (165 of 175 s), ~10 s per keystroke, 666 to 683 MB peak RSS: all addressable in the engine (incremental invalidation, memory), none in VS Code. Desktop workbench (needs a main-process shim), extensions and Windows are untested. [spikes/08-workbench-boot/README.md](spikes/08-workbench-boot/README.md).
 
 ## D-004 — JS engine — proposed (pending Phase 1)
 - **Candidate:** QuickJS / QuickJS-ng. Others to compare: older V8 builds, Duktape, other embeddable engines.

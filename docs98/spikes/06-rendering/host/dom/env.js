@@ -46,7 +46,7 @@ export class Document extends Node {
 	__ensureLayout() {
 		const env = this.__env;
 		if (this.__layout && !this.__dirty) { return; }
-		const t0 = performance.now(); const lay = new Layout(this, env); lay.run(); this.__layout = lay; this.__dirty = false; this.__styleDirty = false; this.__layoutCount++; this.__layoutMs += performance.now() - t0; this.__applyTransforms(lay);
+		const t0 = performance.now(); const dirty = this.__dirtyLog || []; this.__dirtyLog = []; const lay = new Layout(this, env); lay.run(); if (this.__passStats) { this.__passStats.push(summarizeDirty(dirty, this, lay, t0)); } this.__layout = lay; this.__dirty = false; this.__styleDirty = false; this.__layoutCount++; this.__layoutMs += performance.now() - t0; this.__applyTransforms(lay);
 		if (this.__scrollClampPending) { this.__scrollClampPending = false; }
 	}
 	__applyTransforms(lay) {   // 2D affine per box from `transform` (translate / scale / matrix / rotate approximated)
@@ -118,15 +118,28 @@ class ResizeObserver { constructor(cb) { this.cb = cb; this.t = new Set(); } obs
 class IntersectionObserver { constructor(cb) { this.cb = cb; } observe() { } unobserve() { } disconnect() { } takeRecords() { return []; } }
 class Storage { constructor() { this.m = new Map(); } getItem(k) { return this.m.has(k) ? this.m.get(k) : null; } setItem(k, v) { this.m.set(String(k), String(v)); } removeItem(k) { this.m.delete(k); } clear() { this.m.clear(); } key(i) { return [...this.m.keys()][i] ?? null; } get length() { return this.m.size; } }
 
+/** What made a layout pass necessary, and how much of the tree a perfect incremental invalidation would have had to restyle (an estimate, for the incremental style design). */
+function summarizeDirty(log, doc, lay, t0) {
+	const counts = { ins: 0, rem: 0, text: 0, 'attr:class': 0, 'attr:style': 0, 'attr:other': 0 }; const need = new Set(); const subtree = (n) => { if (n.nodeType !== 1 || need.has(n)) { return; } need.add(n); for (const c of n.__children) { subtree(c); } };
+	for (const [kind, what, node, arg] of log) {
+		if (what === 'ins') { counts.ins++; subtree(arg); if (node.nodeType === 1) { need.add(node); for (const c of node.__children) { if (c.nodeType === 1) { need.add(c); } } } }
+		else if (what === 'rem') { counts.rem++; if (node.nodeType === 1) { need.add(node); for (const c of node.__children) { if (c.nodeType === 1) { need.add(c); } } } }
+		else if (what === 'text') { counts.text++; }
+		else if (what === 'attr') { if (arg === 'class') { counts['attr:class']++; subtree(node); } else if (arg === 'style') { counts['attr:style']++; need.add(node); } else { counts['attr:other']++; if (kind === 'style') { subtree(node); } } }
+	}
+	let live = 0; for (const n of need) { if (n.isConnected) { live++; } }
+	return { total: lay.__elementCount ?? doc.__styleCount, mutations: log.length, counts, restyleEstimate: live, styleMs: lay.styleMs, layoutMs: lay.layoutMs, ms: performance.now() - t0 };
+}
 export function installEnvironment(opts = {}) {
 	const g = opts.global ?? globalThis; const env = { vw: opts.width ?? 800, vh: opts.height ?? 520, dpr: 1, dark: false, rootFontSize: 16, scrollbarSize: opts.scrollbarSize ?? 0, window: g };
 	if (opts.opentype) { setOpentype(opts.opentype); }
-	env.onFontFace = (decls) => { try { let family, src; for (const d of decls) { if (d.name === 'font-family') { family = d.value; } else if (d.name === 'src') { src = d.value; } } const m = src && /url\(\s*["']?((?:data|file|vscode-file):[^"')]+)["']?\s*\)/.exec(src); if (family && m && opts.opentype) { let buf; if (m[1].startsWith('data:')) { const b64 = m[1].slice(m[1].indexOf(',') + 1); buf = Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer; } else { buf = globalThis.__readFileBytes(decodeURIComponent(m[1].replace(/^[a-z-]+:\/\/(vscode-app)?/, '').replace(/[?#].*$/, ''))); } const font = opts.opentype.parse(buf); font.__adv = new Map(); registerFontFace(family, font); } } catch (e) { noteMissing('font-face parse: ' + (e && e.message)); } };
+	env.onFontFace = (decls) => { try { let family, src; for (const d of decls) { if (d.name === 'font-family') { family = d.value; } else if (d.name === 'src') { src = d.value; } } const m = src && /url\(\s*["']?((?:data|file|vscode-file|https?):[^"')]+)["']?\s*\)/.exec(src); if (family && m && opts.opentype) { let buf; if (m[1].startsWith('data:')) { const b64 = m[1].slice(m[1].indexOf(',') + 1); buf = Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer; } else if (opts.readUrl) { buf = opts.readUrl(m[1]); } else { buf = globalThis.__readFileBytes(decodeURIComponent(m[1].replace(/^[a-z-]+:\/\/(vscode-app)?/, '').replace(/[?#].*$/, ''))); } const font = opts.opentype.parse(buf); font.__adv = new Map(); registerFontFace(family, font); } } catch (e) { noteMissing('font-face parse: ' + (e && e.message)); } };
 	const doc = new Document(env); env.document = doc;
 	const timers = { rafs: new Map(), nextRaf: 1 };
 	const defineGlobal = (k, v) => Object.defineProperty(g, k, { value: v, writable: true, configurable: true, enumerable: false });
 	const et = new EventTarget(); for (const k of ['addEventListener', 'removeEventListener', 'dispatchEvent']) { defineGlobal(k, (...a) => et[k](...a)); }
 	et.__parentForEvents = () => null;
+	Object.defineProperty(g, '__l', { get() { return et.__l; }, set(v) { et.__l = v; }, configurable: true }); defineGlobal('__parentForEvents', () => null);   // the window is the last node of an event path: its listeners live in `et`
 	defineGlobal('window', g); defineGlobal('self', g); defineGlobal('top', g); defineGlobal('parent', g); defineGlobal('frames', g); defineGlobal('globalThis', g); defineGlobal('document', doc);
 	const loc = { href: 'file:///index.html', origin: 'file://', protocol: 'file:', host: '', hostname: '', port: '', pathname: '/index.html', search: '', hash: '', assign() { }, replace() { }, reload() { }, toString() { return this.href; } }; defineGlobal('location', loc);
 	defineGlobal('navigator', { userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36', platform: 'Linux x86_64', language: 'en-US', languages: ['en-US', 'en'], hardwareConcurrency: 4, maxTouchPoints: 0, onLine: true, cookieEnabled: true, vendor: 'Google Inc.', appVersion: '5.0 (X11)', clipboard: { writeText: () => Promise.resolve(), readText: () => Promise.resolve('') }, sendBeacon() { return true; }, webdriver: false, serviceWorker: undefined, mediaDevices: undefined, getGamepads() { return []; }, permissions: { query: () => Promise.resolve({ state: 'denied' }) }, locks: undefined, userAgentData: undefined, keyboard: undefined });

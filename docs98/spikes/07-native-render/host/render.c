@@ -8,6 +8,7 @@
  */
 #include <math.h>
 #include <time.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -257,6 +258,14 @@ static void set_fpu_double(void) { fpu_control_t cw; _FPU_GETCW(cw); cw = (cw & 
 #else
 static void set_fpu_double(void) { }
 #endif
+/* Browsers log an unhandled promise rejection and carry on; stock QuickJS exits with status 1. Route rejections to globalThis.__rejection(promise, reason, handled) when it exists. */
+static void rejection_tracker(JSContext *ctx, JSValueConst promise, JSValueConst reason, bool is_handled, void *opaque) {
+	JSValue g = JS_GetGlobalObject(ctx); JSValue fn = JS_GetPropertyStr(ctx, g, "__rejection");
+	if (JS_IsFunction(ctx, fn)) { JSValue args[3] = { promise, reason, JS_NewBool(ctx, is_handled) }; JSValue r = JS_Call(ctx, fn, JS_UNDEFINED, 3, args); JS_FreeValue(ctx, r); }
+	else if (!is_handled) { fprintf(stderr, "Unhandled promise rejection: "); JSValue str = JS_ToString(ctx, reason); const char *c = JS_ToCString(ctx, str); fprintf(stderr, "%s\n", c ? c : "?"); JS_FreeCString(ctx, c); JS_FreeValue(ctx, str); }
+	JS_FreeValue(ctx, fn); JS_FreeValue(ctx, g);
+}
+void spike_install_rejection_tracker(JSRuntime *rt) { JS_SetHostPromiseRejectionTracker(rt, rejection_tracker, NULL); }
 void spike_init_render(JSContext *ctx) { set_fpu_double(); JSModuleDef *m = JS_NewCModule(ctx, "spike:render", render_init); if (m) { JS_AddModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); } }
 
 /* accessors for layout.c */

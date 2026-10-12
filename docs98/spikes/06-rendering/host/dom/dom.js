@@ -29,6 +29,9 @@ export class TouchEvent extends UIEvent { }
 export class ErrorEvent extends Event { constructor(t, i = {}) { super(t, i); this.message = i.message ?? ''; this.error = i.error; } }
 export class MessageEvent extends Event { constructor(t, i = {}) { super(t, i); this.data = i.data; this.origin = i.origin ?? ''; this.source = i.source ?? null; this.ports = i.ports ?? []; } }
 
+// HTMLCollection / NodeList .item() on the plain arrays this DOM returns
+for (const [name, fn] of [['item', function (i) { return this[i] ?? null; }], ['namedItem', function (n) { return this.find(e => e && (e.id === n || (e.getAttribute && e.getAttribute('name') === n))) ?? null; }]]) { if (!Array.prototype[name]) { Object.defineProperty(Array.prototype, name, { value: fn, writable: true, configurable: true, enumerable: false }); } }
+
 export class EventTarget {
 	addEventListener(type, fn, opts) { if (!fn) { return; } const capture = typeof opts === 'boolean' ? opts : !!(opts && opts.capture); const once = !!(opts && opts.once); const m = (this.__l ??= new Map()); let l = m.get(type); if (!l) { l = []; m.set(type, l); } if (l.some(e => e.fn === fn && e.capture === capture)) { return; } const e = { fn, capture, once, passive: !!(opts && opts.passive) }; l.push(e); if (opts && opts.signal) { opts.signal.addEventListener('abort', () => this.removeEventListener(type, fn, opts)); } }
 	removeEventListener(type, fn, opts) { const capture = typeof opts === 'boolean' ? opts : !!(opts && opts.capture); const l = this.__l && this.__l.get(type); if (!l) { return; } const i = l.findIndex(e => e.fn === fn && e.capture === capture); if (i >= 0) { l.splice(i, 1); } }
@@ -64,17 +67,17 @@ export class Node extends EventTarget {
 	contains(o) { for (let n = o; n; n = n.parentNode) { if (n === this) { return true; } } return false; }
 	getRootNode() { let n = this; while (n.parentNode) { n = n.parentNode; } return n; }
 	__parentForEvents() { return this.parentNode ?? (this.nodeType === 9 ? this.defaultView : null); }
-	__invalidate(kind) { const d = this.nodeType === 9 ? this : this.ownerDocument; if (d) { d.__dirty = true; d.__styleDirty = d.__styleDirty || kind === 'style'; } }
+	__invalidate(kind, what, arg) { const d = this.nodeType === 9 ? this : this.ownerDocument; if (d) { d.__dirty = true; d.__styleDirty = d.__styleDirty || kind === 'style'; const log = (d.__dirtyLog ??= []); if (log.length < 200000) { log.push([kind, what, this, arg]); } } }   // the log (cleared by every layout pass) says what made the pass necessary
 	insertBefore(node, ref) {
 		if (node.nodeType === 11) { for (const c of [...node.__children]) { this.insertBefore(c, ref); } return node; }
 		if (ref && ref.parentNode !== this) { throw new DOMException('The node before which the new node is to be inserted is not a child of this node.', 'NotFoundError'); }
 		if (node.contains && node.contains(this)) { throw new DOMException('The new child element contains the parent.', 'HierarchyRequestError'); }
 		if (node.parentNode) { node.parentNode.__removeChild(node, true); }
 		const i = ref ? this.__children.indexOf(ref) : this.__children.length; this.__children.splice(i, 0, node); node.parentNode = this;
-		this.__invalidate('style'); this.__queueMutation({ type: 'childList', target: this, addedNodes: [node], removedNodes: [] }); node.__connectedChanged && node.__connectedChanged(this.isConnected); return node;
+		this.__invalidate('style', 'ins', node); this.__queueMutation({ type: 'childList', target: this, addedNodes: [node], removedNodes: [] }); node.__connectedChanged && node.__connectedChanged(this.isConnected); return node;
 	}
 	appendChild(node) { return this.insertBefore(node, null); }
-	__removeChild(node, moving) { const i = this.__children.indexOf(node); if (i < 0) { throw new DOMException('The node to be removed is not a child of this node.', 'NotFoundError'); } this.__children.splice(i, 1); node.parentNode = null; this.__invalidate('style'); if (!moving) { this.__queueMutation({ type: 'childList', target: this, addedNodes: [], removedNodes: [node] }); } node.__connectedChanged && node.__connectedChanged(false); return node; }
+	__removeChild(node, moving) { const i = this.__children.indexOf(node); if (i < 0) { throw new DOMException('The node to be removed is not a child of this node.', 'NotFoundError'); } this.__children.splice(i, 1); node.parentNode = null; this.__invalidate('style', 'rem', node); if (!moving) { this.__queueMutation({ type: 'childList', target: this, addedNodes: [], removedNodes: [node] }); } node.__connectedChanged && node.__connectedChanged(false); return node; }
 	removeChild(node) { return this.__removeChild(node, false); }
 	replaceChild(n, old) { this.insertBefore(n, old); return this.removeChild(old); }
 	remove() { if (this.parentNode) { this.parentNode.removeChild(this); } }
@@ -87,7 +90,7 @@ export class DOMException extends Error { constructor(msg, name = 'Error') { sup
 
 export class CharacterData extends Node {
 	constructor(data) { super(); this.__data = String(data); }
-	get data() { return this.__data; } set data(v) { this.__data = String(v); this.__invalidate('layout'); this.__queueMutation({ type: 'characterData', target: this }); }
+	get data() { return this.__data; } set data(v) { this.__data = String(v); this.__invalidate('layout', 'text'); this.__queueMutation({ type: 'characterData', target: this }); }
 	get nodeValue() { return this.__data; } set nodeValue(v) { this.data = v; }
 	get textContent() { return this.__data; } set textContent(v) { this.data = v; }
 	get length() { return this.__data.length; }
@@ -146,7 +149,7 @@ export class CSSStyleDeclaration {
 	set cssText(t) { this.__map.clear(); for (const d of splitDecls(String(t))) { const m = /^([^:]+):([\s\S]*)$/.exec(d); if (m) { let v = m[2].trim(), imp = false; if (/!\s*important$/i.test(v)) { v = v.replace(/!\s*important$/i, '').trim(); imp = true; } const n = m[1].trim(); this.__map.set(n.startsWith('--') ? n : n.toLowerCase(), { v, important: imp }); } } this.__changed(); }
 	get length() { return this.__map.size; } item(i) { return [...this.__map.keys()][i] ?? ''; }
 	[Symbol.iterator]() { return this.__map.keys(); }
-	__changed() { const o = this.__owner; if (o) { if (!o.__syncingStyleAttr) { o.__syncingStyleAttr = true; try { o.__attrs.set('style', this.cssText); } finally { o.__syncingStyleAttr = false; } } o.__invalidate('style'); } }
+	__changed() { const o = this.__owner; if (o) { if (!o.__syncingStyleAttr) { o.__syncingStyleAttr = true; try { o.__attrs.set('style', this.cssText); } finally { o.__syncingStyleAttr = false; } } o.__invalidate('style', 'attr', 'style'); } }
 }
 export function splitDecls(t) { const out = []; let depth = 0, cur = '', q = ''; for (let i = 0; i < t.length; i++) { const c = t[i]; if (q) { cur += c; if (c === '\\') { cur += t[i + 1] ?? ''; i++; } else if (c === q) { q = ''; } continue; } if (c === '"' || c === "'") { q = c; cur += c; continue; } if (c === '(') { depth++; } else if (c === ')') { depth--; } if (c === ';' && depth === 0) { if (cur.trim()) { out.push(cur.trim()); } cur = ''; } else { cur += c; } } if (cur.trim()) { out.push(cur.trim()); } return out; }
 /** Chromium re-serialises values it parsed: numbers keep 6 significant digits (%g style), strings use double quotes. Needed so inline style attributes compare equal. */
@@ -176,11 +179,11 @@ export class Element extends Node {
 	setAttribute(n, v) {
 		n = String(n).toLowerCase(); v = String(v); const old = this.__attrs.get(n); this.__attrs.set(n, v); if (n === 'class') { this.__cls = null; }
 		if (n === 'style' && !this.__syncingStyleAttr) { this.__syncingStyleAttr = true; try { this.style.cssText = v; } finally { this.__syncingStyleAttr = false; } }
-		this.__invalidate(n === 'class' || n === 'id' || n === 'style' || n.startsWith('data-') || n.startsWith('aria-') || n === 'type' || n === 'disabled' || n === 'hidden' ? 'style' : 'layout');
+		this.__invalidate(n === 'class' || n === 'id' || n === 'style' || n.startsWith('data-') || n.startsWith('aria-') || n === 'type' || n === 'disabled' || n === 'hidden' ? 'style' : 'layout', 'attr', n);
 		this.__queueMutation({ type: 'attributes', target: this, attributeName: n, oldValue: old ?? null });
 	}
 	setAttributeNS(ns, n, v) { this.setAttribute(n, v); }
-	removeAttribute(n) { n = n.toLowerCase(); if (n === 'class') { this.__cls = null; } if (this.__attrs.delete(n)) { if (n === 'style' && !this.__syncingStyleAttr) { this.style.cssText = ''; } this.__invalidate('style'); this.__queueMutation({ type: 'attributes', target: this, attributeName: n, oldValue: null }); } }
+	removeAttribute(n) { n = n.toLowerCase(); if (n === 'class') { this.__cls = null; } if (this.__attrs.delete(n)) { if (n === 'style' && !this.__syncingStyleAttr) { this.style.cssText = ''; } this.__invalidate('style', 'attr', n); this.__queueMutation({ type: 'attributes', target: this, attributeName: n, oldValue: null }); } }
 	removeAttributeNS(ns, n) { this.removeAttribute(n); }
 	hasAttribute(n) { return this.__attrs.has(n.toLowerCase()); } hasAttributes() { return this.__attrs.size > 0; }
 	toggleAttribute(n, force) { const has = this.hasAttribute(n); const want = force === undefined ? !has : !!force; if (want && !has) { this.setAttribute(n, ''); } else if (!want && has) { this.removeAttribute(n); } return want; }
