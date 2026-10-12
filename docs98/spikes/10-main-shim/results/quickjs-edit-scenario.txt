@@ -1,0 +1,90 @@
+[harness] start
+[harness] forked main pid 27845
+[harness] main created a window and asked to load vscode-file://vscode-app/tmp/claude-0/app98/out/vs/code/electron-browser/workbench/workbench.html after 278 ms
+import 2 ms (RSS 11 MB after), total until stable 60346 ms, elements 1034, layouts 291 (48788 ms incl. style; native engine pack 3530 + C 918 + apply 370 ms), RSS 715 MB (peak 715 MB)
+missing: [["css: unparsable selector",192]]
+unsupported: [["float",795],["display:grid",207]]
+console: 248 messages, 184 distinct
+  x1 warn: %c WARN color: #993 Creation of workbench contribution 'mcpDiscovery' took 1344ms.
+  x1 error: Unable to resolve your shell environment: Unexpected exit code from spawned shell (code 1, signal null)
+  x1 error: %c  ERR color: #f33 EntryNotFound (FileSystemError): Error: ENOENT: stat '/tmp/claude-0/ud98q/Backups/e97dd6fcf97eefce4d2b279bdb990e97'
+  x2 error: %c  ERR color: #f33 EntryNotFound (FileSystemError): Error: ENOENT: stat '/tmp/claude-0/ud98q/User/chatLanguageModels.json'
+  x1 error: %c  ERR color: #f33 EntryNotFound (FileSystemError): Error: ENOENT: open '/tmp/claude-0/ud98q/User/keybindings.json'
+  x1 error: %c  ERR color: #f33 EntryNotFound (FileSystemError): Error: ENOENT: stat '/tmp/claude-0/ud98q/User/workspaceStorage/vscode-chat-images'
+  x1 error: %c  ERR color: #f33 EntryNotFound (FileSystemError): Error: ENOENT: stat '/tmp/claude-0/ud98q/agentPlugins'
+  x1 error: %c  ERR color: #f33 EntryNotFound (FileSystemError): Error: ENOENT: stat '/root/.vscode-oss/agent-plugins/installed.json'
+  x1 error: %c  ERR color: #f33 EntryNotFound (FileSystemError): Error: ENOENT: open '/tmp/claude-0/ws98/.claude/settings.json'
+  x1 error: %c  ERR color: #f33 EntryNotFound (FileSystemError): Error: ENOENT: stat '/tmp/claude-0/ws98/.claude'
+  x1 error: %c  ERR color: #f33 EntryNotFound (FileSystemError): Error: ENOENT: open '/tmp/claude-0/ws98/.github/copilot/settings.json'
+  x1 error: %c  ERR color: #f33 EntryNotFound (FileSystemError): Error: ENOENT: stat '/tmp/claude-0/ud98q/User/keybindings.json'
+layout passes: 291, 48787 ms total (style 42473, layout 6245); elements per pass min 12 max 1036
+restyle estimate with perfect invalidation: 7817 element restyles instead of 255425 (3.1 %)
+passes by estimated dirty elements: 0-0: 15, 1-5: 132, 6-25: 104, 26-100: 28, 101-300: 6, 301-max: 6
+style passes: 288 incremental, 3 full {"first pass":1,"too many dirty elements ":2}; elements restyled 10449 of 255425 (rule matching redone for 7723); style time: incremental passes 37245 ms, full passes 5228 ms
+mutations that triggered passes: {"ins":3877,"rem":1077,"text":0,"attr:class":5253,"attr:style":3200,"attr:other":7177}
+passes with no structural/attribute change (text or nothing): 0
+slowest passes:
+   3094 ms (236 mutations, est 99/99; style full [first pass]: index 2798 + plan 0 ms, 99 restyled (99 rematched), marked 0)
+   2541 ms (90 mutations, est 999/1001; style incremental: index 1022 + plan 17 ms, 999 restyled (999 rematched), marked 56)
+   2066 ms (277 mutations, est 978/997; style incremental: index 1575 + plan 73 ms, 979 restyled (89 rematched), marked 89)
+   1726 ms (1036 mutations, est 369/384; style full [too many dirty elements (174 of 384)]: index 839 + plan 243 ms, 384 restyled (384 rematched), marked 0)
+   1679 ms (318 mutations, est 194/871; style incremental: index 814 + plan 128 ms, 416 restyled (416 rematched), marked 124)
+errors: 8 (8 distinct)
+  x1 unhandledRejection: EntryNotFound (FileSystemError): Error: ENOENT: open '/tmp/claude-0/ws98/.vscode/settings.json'
+  x1 unhandledRejection: EntryNotFound (FileSystemError): Error: ENOENT: stat '/tmp/claude-0/ws98/.vscode/settings.json'
+  x1 unhandledRejection: EntryNotFound (FileSystemError): Error: ENOENT: open '/tmp/claude-0/ws98/.vscode/tasks.json'
+  x1 unhandledRejection: EntryNotFound (FileSystemError): Error: ENOENT: open '/tmp/claude-0/ws98/.vscode/launch.json'
+  x1 unhandledRejection: EntryNotFound (FileSystemError): Error: ENOENT: open '/tmp/claude-0/ws98/.vscode/mcp.json'
+  x1 unhandledRejection: EntryNotFound (FileSystemError): Error: ENOENT: stat '/tmp/claude-0/ws98/.vscode/tasks.json'
+  x1 unhandledRejection: EntryNotFound (FileSystemError): Error: ENOENT: stat '/tmp/claude-0/ws98/.vscode/launch.json'
+  x1 unhandledRejection: EntryNotFound (FileSystemError): Error: ENOENT: stat '/tmp/claude-0/ws98/.vscode/mcp.json'
+scenario: closed the onboarding dialog
+scenario: explorer rows = ["src","README.md","hello.txt"]
+scenario: open file: 56 layout passes, style 5998 ms, layout 2117 ms
+scenario: clicked hello.txt, 9945 ms, editor lines: ["hello vscode98","line two",""]
+scenario: typing into inputarea monaco-mouse-cursor-text (active=true)
+scenario: key ' ': 8 layout passes, style 315 ms, layout 210 ms, wall 1427 ms
+scenario: key 'E': 9 layout passes, style 1293 ms, layout 256 ms, wall 2526 ms
+scenario: key 'D': 6 layout passes, style 100 ms, layout 160 ms, wall 1152 ms
+scenario: key 'I': 7 layout passes, style 158 ms, layout 189 ms, wall 1239 ms
+scenario: key 'T': 6 layout passes, style 118 ms, layout 177 ms, wall 1189 ms
+scenario: key 'E': 7 layout passes, style 190 ms, layout 207 ms, wall 1287 ms
+scenario: key 'D': 6 layout passes, style 110 ms, layout 166 ms, wall 1216 ms
+scenario: editor lines after typing: [" EDITEDhello vscode98","line two",""]
+scenario: file on disk CHANGED: " EDITEDhello vscode98\nline two\n"
+--- main process output (last 40 lines)
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: TypeError: not a function
+Unhandled promise rejection: Error: EACCES: open '/tmp/claude-0/ud98q/User/History/-68e017e4/XD2j.txt'
+
+painted {"rects":80,"glyphs":642,"glyphMisses":388}
