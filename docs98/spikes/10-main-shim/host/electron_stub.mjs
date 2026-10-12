@@ -6,8 +6,8 @@ import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { encode, decode } from './codec98.js';
 
-const LOG = process.env.ELECTRON_STUB_LOG ? fs.createWriteStream(process.env.ELECTRON_STUB_LOG) : null;
-const log = (m) => { if (LOG) { LOG.write(m + '\n'); } };
+const LOG = process.env.ELECTRON_STUB_LOG || null;
+const log = (m) => { if (LOG) { fs.appendFileSync(LOG, m + '\n'); } };
 const show = (a) => { try { return typeof a === 'function' ? '[fn]' : JSON.stringify(a)?.slice(0, 100); } catch { return '?'; } };
 const seen = new Set();
 
@@ -164,9 +164,9 @@ const here = fileURLToPath(new URL('.', import.meta.url));
 class UtilityProcess extends EventEmitter {
 	constructor(modulePath, args, options) {
 		super(); this.pid = undefined; this._killed = false;
-		const execArgv = [...(options.execArgv || []).filter(a => !a.startsWith('--js-flags')), '--import', new URL('./util_child_preload.mjs', import.meta.url).href];
+		const execArgv = (options.execArgv || []).filter(a => !a.startsWith('--js-flags'));
 		const stdio = options.stdio === 'inherit' ? ['inherit', 'inherit', 'inherit', 'ipc'] : ['ignore', 'pipe', 'pipe', 'ipc'];
-		this._child = fork(modulePath, args, { execArgv, env: { ...(options.env || process.env), APP98_ROOT: process.env.APP98_ROOT, ELECTRON_STUB_LOG: (process.env.ELECTRON_STUB_LOG || '') + '.' + options.serviceName }, serialization: 'json', stdio, cwd: process.cwd() });
+		this._child = fork(fileURLToPath(new URL('./util_child_main.mjs', import.meta.url)), args, { execArgv, env: { ...(options.env || process.env), UTIL_TARGET: modulePath, APP98_ROOT: process.env.APP98_ROOT, ELECTRON_STUB_LOG: (process.env.ELECTRON_STUB_LOG || '') + '.' + options.serviceName }, serialization: 'json', stdio, cwd: process.cwd() });
 		this.stdout = this._child.stdout; this.stderr = this._child.stderr; if (process.env.UTILITY_OUT) { for (const [st, tag] of [[this.stdout, 'out'], [this.stderr, 'err']]) { st?.on('data', (d) => fs.appendFileSync(process.env.UTILITY_OUT, `[${options.serviceName} ${tag}] ${d}`)); } } this.holder = holderOf((m) => this._child.send(clean(m)));
 		this._child.once('spawn', () => { this.pid = this._child.pid; this.emit('spawn'); });
 		this._child.on('exit', (code, signal) => { log(`utility ${options.serviceName} exit ${code} ${signal}`); this.emit('exit', code ?? 0); });

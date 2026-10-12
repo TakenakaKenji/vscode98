@@ -15,7 +15,7 @@ import { installPreload } from './preload98.js';
 import { PortTable } from './ports98.js';
 import { encode, decode } from './codec98.js';
 
-register('./loader_hooks.mjs', import.meta.url);
+register('./loader_hooks.mjs', import.meta.url);   // renderer side: vscode-file:// URLs
 const args = process.argv.slice(2); const opt = (n, d) => { const i = args.indexOf('--' + n); return i >= 0 ? args[i + 1] : d; };
 const appRoot = path.resolve(args[0]); const seconds = Number(opt('seconds', 60)); const W = 1280, H = 800;
 const userDataDir = path.resolve(opt('user-data-dir', '/tmp/claude-0/ud98')), extDir = path.resolve(opt('extensions-dir', '/tmp/claude-0/ext98'));
@@ -27,7 +27,7 @@ globalThis.__readFileBytes = (p) => readBytes(p);
 
 // ---- main process
 const mainArgs = ['--user-data-dir', userDataDir, '--extensions-dir', extDir, '--disable-gpu', '--disable-telemetry', ...(opt('workspace') ? [path.resolve(opt('workspace'))] : [])];
-const child = fork(path.join(path.dirname(new URL(import.meta.url).pathname), 'run_main_node.mjs'), [appRoot, ...mainArgs], { serialization: 'json', stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...process.env, APP98_ROOT: appRoot, ELECTRON_STUB_LOG: opt('stub-log', '/tmp/claude-0/stub.log') } });
+const child = fork(path.join(path.dirname(new URL(import.meta.url).pathname), 'run_main.mjs'), [appRoot, ...mainArgs], { serialization: 'json', stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...process.env, APP98_ROOT: appRoot, ELECTRON_STUB_LOG: opt('stub-log', '/tmp/claude-0/stub.log') } });
 child.stdout.on('data', (d) => mainLog.push(String(d))); child.stderr.on('data', (d) => mainLog.push(String(d)));
 child.on('exit', (c) => { mainLog.push(`[main exited ${c}]`); });
 

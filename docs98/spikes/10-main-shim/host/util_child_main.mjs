@@ -1,10 +1,16 @@
-// Preloaded (node --import) into every utility process the main process forks: Electron's `process.parentPort`, the `electron` stub for the few modules that import it,
-// and the port table that lets MessagePorts handed over by main work.
-import { register } from 'node:module';
+// Entry of every utility process the main process forks (Node or QuickJS): installs Electron's `process.parentPort`, the `electron` stub for the few modules that import it
+// and the port table that lets MessagePorts handed over by main work, then runs the real entry (UTIL_TARGET, normally bootstrap-fork.js).
+import Module from 'node:module';
 import { EventEmitter } from 'node:events';
 import { PortTable } from './ports98.js';
 import { encode, decode } from './codec98.js';
-register('./hooks.mjs', import.meta.url);
+Module.registerHooks({
+	resolve(specifier, context, nextResolve) {
+		if (specifier === 'electron') { return { url: import.meta.url.replace(/\/[^/]*$/, '/') + 'electron_stub.mjs', shortCircuit: true }; }
+		if (specifier === 'original-fs') { return nextResolve('node:fs', context); }
+		return nextResolve(specifier, context);
+	},
+});
 import fs from 'node:fs';
 const TRACE = process.env.UTIL_TRACE ? (m) => fs.appendFileSync(process.env.UTIL_TRACE + '.' + process.pid, m + '\n') : null;
 const short = (d) => { try { return JSON.stringify(d, (k, v) => (v && v.type === 'Buffer') || ArrayBuffer.isView(v) ? '[bytes ' + (v.length ?? v.byteLength) + ']' : v)?.slice(0, 160); } catch { return '?'; } };
@@ -34,3 +40,6 @@ if (TRACE) {
 	process.on('unhandledRejection', (e) => TRACE('unhandledRejection ' + (e && e.stack || e)));
 	process.on('exit', (c) => TRACE('exit ' + c));
 }
+
+process.argv[1] = process.env.UTIL_TARGET;   // as under Electron: argv = [exe, modulePath, ...args]
+await import(process.env.UTIL_TARGET);
