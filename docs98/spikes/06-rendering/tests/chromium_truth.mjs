@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 const { chromium } = createRequire(import.meta.url)('/home/user/vscode98/node_modules/playwright-core');
 const [monacoDir, outPrefix, pageArg] = process.argv.slice(2);
-const page_ = path.resolve(pageArg || path.join(import.meta.dirname, 'page.html'));
+const page_ = path.resolve(pageArg || path.join(import.meta.dirname, 'pages/basic.html'));
 fs.copyFileSync(page_, path.join(monacoDir, 'page.html'));
 const exe = process.env.CHROMIUM || fs.readdirSync('/opt/pw-browsers').filter(d => d.startsWith('chromium_headless_shell')).map(d => `/opt/pw-browsers/${d}/chrome-linux/headless_shell`)[0];
 const browser = await chromium.launch({ executablePath: exe, args: ['--no-sandbox', '--font-render-hinting=none', '--disable-lcd-text', '--force-device-scale-factor=1'] });

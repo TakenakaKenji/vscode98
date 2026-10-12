@@ -6,7 +6,7 @@ import { boot } from './node_boot.mjs';
 import { missing } from './dom/dom.js';
 import { unsupported } from './dom/layout.js';
 const args = process.argv.slice(2); const opt = (n, d) => { const i = args.indexOf('--' + n); return i >= 0 ? args[i + 1] : d; };
-const monacoDir = args[0]; const pageFile = opt('page', path.join(import.meta.dirname, '../tests/page.html'));
+const monacoDir = args[0]; const pageFile = opt('page', path.join(import.meta.dirname, '../tests/pages/basic.html'));
 const { env, doc, ms, nodeProcess, error } = await boot(monacoDir, pageFile);
 if (error) { console.log('LOAD FAILED:', error && (error.stack || error)); }
 const out = (m) => nodeProcess.stdout.write(m + '\n');
@@ -14,6 +14,8 @@ const container = doc.getElementById('container');
 out(`loaded in ${ms} ms; layouts ${doc.__layoutCount} (${Math.round(doc.__layoutMs)} ms); container descendants: ${container ? container.getElementsByTagName('*').length : 'n/a'}`);
 out('missing: ' + JSON.stringify([...missing].sort((a, b) => b[1] - a[1]).slice(0, 40)));
 out('unsupported: ' + JSON.stringify([...unsupported]));
+const ppmPath = opt('ppm', null);
+if (ppmPath) { const { paintDocument, toPPM, unpainted } = await import('./dom/paint.js'); const t = performance.now(); const r = paintDocument(doc, 800, 520); fs.writeFileSync(ppmPath, toPPM(r.px, r.w, r.h)); out(`painted in ${Math.round(performance.now() - t)} ms ${JSON.stringify(r.stats)} unpainted: ${JSON.stringify([...unpainted])}`); }
 const dumpPath = opt('dump', null);
 if (dumpPath && container) {
 	const props = ['display', 'position'];

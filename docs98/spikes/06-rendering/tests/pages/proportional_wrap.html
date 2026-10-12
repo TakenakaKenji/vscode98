@@ -1,0 +1,13 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>proportional_wrap</title>
+<link rel="stylesheet" href="monaco.css">
+<style>html,body{margin:0;padding:0;background:#fff}#container{position:absolute;left:0;top:0;width:800px;height:520px}</style>
+</head><body><div id="container"></div>
+<script src="monaco.js"></script>
+<script>
+window.SAMPLE_TEXT = "Line 1: The quick brown fox jumps over the lazy dog, then keeps running through the forest until it reaches the river bank, where it finally rests under an old oak tree. Wide glyphs: WWWW iiii mmmm 0123456789.\nLine 2: The quick brown fox jumps over the lazy dog, then keeps running through the forest until it reaches the river bank, where it finally rests under an old oak tree. Wide glyphs: WWWW iiii mmmm 0123456789.\nLine 3: The quick brown fox jumps over the lazy dog, then keeps running through the forest until it reaches the river bank, where it finally rests under an old oak tree. Wide glyphs: WWWW iiii mmmm 0123456789.\nLine 4: The quick brown fox jumps over the lazy dog, then keeps running through the forest until it reaches the river bank, where it finally rests under an old oak tree. Wide glyphs: WWWW iiii mmmm 0123456789.\nLine 5: The quick brown fox jumps over the lazy dog, then keeps running through the forest until it reaches the river bank, where it finally rests under an old oak tree. Wide glyphs: WWWW iiii mmmm 0123456789.\nLine 6: The quick brown fox jumps over the lazy dog, then keeps running through the forest until it reaches the river bank, where it finally rests under an old oak tree. Wide glyphs: WWWW iiii mmmm 0123456789.\nLine 7: The quick brown fox jumps over the lazy dog, then keeps running through the forest until it reaches the river bank, where it finally rests under an old oak tree. Wide glyphs: WWWW iiii mmmm 0123456789.\nLine 8: The quick brown fox jumps over the lazy dog, then keeps running through the forest until it reaches the river bank, where it finally rests under an old oak tree. Wide glyphs: WWWW iiii mmmm 0123456789.";
+window.EDITOR_OPTIONS = { fontFamily: 'Liberation Sans', fontSize: 15, lineHeight: 22, wordWrap: 'on', theme: 'vs', letterSpacing: 0.3 };
+window.POST = function (ed) { ed.setSelection(new monaco.Selection(2, 20, 3, 40)); };
+</script>
+<script src="editor_common.js"></script>
+</body></html>

@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { installEnvironment } from './dom/env.js';
 import { loadPage } from './dom/page_loader.js';
 const require = createRequire(import.meta.url);
-export async function boot(monacoDir, pageFile = path.join(import.meta.dirname, '../tests/page.html'), width = 800, height = 520) {
+export async function boot(monacoDir, pageFile = path.join(import.meta.dirname, '../tests/pages/basic.html'), width = 800, height = 520) {
 	const opentype = require('/home/user/vscode98/node_modules/opentype.js/dist/opentype.js');
 	globalThis.__readFileBytes = (p) => { const b = fs.readFileSync(p); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); };
 	const nodeProcess = globalThis.process;

@@ -78,10 +78,20 @@ globalThis.TextDecoder ??= class TextDecoder {
 	constructor(label = 'utf-8') { this.encoding = String(label).toLowerCase(); }
 	decode(buf) { if (!buf) { return ''; } const b = buf instanceof Uint8Array ? buf : new Uint8Array(buf.buffer ?? buf); let s = ''; for (let i = 0; i < b.length;) { const c = b[i++]; if (c < 0x80) { s += String.fromCharCode(c); } else if (c < 0xE0) { s += String.fromCharCode((c & 31) << 6 | b[i++] & 63); } else if (c < 0xF0) { s += String.fromCharCode((c & 15) << 12 | (b[i++] & 63) << 6 | b[i++] & 63); } else { const cp = (c & 7) << 18 | (b[i++] & 63) << 12 | (b[i++] & 63) << 6 | b[i++] & 63; s += String.fromCodePoint(cp); } } return s; }
 };
+// UTF-16LE / Latin-1 decoding (Monaco's StringBuilder decodes a Uint16Array with TextDecoder('utf-16le')); UTF-8 stays on the fast paths below.
+{
+	const proto = TextDecoder.prototype, utf8 = proto.decode;
+	proto.decode = function (buf, opts) {
+		const enc = this.encoding;
+		if (enc === 'utf-16le' || enc === 'utf-16' || enc === 'ucs-2') { if (!buf) { return ''; } const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf.buffer ?? buf, buf.byteOffset ?? 0, buf.byteLength ?? buf.length * (buf.BYTES_PER_ELEMENT || 1)); const n = u8.length >> 1; let out = ''; for (let i = 0; i < n; i += 8192) { const m = Math.min(n, i + 8192); const codes = new Array(m - i); for (let j = i; j < m; j++) { codes[j - i] = u8[2 * j] | (u8[2 * j + 1] << 8); } out += String.fromCharCode.apply(null, codes); } return out; }
+		if (enc === 'latin1' || enc === 'iso-8859-1' || enc === 'windows-1252' || enc === 'ascii') { if (!buf) { return ''; } const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf.buffer ?? buf); let out = ''; for (let i = 0; i < u8.length; i += 8192) { out += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); } return out; }
+		return utf8.call(this, buf, opts);
+	};
+}
 // Hosts that provide native UTF-8 conversion (spike 5: __utf8Decode / __utf8Encode) replace the slow JS loops above.
 if (typeof globalThis.__utf8Decode === 'function') {
 	const dec = globalThis.__utf8Decode, enc = globalThis.__utf8Encode;
-	TextDecoder.prototype.decode = function (buf) { if (!buf) { return ''; } const s = dec(buf); return s.charCodeAt(0) === 0xFEFF && !this.ignoreBOM ? s.slice(1) : s; };
+	{ const prev = TextDecoder.prototype.decode; TextDecoder.prototype.decode = function (buf, o) { if (this.encoding !== 'utf-8' && this.encoding !== 'utf8') { return prev.call(this, buf, o); } if (!buf) { return ''; } const s = dec(buf); return s.charCodeAt(0) === 0xFEFF && !this.ignoreBOM ? s.slice(1) : s; }; }
 	TextEncoder.prototype.encode = function (s = '') { return enc(String(s)); };
 }
 globalThis.AbortController ??= class AbortController { constructor() { const l = []; this.signal = { aborted: false, reason: undefined, addEventListener: (t, f) => l.push(f), removeEventListener() { }, throwIfAborted() { } }; this._l = l; } abort(r) { this.signal.aborted = true; this.signal.reason = r; this._l.forEach(f => f()); } };

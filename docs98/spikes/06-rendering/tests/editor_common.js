@@ -1,10 +1,3 @@
-<!doctype html>
-<html><head><meta charset="utf-8"><title>editor ground truth</title>
-<link rel="stylesheet" href="monaco.css">
-<style>html,body{margin:0;padding:0;background:#fff}#container{position:absolute;left:0;top:0;width:800px;height:520px}</style>
-</head><body><div id="container"></div>
-<script src="monaco.js"></script>
-<script>
 window.EDITOR_OPTIONS = window.EDITOR_OPTIONS || {};
 const text = (window.SAMPLE_TEXT !== undefined) ? window.SAMPLE_TEXT : `// Spike 6 sample
 function fib(n: number): number {
@@ -22,5 +15,5 @@ window.editor = monaco.editor.create(document.getElementById('container'), Objec
 	lineNumbersMinChars: 3, accessibilitySupport: 'off', scrollbar: { vertical: 'visible', horizontal: 'visible' }, quickSuggestions: false, links: false, occurrencesHighlight: 'off',
 	selectionHighlight: false, editContext: false, inlineSuggest: { enabled: false }, lightbulb: { enabled: 'off' }, codeLens: false, hover: { enabled: false }, contextmenu: false, renderWhitespace: 'none', stickyScroll: { enabled: false }, bracketPairColorization: { enabled: false }, matchBrackets: 'never',
 }, window.EDITOR_OPTIONS));
+if (window.POST) { window.POST(window.editor); }
 window.ready = true;
-</script></body></html>
