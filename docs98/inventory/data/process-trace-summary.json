@@ -3,43 +3,43 @@
   {
    "name": "main",
    "type": "browser",
-   "pid": 11533,
-   "uptimeSec": 136,
+   "pid": 13164,
+   "uptimeSec": 129,
    "nativeAddons": [
     "keymapping.node",
     "spdlog.node",
     "vscode-sqlite3.node"
    ],
-   "keys": 417,
-   "appCalledKeys": 315
+   "keys": 517,
+   "appCalledKeys": 402
   },
   {
    "name": "agentHostMain",
    "type": "utility",
-   "pid": 11777,
-   "uptimeSec": 113,
+   "pid": 13305,
+   "uptimeSec": 106,
    "nativeAddons": [
     "bufferutil.node",
     "spdlog.node",
     "vscode-sqlite3.node"
    ],
-   "keys": 346,
-   "appCalledKeys": 298
+   "keys": 414,
+   "appCalledKeys": 367
   },
   {
    "name": "sharedProcessMain",
    "type": "utility",
-   "pid": 11792,
-   "uptimeSec": 113,
+   "pid": 13320,
+   "uptimeSec": 106,
    "nativeAddons": [],
-   "keys": 97,
-   "appCalledKeys": 54
+   "keys": 100,
+   "appCalledKeys": 57
   },
   {
    "name": "watcherMain",
    "type": "utility",
-   "pid": 11793,
-   "uptimeSec": 112,
+   "pid": 13321,
+   "uptimeSec": 106,
    "nativeAddons": [
     "watcher.node"
    ],
@@ -49,179 +49,142 @@
   {
    "name": "extensionHostProcess",
    "type": "utility",
-   "pid": 11827,
-   "uptimeSec": 111,
+   "pid": 13349,
+   "uptimeSec": 107,
    "nativeAddons": [
     "spdlog.node"
    ],
-   "keys": 266,
-   "appCalledKeys": 219
+   "keys": 326,
+   "appCalledKeys": 280
+  },
+  {
+   "name": "node/jsonServerMain (child)",
+   "type": "node",
+   "pid": 13576,
+   "uptimeSec": 99,
+   "nativeAddons": [],
+   "keys": 34,
+   "appCalledKeys": 9
+  },
+  {
+   "name": "lib/tsserver.js (child)",
+   "type": "node",
+   "pid": 13597,
+   "uptimeSec": 90,
+   "nativeAddons": [],
+   "keys": 70,
+   "appCalledKeys": 37
+  },
+  {
+   "name": "lib/tsserver.js (child)",
+   "type": "node",
+   "pid": 13598,
+   "uptimeSec": 90,
+   "nativeAddons": [],
+   "keys": 75,
+   "appCalledKeys": 42
+  },
+  {
+   "name": "lib/typingsInstaller.js (child)",
+   "type": "node",
+   "pid": 13617,
+   "uptimeSec": 90,
+   "nativeAddons": [],
+   "keys": 224,
+   "appCalledKeys": 28
   },
   {
    "name": "ptyHostMain",
    "type": "utility",
-   "pid": 12169,
-   "uptimeSec": 63,
+   "pid": 13687,
+   "uptimeSec": 61,
    "nativeAddons": [
     "pty.node",
     "spdlog.node"
    ],
-   "keys": 201,
-   "appCalledKeys": 67
+   "keys": 266,
+   "appCalledKeys": 66
+  },
+  {
+   "name": "node/workerMain (child)",
+   "type": "node",
+   "pid": 13825,
+   "uptimeSec": 21,
+   "nativeAddons": [],
+   "keys": 37,
+   "appCalledKeys": 13
   }
  ],
  "nodeBuiltins": {
-  "original-fs.promises": {
-   "readdir()": {
-    "calls": 5196,
-    "processes": [
-     "sharedProcessMain",
-     "watcherMain"
-    ]
-   },
-   "lstat()": {
-    "calls": 4705,
-    "processes": [
-     "agentHostMain",
-     "extensionHostProcess",
-     "sharedProcessMain",
-     "watcherMain"
-    ]
-   },
-   "stat()": {
-    "calls": 2473,
-    "processes": [
-     "agentHostMain",
-     "extensionHostProcess",
-     "main",
-     "ptyHostMain",
-     "sharedProcessMain",
-     "watcherMain"
-    ]
-   },
-   "mkdir()": {
-    "calls": 171,
-    "processes": [
-     "agentHostMain",
-     "extensionHostProcess",
-     "main"
-    ]
-   },
-   "writeFile()": {
-    "calls": 67,
-    "processes": [
-     "agentHostMain"
-    ]
-   },
-   "rm()": {
-    "calls": 11,
-    "processes": [
-     "agentHostMain"
-    ]
-   },
-   "rename()": {
-    "calls": 10,
-    "processes": [
-     "agentHostMain"
-    ]
-   },
-   "readFile()": {
-    "calls": 9,
-    "processes": [
-     "agentHostMain",
-     "main",
-     "sharedProcessMain"
-    ]
-   },
-   "chmod()": {
-    "calls": 5,
-    "processes": [
-     "agentHostMain"
-    ]
-   },
-   "access()": {
-    "calls": 5,
-    "processes": [
-     "agentHostMain",
-     "extensionHostProcess",
-     "ptyHostMain",
-     "watcherMain"
-    ]
-   },
-   "open()": {
-    "calls": 2,
-    "processes": [
-     "agentHostMain",
-     "sharedProcessMain"
-    ]
-   },
-   "realpath()": {
-    "calls": 1,
-    "processes": [
-     "agentHostMain"
-    ]
-   },
-   "mkdtemp()": {
-    "calls": 1,
-    "processes": [
-     "agentHostMain"
-    ]
-   }
-  },
   "fs": {
-   "Stats#.isFile()": {
-    "calls": 1669,
+   "statSync()": {
+    "calls": 20556,
     "processes": [
-     "agentHostMain",
-     "extensionHostProcess",
-     "main"
-    ]
-   },
-   "existsSync()": {
-    "calls": 1641,
-    "processes": [
-     "agentHostMain",
-     "extensionHostProcess",
-     "main"
-    ]
-   },
-   "Stats#.isSymbolicLink()": {
-    "calls": 1180,
-    "processes": [
-     "main"
+     "lib/tsserver.js (child)",
+     "lib/typingsInstaller.js (child)"
     ]
    },
    "Dirent#.isSymbolicLink()": {
-    "calls": 853,
+    "calls": 14137,
     "processes": [
+     "lib/tsserver.js (child)",
      "main"
     ]
    },
    "Dirent#.isFile()": {
-    "calls": 851,
+    "calls": 14135,
     "processes": [
+     "lib/tsserver.js (child)",
      "main"
     ]
    },
    "Stats#.isDirectory()": {
-    "calls": 659,
+    "calls": 8166,
     "processes": [
      "agentHostMain",
      "extensionHostProcess",
+     "lib/tsserver.js (child)",
+     "lib/typingsInstaller.js (child)",
      "main",
      "ptyHostMain"
     ]
    },
-   "readFile()": {
-    "calls": 636,
+   "Stats#.isFile()": {
+    "calls": 5074,
     "processes": [
      "agentHostMain",
      "extensionHostProcess",
+     "lib/tsserver.js (child)",
+     "lib/typingsInstaller.js (child)",
      "main"
     ]
    },
    "Dirent#.isDirectory()": {
-    "calls": 574,
+    "calls": 1966,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "lib/tsserver.js (child)",
+     "main"
+    ]
+   },
+   "Stats#.isSymbolicLink()": {
+    "calls": 1561,
+    "processes": [
+     "main"
+    ]
+   },
+   "existsSync()": {
+    "calls": 1201,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "lib/tsserver.js (child)",
+     "main"
+    ]
+   },
+   "readFile()": {
+    "calls": 635,
     "processes": [
      "agentHostMain",
      "extensionHostProcess",
@@ -229,7 +192,7 @@
     ]
    },
    "open()": {
-    "calls": 555,
+    "calls": 556,
     "processes": [
      "main"
     ]
@@ -241,6 +204,19 @@
      "watcherMain"
     ]
    },
+   "readFileSync()": {
+    "calls": 390,
+    "processes": [
+     "lib/typingsInstaller.js (child)"
+    ]
+   },
+   "readdirSync()": {
+    "calls": 269,
+    "processes": [
+     "agentHostMain",
+     "lib/tsserver.js (child)"
+    ]
+   },
    "read()": {
     "calls": 126,
     "processes": [
@@ -248,14 +224,14 @@
     ]
    },
    "write()": {
-    "calls": 90,
+    "calls": 91,
     "processes": [
      "main",
      "ptyHostMain"
     ]
    },
    "fdatasync()": {
-    "calls": 62,
+    "calls": 63,
     "processes": [
      "main"
     ]
@@ -267,7 +243,7 @@
     ]
    },
    "writeFileSync()": {
-    "calls": 7,
+    "calls": 6,
     "processes": [
      "extensionHostProcess"
     ]
@@ -293,12 +269,6 @@
      "extensionHostProcess"
     ]
    },
-   "readdirSync()": {
-    "calls": 1,
-    "processes": [
-     "agentHostMain"
-    ]
-   },
    "mkdirSync()": {
     "calls": 1,
     "processes": [
@@ -306,38 +276,124 @@
     ]
    }
   },
-  "url": {
-   "pathToFileURL()": {
-    "calls": 8606,
+  "original-fs.promises": {
+   "readdir()": {
+    "calls": 5207,
     "processes": [
-     "agentHostMain",
-     "main"
+     "sharedProcessMain",
+     "watcherMain"
     ]
    },
-   "fileURLToPath()": {
-    "calls": 5,
+   "lstat()": {
+    "calls": 5025,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "sharedProcessMain",
+     "watcherMain"
+    ]
+   },
+   "stat()": {
+    "calls": 2370,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main",
+     "ptyHostMain",
+     "sharedProcessMain",
+     "watcherMain"
+    ]
+   },
+   "mkdir()": {
+    "calls": 78,
     "processes": [
      "agentHostMain",
      "extensionHostProcess",
      "main"
     ]
    },
-   "parse()": {
-    "calls": 2,
+   "writeFile()": {
+    "calls": 41,
     "processes": [
      "agentHostMain"
     ]
    },
-   "format()": {
+   "readFile()": {
+    "calls": 9,
+    "processes": [
+     "agentHostMain",
+     "main",
+     "sharedProcessMain"
+    ]
+   },
+   "rm()": {
+    "calls": 8,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "rename()": {
+    "calls": 7,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "access()": {
+    "calls": 6,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "ptyHostMain",
+     "watcherMain"
+    ]
+   },
+   "chmod()": {
+    "calls": 5,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "open()": {
     "calls": 2,
+    "processes": [
+     "agentHostMain",
+     "sharedProcessMain"
+    ]
+   },
+   "realpath()": {
+    "calls": 1,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "mkdtemp()": {
+    "calls": 1,
     "processes": [
      "agentHostMain"
     ]
    }
   },
+  "url": {
+   "pathToFileURL()": {
+    "calls": 8411,
+    "processes": [
+     "agentHostMain",
+     "main"
+    ]
+   },
+   "fileURLToPath()": {
+    "calls": 6,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main",
+     "node/workerMain (child)"
+    ]
+   }
+  },
   "util": {
    "promisify()": {
-    "calls": 6455,
+    "calls": 7979,
     "processes": [
      "agentHostMain",
      "extensionHostProcess",
@@ -369,77 +425,15 @@
     ]
    }
   },
-  "fs.promises": {
-   "lstat()": {
-    "calls": 1565,
-    "processes": [
-     "main"
-    ]
-   },
-   "stat()": {
-    "calls": 525,
-    "processes": [
-     "agentHostMain",
-     "extensionHostProcess",
-     "main"
-    ]
-   },
-   "readdir()": {
-    "calls": 147,
-    "processes": [
-     "agentHostMain",
-     "extensionHostProcess",
-     "main"
-    ]
-   },
-   "readFile()": {
-    "calls": 70,
-    "processes": [
-     "agentHostMain",
-     "extensionHostProcess"
-    ]
-   },
-   "open()": {
-    "calls": 54,
-    "processes": [
-     "agentHostMain"
-    ]
-   },
-   "realpath()": {
-    "calls": 30,
-    "processes": [
-     "extensionHostProcess"
-    ]
-   },
-   "access()": {
-    "calls": 13,
-    "processes": [
-     "agentHostMain",
-     "main"
-    ]
-   },
-   "rename()": {
-    "calls": 5,
-    "processes": [
-     "main"
-    ]
-   },
-   "unlink()": {
-    "calls": 1,
-    "processes": [
-     "extensionHostProcess"
-    ]
-   }
-  },
   "original-fs": {
    "open()": {
-    "calls": 978,
+    "calls": 1366,
     "processes": [
      "sharedProcessMain"
     ]
    },
    "close()": {
-    "calls": 945,
+    "calls": 1321,
     "processes": [
      "sharedProcessMain"
     ]
@@ -450,19 +444,19 @@
      "extensionHostProcess"
     ]
    },
-   "watchFile()": {
-    "calls": 38,
-    "processes": [
-     "agentHostMain",
-     "main",
-     "watcherMain"
-    ]
-   },
    "watch()": {
-    "calls": 30,
+    "calls": 38,
     "processes": [
      "main",
      "sharedProcessMain",
+     "watcherMain"
+    ]
+   },
+   "watchFile()": {
+    "calls": 32,
+    "processes": [
+     "agentHostMain",
+     "main",
      "watcherMain"
     ]
    },
@@ -497,23 +491,79 @@
     "processes": [
      "sharedProcessMain"
     ]
-   },
-   "unlinkSync()": {
-    "calls": 1,
+   }
+  },
+  "fs.promises": {
+   "lstat()": {
+    "calls": 2127,
     "processes": [
      "main"
+    ]
+   },
+   "stat()": {
+    "calls": 639,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "readdir()": {
+    "calls": 165,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "realpath()": {
+    "calls": 37,
+    "processes": [
+     "extensionHostProcess"
+    ]
+   },
+   "readFile()": {
+    "calls": 18,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess"
+    ]
+   },
+   "access()": {
+    "calls": 14,
+    "processes": [
+     "agentHostMain",
+     "main"
+    ]
+   },
+   "rename()": {
+    "calls": 4,
+    "processes": [
+     "main"
+    ]
+   },
+   "open()": {
+    "calls": 4,
+    "processes": [
+     "agentHostMain"
+    ]
+   },
+   "unlink()": {
+    "calls": 1,
+    "processes": [
+     "extensionHostProcess"
     ]
    }
   },
   "net": {
    "Stream#.removeListener()": {
-    "calls": 267,
+    "calls": 297,
     "processes": [
      "extensionHostProcess"
     ]
    },
    "Stream#.on(data)": {
-    "calls": 180,
+    "calls": 190,
     "processes": [
      "agentHostMain",
      "extensionHostProcess",
@@ -536,7 +586,7 @@
     ]
    },
    "Stream#.write()": {
-    "calls": 15,
+    "calls": 14,
     "processes": [
      "agentHostMain"
     ]
@@ -549,29 +599,23 @@
     ]
    },
    "Stream#.on(error)": {
-    "calls": 8,
+    "calls": 7,
     "processes": [
      "agentHostMain",
      "ptyHostMain"
     ]
    },
-   "Server#.listen()": {
+   "Stream#.destroy()": {
     "calls": 5,
+    "processes": [
+     "main"
+    ]
+   },
+   "Server#.listen()": {
+    "calls": 4,
     "processes": [
      "agentHostMain",
      "extensionHostProcess",
-     "main"
-    ]
-   },
-   "createServer()": {
-    "calls": 2,
-    "processes": [
-     "main"
-    ]
-   },
-   "Socket#.connect()": {
-    "calls": 2,
-    "processes": [
      "main"
     ]
    },
@@ -588,7 +632,13 @@
      "main"
     ]
    },
-   "createConnection()": {
+   "createServer()": {
+    "calls": 1,
+    "processes": [
+     "main"
+    ]
+   },
+   "Socket#.connect()": {
     "calls": 1,
     "processes": [
      "main"
@@ -613,38 +663,9 @@
     ]
    }
   },
-  "crypto": {
-   "createHash()": {
-    "calls": 122,
-    "processes": [
-     "agentHostMain",
-     "extensionHostProcess",
-     "main"
-    ]
-   },
-   "getHashes()": {
-    "calls": 4,
-    "processes": [
-     "agentHostMain",
-     "extensionHostProcess"
-    ]
-   },
-   "randomBytes()": {
-    "calls": 3,
-    "processes": [
-     "agentHostMain"
-    ]
-   },
-   "randomUUID()": {
-    "calls": 1,
-    "processes": [
-     "agentHostMain"
-    ]
-   }
-  },
   "child_process": {
    "spawn(git)": {
-    "calls": 49,
+    "calls": 54,
     "processes": [
      "extensionHostProcess"
     ]
@@ -716,30 +737,45 @@
     "processes": [
      "extensionHostProcess"
     ]
+   },
+   "fork(typingsInstaller.js)": {
+    "calls": 1,
+    "processes": [
+     "lib/tsserver.js (child)"
+    ]
+   },
+   "execSync(npm)": {
+    "calls": 1,
+    "processes": [
+     "lib/typingsInstaller.js (child)"
+    ]
    }
   },
   "os": {
-   "homedir()": {
-    "calls": 14,
+   "platform()": {
+    "calls": 16,
     "processes": [
      "agentHostMain",
      "extensionHostProcess",
+     "lib/tsserver.js (child)",
+     "lib/typingsInstaller.js (child)",
+     "main"
+    ]
+   },
+   "homedir()": {
+    "calls": 15,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "lib/tsserver.js (child)",
      "main",
      "ptyHostMain",
      "sharedProcessMain",
      "watcherMain"
     ]
    },
-   "platform()": {
-    "calls": 11,
-    "processes": [
-     "agentHostMain",
-     "extensionHostProcess",
-     "main"
-    ]
-   },
    "tmpdir()": {
-    "calls": 10,
+    "calls": 11,
     "processes": [
      "agentHostMain",
      "extensionHostProcess",
@@ -772,17 +808,16 @@
      "ptyHostMain"
     ]
    },
-   "networkInterfaces()": {
+   "hostname()": {
     "calls": 3,
     "processes": [
      "agentHostMain",
      "main"
     ]
    },
-   "hostname()": {
-    "calls": 3,
+   "networkInterfaces()": {
+    "calls": 2,
     "processes": [
-     "agentHostMain",
      "main"
     ]
    },
@@ -825,11 +860,12 @@
   },
   "module": {
    "createRequire()": {
-    "calls": 31,
+    "calls": 32,
     "processes": [
      "agentHostMain",
      "extensionHostProcess",
      "main",
+     "node/workerMain (child)",
      "ptyHostMain",
      "sharedProcessMain",
      "watcherMain"
@@ -845,6 +881,36 @@
      "sharedProcessMain",
      "watcherMain"
     ]
+   },
+   "enableCompileCache()": {
+    "calls": 3,
+    "processes": [
+     "lib/tsserver.js (child)",
+     "lib/typingsInstaller.js (child)"
+    ]
+   }
+  },
+  "crypto": {
+   "createHash()": {
+    "calls": 17,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess",
+     "main"
+    ]
+   },
+   "getHashes()": {
+    "calls": 4,
+    "processes": [
+     "agentHostMain",
+     "extensionHostProcess"
+    ]
+   },
+   "randomBytes()": {
+    "calls": 3,
+    "processes": [
+     "agentHostMain"
+    ]
    }
   },
   "tty": {
@@ -858,10 +924,11 @@
   },
   "readline": {
    "createInterface()": {
-    "calls": 4,
+    "calls": 6,
     "processes": [
      "agentHostMain",
      "extensionHostProcess",
+     "lib/tsserver.js (child)",
      "sharedProcessMain"
     ]
    },
@@ -919,18 +986,19 @@
   }
  },
  "nodeInternalOnlyCalls": {
-  "module": 16310,
-  "fs": 32133,
-  "original-fs": 2920,
-  "stream": 441359,
-  "net": 2692,
-  "util": 2,
-  "child_process": 97,
+  "module": 17247,
+  "fs": 39709,
+  "original-fs": 3620,
+  "stream": 429611,
+  "child_process": 103,
+  "net": 2747,
   "crypto": 1,
-  "worker_threads": 68832,
-  "readline": 11,
+  "worker_threads": 67272,
+  "util": 1,
+  "readline": 15,
   "dns": 1,
-  "http": 1
+  "http": 1,
+  "os": 3
  },
  "processMembers": {
   "arch (get)": [
@@ -944,19 +1012,38 @@
   "argv (get)": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
    "main",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)",
    "ptyHostMain",
    "sharedProcessMain",
    "watcherMain"
+  ],
+  "channel (get)": [
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)"
   ],
   "config (get)": [
    "agentHostMain",
    "extensionHostProcess"
   ],
+  "connected (get)": [
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)"
+  ],
   "cwd()": [
    "agentHostMain",
    "extensionHostProcess",
-   "main"
+   "lib/tsserver.js (child)",
+   "main",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)"
   ],
   "dlopen()": [
    "agentHostMain",
@@ -965,13 +1052,14 @@
    "ptyHostMain",
    "watcherMain"
   ],
-  "emitWarning()": [
-   "agentHostMain"
-  ],
   "execArgv (get)": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
    "main",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)",
    "ptyHostMain",
    "sharedProcessMain",
    "watcherMain"
@@ -979,6 +1067,8 @@
   "execPath (get)": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
    "main"
   ],
   "getgid()": [
@@ -990,12 +1080,18 @@
    "main"
   ],
   "kill()": [
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)",
    "watcherMain"
   ],
   "nextTick()": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
    "main",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)",
    "ptyHostMain",
    "sharedProcessMain",
    "watcherMain"
@@ -1008,13 +1104,35 @@
    "sharedProcessMain",
    "watcherMain"
   ],
+  "on(close)": [
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)"
+  ],
+  "on(disconnect)": [
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)"
+  ],
+  "on(error)": [
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)"
+  ],
   "on(exit)": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
    "main",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)",
    "ptyHostMain",
    "sharedProcessMain",
    "watcherMain"
+  ],
+  "on(message)": [
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)"
   ],
   "on(rejectionHandled)": [
    "agentHostMain",
@@ -1023,6 +1141,7 @@
   "on(uncaughtException)": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/tsserver.js (child)",
    "main",
    "ptyHostMain",
    "sharedProcessMain",
@@ -1032,6 +1151,8 @@
    "agentHostMain",
    "extensionHostProcess",
    "main",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)",
    "ptyHostMain",
    "sharedProcessMain",
    "watcherMain"
@@ -1049,7 +1170,11 @@
   "pid (get)": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
    "main",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)",
    "ptyHostMain",
    "sharedProcessMain",
    "watcherMain"
@@ -1057,7 +1182,11 @@
   "platform (get)": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
    "main",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)",
    "ptyHostMain",
    "sharedProcessMain",
    "watcherMain"
@@ -1065,7 +1194,11 @@
   "ppid (get)": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
    "main",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)",
    "ptyHostMain",
    "sharedProcessMain",
    "watcherMain"
@@ -1077,6 +1210,12 @@
   "removeListener(warning)": [
    "extensionHostProcess"
   ],
+  "send()": [
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)"
+  ],
   "title (get)": [
    "agentHostMain",
    "extensionHostProcess"
@@ -1084,22 +1223,24 @@
   "version (get)": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/tsserver.js (child)",
    "main",
    "ptyHostMain"
   ],
   "versions (get)": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
    "main",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)",
    "ptyHostMain",
    "sharedProcessMain",
    "watcherMain"
   ]
  },
  "envVarNamesRead": {
-  "ALL_PROXY": [
-   "agentHostMain"
-  ],
   "APPDATA": [
    "main"
   ],
@@ -1111,37 +1252,28 @@
    "sharedProcessMain",
    "watcherMain"
   ],
-  "COLORTERM": [
-   "agentHostMain",
-   "extensionHostProcess",
-   "main",
-   "ptyHostMain"
-  ],
   "DEBUG": [
    "agentHostMain",
    "extensionHostProcess"
   ],
-  "DISPLAY": [
-   "agentHostMain",
-   "extensionHostProcess",
-   "main",
-   "ptyHostMain"
-  ],
-  "EDITOR": [
-   "agentHostMain",
-   "extensionHostProcess",
-   "main",
-   "ptyHostMain"
-  ],
   "ELECTRON_ENABLE_LOGGING": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
+   "main",
+   "ptyHostMain"
+  ],
+  "ELECTRON_GET_USE_PROXY": [
+   "agentHostMain",
+   "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain"
   ],
   "ELECTRON_RUN_AS_NODE": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain",
    "sharedProcessMain",
@@ -1150,28 +1282,22 @@
   "HOME": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain"
   ],
   "HTTPS_PROXY": [
    "agentHostMain",
    "extensionHostProcess",
-   "main"
-  ],
-  "HTTP_PROXY": [
-   "agentHostMain",
-   "extensionHostProcess",
-   "main"
-  ],
-  "LANG": [
-   "agentHostMain",
-   "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain"
   ],
   "NODE_ENV": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain"
   ],
@@ -1181,11 +1307,14 @@
   "NO_PROXY": [
    "agentHostMain",
    "extensionHostProcess",
-   "main"
+   "lib/typingsInstaller.js (child)",
+   "main",
+   "ptyHostMain"
   ],
   "PATH": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain"
   ],
@@ -1202,31 +1331,25 @@
   "PWD": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain"
   ],
   "SHELL": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain"
   ],
   "TERM": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain"
   ],
   "TERM_PROGRAM": [
-   "agentHostMain"
-  ],
-  "USER": [
-   "agentHostMain",
-   "extensionHostProcess",
-   "main",
-   "ptyHostMain"
-  ],
-  "VSCODE_AGENT_HOST_CAPI_URL_OVERRIDE": [
    "agentHostMain"
   ],
   "VSCODE_AGENT_HOST_CLAUDE_AGENT_ENABLED": [
@@ -1293,6 +1416,7 @@
   "VSCODE_CLI": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain"
   ],
@@ -1302,6 +1426,7 @@
   "VSCODE_CRASH_REPORTER_PROCESS_TYPE": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "ptyHostMain",
    "sharedProcessMain",
    "watcherMain"
@@ -1309,6 +1434,7 @@
   "VSCODE_CWD": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain",
    "sharedProcessMain",
@@ -1317,6 +1443,7 @@
   "VSCODE_DEV": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain",
    "sharedProcessMain",
@@ -1340,7 +1467,11 @@
   "VSCODE_ESM_ENTRYPOINT": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)",
    "main",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)",
    "ptyHostMain",
    "sharedProcessMain",
    "watcherMain"
@@ -1375,18 +1506,26 @@
   "VSCODE_HANDLES_UNCAUGHT_ERRORS": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "ptyHostMain",
    "sharedProcessMain",
    "watcherMain"
   ],
+  "VSCODE_INSPECTOR_OPTIONS": [
+   "lib/tsserver.js (child)",
+   "lib/typingsInstaller.js (child)"
+  ],
   "VSCODE_IPC_HOOK": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain"
   ],
   "VSCODE_L10N_BUNDLE_LOCATION": [
-   "extensionHostProcess"
+   "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
+   "node/workerMain (child)"
   ],
   "VSCODE_LATENCY": [
    "ptyHostMain"
@@ -1397,7 +1536,9 @@
   "VSCODE_NLS_CONFIG": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
+   "node/workerMain (child)",
    "ptyHostMain",
    "sharedProcessMain",
    "watcherMain"
@@ -1411,6 +1552,7 @@
   "VSCODE_NODE_COMPILE_CACHE_ROOT": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain",
    "sharedProcessMain"
@@ -1425,6 +1567,7 @@
   "VSCODE_PID": [
    "agentHostMain",
    "extensionHostProcess",
+   "lib/typingsInstaller.js (child)",
    "main",
    "ptyHostMain"
   ],
@@ -1472,89 +1615,93 @@
    "agentHostMain",
    "extensionHostProcess",
    "main",
-   "ptyHostMain",
+   "node/jsonServerMain (child)",
+   "node/workerMain (child)",
    "sharedProcessMain"
   ],
   "XDG_SESSION_TYPE": [
-   "agentHostMain",
-   "extensionHostProcess",
-   "main",
-   "ptyHostMain",
    "sharedProcessMain"
   ]
  },
- "envVarNamesReadTotal": 237,
+ "envVarNamesReadTotal": 333,
  "envVarNamesReadOtherByPrefix": {
-  "CLAUDE": 16,
-  "XDG": 13,
+  "CLAUDE": 56,
+  "TSC": 12,
+  "CCR": 11,
+  "GIT": 11,
   "COPILOT": 10,
+  "NODE": 9,
   "": 9,
   "OTEL": 6,
-  "KONSOLE": 5,
-  "NODE": 4,
-  "KDE": 4,
+  "CLOUDSDK": 5,
+  "XDG": 4,
+  "npm": 4,
+  "TSS": 4,
+  "BUN": 3,
+  "AWS": 3,
+  "SSH": 3,
   "SNAP": 2,
-  "npm": 2,
-  "IMSETTINGS": 2,
-  "SSH": 2,
-  "MEMORY": 2,
-  "XKB": 2,
-  "DEBUGINFOD": 2,
+  "GITHUB": 2,
+  "JAVA": 2,
+  "GH": 2,
+  "DENO": 2,
+  "NIX": 2,
+  "PIP": 2,
+  "USE": 2,
+  "YARN": 2,
+  "GLOBAL": 2,
+  "PLAYWRIGHT": 2,
+  "MCP": 2,
   "CHROME": 2,
   "WSL": 2,
   "DEBUG": 2,
-  "TSS": 2,
   "WATCH": 1,
   "BUILD": 1,
-  "GITHUB": 1,
   "PROCESSOR": 1,
   "FORCE": 1,
   "GRACEFUL": 1,
   "TEST": 1,
-  "SESSION": 1,
+  "IS": 1,
   "COREPACK": 1,
-  "WINDOWID": 1,
-  "HISTCONTROL": 1,
+  "PYTHONUNBUFFERED": 1,
+  "no": 1,
+  "MAX": 1,
+  "ENV": 1,
   "AI": 1,
-  "HOSTNAME": 1,
-  "HISTSIZE": 1,
-  "ICEAUTHORITY": 1,
-  "LANGUAGE": 1,
+  "SKIP": 1,
   "VSCODE98": 1,
-  "SHELL": 1,
-  "XMODIFIERS": 1,
-  "DESKTOP": 1,
-  "GTK": 1,
-  "GDK": 1,
-  "GPG": 1,
+  "ENVRUNNER": 1,
   "PROC": 1,
-  "LOGNAME": 1,
-  "SYSTEMD": 1,
-  "XAUTHORITY": 1,
   "NoDefaultCurrentDirectoryInExePath": 1,
   "CLAUDECODE": 1,
-  "GTK2": 1,
-  "LS": 1,
-  "WAYLAND": 1,
-  "PROFILEHOME": 1,
-  "INVOCATION": 1,
-  "MANAGERPID": 1,
-  "LESSOPEN": 1,
-  "COLORFGBG": 1,
-  "QT": 1,
-  "PAM": 1,
-  "SHLVL": 1,
-  "GIT": 1,
-  "MANAGERPIDFDID": 1,
-  "KDEDIRS": 1,
-  "JOURNAL": 1,
-  "DBUS": 1,
-  "MAIL": 1,
-  "OLDPWD": 1,
-  "FC": 1,
+  "SESSION": 1,
+  "SBX": 1,
   "https": 1,
-  "http": 1,
-  "no": 1,
+  "CARGO": 1,
+  "MATPLOTLIBRC": 1,
+  "ANTHROPIC": 1,
+  "TRACEPARENT": 1,
+  "RUSTUP": 1,
+  "CURL": 1,
+  "NPM": 1,
+  "SHLVL": 1,
+  "DOCUMENTS": 1,
+  "DISABLE": 1,
+  "SSL": 1,
+  "REQUESTS": 1,
+  "GCM": 1,
+  "HEX": 1,
+  "HTTPLIB2": 1,
+  "RUST": 1,
+  "UV": 1,
+  "GRPC": 1,
+  "RBENV": 1,
+  "DEBIAN": 1,
+  "FSSPEC": 1,
+  "OLDPWD": 1,
+  "DOCKER": 1,
+  "DBUS": 1,
+  "FC": 1,
   "DEV": 1,
   "hasOwnProperty": 1,
   "windir": 1,
@@ -1571,7 +1718,22 @@
   "TERMINAL": 1,
   "TMUX": 1,
   "STY": 1,
-  "all": 1
+  "KONSOLE": 1,
+  "GNOME": 1,
+  "XTERM": 1,
+  "VTE": 1,
+  "TERMINATOR": 1,
+  "KITTY": 1,
+  "ALACRITTY": 1,
+  "TILIX": 1,
+  "WT": 1,
+  "SESSIONNAME": 1,
+  "MSYSTEM": 1,
+  "ConEmuANSI": 1,
+  "ConEmuPID": 1,
+  "ConEmuTask": 1,
+  "WAYLAND": 1,
+  "DESKTOP": 1
  },
  "envVarNamesSet": {
   "ELECTRON_RUN_AS_NODE": [
@@ -1605,21 +1767,27 @@
  },
  "envVarNamesSetTotal": 11,
  "electronApis": {
-  "electron.net.fetch()": 8601,
-  "electron.BrowserWindow.getAllWindows()": 8420,
+  "electron.net.fetch()": 8406,
+  "electron.BrowserWindow.getAllWindows()": 8207,
+  "electron.webContents#.isOffscreen()": 8201,
+  "electron.webContents#.send()": 3048,
+  "electron.webContents#.isDestroyed()": 11,
   "electron.BaseWindow#.setTitleBarOverlay()": 9,
   "electron.BaseWindow#.isDestroyed()": 9,
+  "electron.clipboard.writeText()": 7,
   "electron.app.on(child-process-gone)": 6,
   "electron.BrowserWindow.getFocusedWindow()": 6,
   "electron.BaseWindow#.on(closed)": 6,
-  "electron.clipboard.writeText()": 6,
+  "electron.utilityProcess.fork()": 5,
+  "electron.webContents#.postMessage()": 5,
   "electron.app.on(browser-window-blur)": 3,
   "electron.BaseWindow#.isVisible()": 3,
-  "electron.BaseWindow#.setBackgroundColor()": 3,
+  "electron.app.on(web-contents-created)": 2,
   "electron.Menu.setApplicationMenu()": 2,
   "electron.app.on(open-file)": 2,
   "electron.app.on(open-url)": 2,
   "electron.app.getGPUFeatureStatus()": 2,
+  "electron.session.webRequest.onHeadersReceived()": 2,
   "electron.app.on(browser-window-focus)": 2,
   "electron.powerMonitor.on(suspend)": 2,
   "electron.powerMonitor.on(resume)": 2,
@@ -1629,7 +1797,10 @@
   "electron.BaseWindow#.on(maximize)": 2,
   "electron.BaseWindow#.isFullScreen()": 2,
   "electron.BaseWindow#.isSimpleFullScreen()": 2,
+  "electron.webContents#.on(did-fail-load)": 2,
+  "electron.webContents#.on(did-finish-load)": 2,
   "electron.BrowserWindow.fromWebContents()": 2,
+  "electron.BaseWindow#.setBackgroundColor()": 2,
   "electron.app.setVersion()": 1,
   "electron.app.setDesktopName()": 1,
   "electron.app.setAppPath()": 1,
@@ -1641,9 +1812,14 @@
   "electron.app.once(ready)": 1,
   "electron.app.getLocale()": 1,
   "electron.app.on(gpu-info-update)": 1,
+  "electron.session.protocol.handle(vscode-file)": 1,
+  "electron.session.protocol.handle(file)": 1,
+  "electron.session#.setPermissionRequestHandler()": 1,
+  "electron.session#.setPermissionCheckHandler()": 1,
+  "electron.session#.setDisplayMediaRequestHandler()": 1,
+  "electron.session.webRequest.onBeforeRequest()": 1,
   "electron.app.on(accessibility-support-changed)": 1,
   "electron.app.on(activate)": 1,
-  "electron.app.on(web-contents-created)": 1,
   "electron.app.on(new-window-for-tab)": 1,
   "electron.app.on(browser-window-created)": 1,
   "electron.nativeTheme.on(updated)": 1,
@@ -1656,17 +1832,27 @@
   "electron.powerMonitor.on(lock-screen)": 1,
   "electron.powerMonitor.on(unlock-screen)": 1,
   "electron.protocol.handle(vscode-webview)": 1,
+  "electron.session.protocol.handle(vscode-managed-remote-resource)": 1,
   "electron.app.addListener(before-quit)": 1,
   "electron.app.addListener(window-all-closed)": 1,
   "electron.app.once(will-quit)": 1,
+  "electron.webContents#.on(will-navigate)": 1,
+  "electron.webContents#.setWindowOpenHandler()": 1,
+  "electron.webContents#.on(did-create-window)": 1,
   "electron.BaseWindow#.on(unmaximize)": 1,
   "electron.BaseWindow#.on(enter-full-screen)": 1,
   "electron.BaseWindow#.on(leave-full-screen)": 1,
   "electron.BaseWindow#.on(always-on-top-changed)": 1,
   "electron.BaseWindow#.on(system-context-menu)": 1,
   "electron.BaseWindow#.setMenuBarVisibility()": 1,
+  "electron.session#.setProxy()": 1,
+  "electron.app.setProxy()": 1,
   "electron.BaseWindow#.on(unresponsive)": 1,
   "electron.BaseWindow#.on(responsive)": 1,
+  "electron.webContents#.on(render-process-gone)": 1,
+  "electron.webContents#.on(will-prevent-unload)": 1,
+  "electron.session.webRequest.onBeforeSendHeaders()": 1,
+  "electron.webContents#.on(devtools-reload-page)": 1,
   "electron.BaseWindow#.setTitle()": 1,
   "electron.BaseWindow#.getNativeWindowHandle()": 1,
   "electron.BaseWindow#.isMaximized()": 1,
@@ -1676,13 +1862,16 @@
   "electron.app.on(network-process-gone)": 1,
   "electron.ipcMain.removeListener()": 1,
   "electron.BaseWindow#.isAlwaysOnTop()": 1,
+  "electron.webContents#.once(destroyed)": 1,
   "electron.BaseWindow#.getSize()": 1,
   "electron.BaseWindow#.getMinimumSize()": 1,
+  "electron.webContents#.getOSProcessId()": 1,
   "electron.safeStorage.isEncryptionAvailable()": 1,
+  "electron.webContents#.setBackgroundThrottling()": 1,
   "electron.clipboard.readText()": 1
  },
  "ipcChannelsRegistered": {
-  "vscode:5b19ad60-1ded-441e-912a-2fc16b487b7a": "handle",
+  "vscode:a9ab9245-bda9-4989-aafc-75989b4a5720": "handle",
   "vscode:agentHostOTelPolicy": "on",
   "vscode:contextmenu": "on",
   "vscode:createAgentHostMessageChannel": "on",
@@ -1701,8 +1890,8 @@
   "vscode:toggleDevTools": "on"
  },
  "ipcChannelsReceived": {
-  "vscode:message": 2558,
-  "vscode:5b19ad60-1ded-441e-912a-2fc16b487b7a": 2,
+  "vscode:message": 3004,
+  "vscode:a9ab9245-bda9-4989-aafc-75989b4a5720": 2,
   "vscode:fetchShellEnv": 2,
   "vscode:agentHostOTelPolicy": 2,
   "vscode:hello": 1,
@@ -1717,15 +1906,15 @@
     "os": 12,
     "net": 8,
     "fs.promises": 5,
-    "original-fs": 5,
+    "original-fs": 4,
     "original-fs.promises": 3,
-    "url": 2,
-    "util": 2,
     "module": 2,
-    "child_process": 1,
-    "crypto": 1
+    "util": 2,
+    "url": 2,
+    "crypto": 1,
+    "child_process": 1
    },
-   "electronApiKeysCalled": 92,
+   "electronApiKeysCalled": 119,
    "childProcesses": [
     "spawn(rg)"
    ]
@@ -1734,20 +1923,20 @@
    "distinctAppCalledNodeFunctions": {
     "original-fs.promises": 12,
     "net": 9,
-    "os": 9,
+    "os": 8,
     "fs": 7,
     "fs.promises": 5,
-    "url": 4,
     "child_process": 4,
-    "crypto": 4,
-    "http": 3,
-    "util": 3,
     "original-fs": 3,
-    "readline": 2,
-    "stream": 2,
+    "http": 3,
+    "crypto": 3,
+    "util": 3,
     "module": 2,
-    "worker_threads": 1,
-    "tty": 1
+    "readline": 2,
+    "url": 2,
+    "stream": 2,
+    "tty": 1,
+    "worker_threads": 1
    },
    "electronApiKeysCalled": 0,
    "childProcesses": [
@@ -1773,8 +1962,8 @@
     "original-fs.promises": 4,
     "original-fs": 2,
     "module": 2,
-    "fs": 1,
     "os": 1,
+    "fs": 1,
     "util": 1
    },
    "electronApiKeysCalled": 0,
@@ -1783,21 +1972,21 @@
   "extensionHostProcess": {
    "distinctAppCalledNodeFunctions": {
     "fs": 10,
-    "child_process": 6,
     "os": 6,
+    "child_process": 6,
     "fs.promises": 5,
-    "net": 4,
-    "original-fs.promises": 4,
     "util": 4,
+    "original-fs.promises": 4,
+    "net": 4,
     "module": 2,
     "crypto": 2,
-    "readline": 1,
-    "stream": 1,
-    "worker_threads": 1,
     "http": 1,
+    "stream": 1,
+    "readline": 1,
+    "tty": 1,
+    "worker_threads": 1,
     "url": 1,
-    "original-fs": 1,
-    "tty": 1
+    "original-fs": 1
    },
    "electronApiKeysCalled": 0,
    "childProcesses": [
@@ -1808,14 +1997,44 @@
     "spawn(rg)"
    ]
   },
+  "node/jsonServerMain (child)": {
+   "distinctAppCalledNodeFunctions": {},
+   "electronApiKeysCalled": 0,
+   "childProcesses": []
+  },
+  "lib/tsserver.js (child)": {
+   "distinctAppCalledNodeFunctions": {
+    "fs": 8,
+    "os": 2,
+    "child_process": 1,
+    "module": 1,
+    "readline": 1
+   },
+   "electronApiKeysCalled": 0,
+   "childProcesses": [
+    "fork(typingsInstaller.js)"
+   ]
+  },
+  "lib/typingsInstaller.js (child)": {
+   "distinctAppCalledNodeFunctions": {
+    "fs": 4,
+    "module": 1,
+    "child_process": 1,
+    "os": 1
+   },
+   "electronApiKeysCalled": 0,
+   "childProcesses": [
+    "execSync(npm)"
+   ]
+  },
   "ptyHostMain": {
    "distinctAppCalledNodeFunctions": {
     "net": 5,
     "os": 3,
     "fs": 3,
     "child_process": 3,
-    "module": 2,
     "original-fs.promises": 2,
+    "module": 2,
     "util": 1
    },
    "electronApiKeysCalled": 0,
@@ -1824,6 +2043,24 @@
     "exec(ps)",
     "exec(which)"
    ]
+  },
+  "node/workerMain (child)": {
+   "distinctAppCalledNodeFunctions": {
+    "module": 1,
+    "url": 1
+   },
+   "electronApiKeysCalled": 0,
+   "childProcesses": []
+  }
+ },
+ "nodeChildLaunchesByParent": {
+  "extensionHostProcess": {
+   "fork:jsonServerMain": 1,
+   "fork:tsserver.js": 2,
+   "fork:workerMain": 1
+  },
+  "lib/tsserver.js (child)": {
+   "fork:typingsInstaller.js": 1
   }
  }
 }

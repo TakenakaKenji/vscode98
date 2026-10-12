@@ -6,7 +6,8 @@ S = sys.argv[1]; OUT = sys.argv[2] if len(sys.argv) > 2 else None
 procs = [json.load(open(f)) for f in sorted(glob.glob(S + '/proc/*.json'))]
 def pname(d):
     # utility processes carry VSCODE_ESM_ENTRYPOINT; the Electron main process has type 'browser'; Node children (tsserver, language servers) are named by their script
-    if d['entry']: return d['entry'].split('/')[-1]
+    # NB: Node children inherit VSCODE_ESM_ENTRYPOINT from their parent, so only trust it for Electron utility processes
+    if d['type'] == 'utility' and d['entry']: return d['entry'].split('/')[-1]
     if d['type'] == 'browser': return 'main'
     return '/'.join((d['argv1'] or '?').split('/')[-2:]) + ' (child)'
 BUILT = ('original-fs.promises','fs.promises','dns.promises','original-fs','fs','child_process','net','dgram','dns','http','https','http2','tls','os','crypto','zlib','worker_threads','cluster','readline','vm','v8','inspector','perf_hooks','util','url','querystring','string_decoder','module','async_hooks','tty','stream','buffer')

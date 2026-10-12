@@ -231,6 +231,16 @@ try {
 // ---------------------------------------------------------------------------------------------------------------
 // Electron (main process only): API methods, event names, IPC channels
 // ---------------------------------------------------------------------------------------------------------------
+const shapes = {};   // debug aid (VSCODE98_TRACE_SHAPES=1): own-property layout of electron instances, to see why prototype patching misses methods
+function describeChain(obj) {
+	const out = [];
+	for (let o = obj, i = 0; o && i < 8; o = Object.getPrototypeOf(o), i++) {
+		const names = Object.getOwnPropertyNames(o); let fns = 0, nonConfig = 0, accessors = 0; const sample = [];
+		for (const n of names) { const d = Object.getOwnPropertyDescriptor(o, n); if (!d) { continue; } if (d.get || d.set) { accessors++; } else if (typeof d.value === 'function') { fns++; if (sample.length < 6) { sample.push(n); } } if (!d.configurable) { nonConfig++; } }
+		out.push({ ctor: o.constructor && o.constructor.name, own: names.length, fns, accessors, nonConfig, sample });
+	}
+	return out;
+}
 function patchElectron() {
 	let electron;
 	try { electron = require('electron'); } catch { return; }
@@ -265,22 +275,33 @@ function patchElectron() {
 			try { Object.defineProperty(obj, key, { value: wrapFn(f, prefix + '.' + key, true), configurable: true, writable: true }); } catch { /* ignore */ }
 		}
 	};
-	for (const name of Object.keys(electron)) {
-		let v; try { v = electron[name]; } catch { continue; }
-		if (!v || (typeof v !== 'object' && typeof v !== 'function')) { continue; }
-		if (name === 'ipcMain') { wrapIpc(v, 'ipcMain'); patchObject(v, 'electron.ipcMain'); continue; }
+	// Some modules (screen, ...) throw if touched before the app 'ready' event, so patch each one separately and retry the failures after 'ready'.
+	// (An earlier version let that throw escape, which silently skipped every module after `screen` and the webContents/session hooks.)
+	const patchModule = (name) => {
+		let v; v = electron[name];
+		if (!v || (typeof v !== 'object' && typeof v !== 'function')) { return; }
+		if (name === 'ipcMain') { wrapIpc(v, 'ipcMain'); patchObject(v, 'electron.ipcMain'); return; }
 		if (typeof v === 'function') { patchObject(v, 'electron.' + name, { skipPrivate: true }); if (v.prototype) { patchObject(v.prototype, 'electron.' + name + '#', { skipPrivate: true }); wrapEvents(v.prototype, 'electron.' + name + '#'); } }
 		else { patchObject(v, 'electron.' + name, { skipPrivate: true }); wrapEvents(v, 'electron.' + name); }
+	};
+	const deferred = [];
+	for (const name of Object.keys(electron)) {
+		try { patchModule(name); } catch { deferred.push(name); }
+	}
+	shapes.deferredModules = deferred;
+	if (deferred.length) {
+		electron.app.whenReady().then(() => { for (const name of deferred) { try { patchModule(name); } catch (e) { (shapes.stillFailed = shapes.stillFailed || []).push(name + ': ' + String(e && e.message).slice(0, 80)); } } }).catch(() => { });
 	}
 	// Instances created later: webContents / sessions
+	shapes.reached = true;
 	try {
-		electron.app.on('web-contents-created', (_e, wc) => { const p = Object.getPrototypeOf(wc); if (!patched.has(p)) { patched.add(p); patchObject(p, 'electron.webContents#', { skipPrivate: true }); wrapEvents(p, 'electron.webContents#'); } });
+		electron.app.on('web-contents-created', (_e, wc) => { shapes.wcCreated = (shapes.wcCreated | 0) + 1; if (rawEnv.VSCODE98_TRACE_SHAPES && !shapes.wc) { try { shapes.wc = describeChain(wc); } catch (e) { shapes.wcErr = String(e && e.message); } } const p = Object.getPrototypeOf(wc); if (!patched.has(p)) { patched.add(p); patchObject(p, 'electron.webContents#', { skipPrivate: true }); wrapEvents(p, 'electron.webContents#'); } });
 		electron.app.whenReady().then(() => {
 			try { const s = electron.session.defaultSession; if (s) { const p = Object.getPrototypeOf(s); patchObject(p, 'electron.session#', { skipPrivate: true }); wrapEvents(p, 'electron.session#'); if (s.protocol) { patchObject(s.protocol, 'electron.session.protocol'); } if (s.webRequest) { patchObject(s.webRequest, 'electron.session.webRequest'); } } } catch { /* ignore */ }
 		}).catch(() => { });
-	} catch { /* ignore */ }
+	} catch (e) { shapes.regErr = String(e && e.stack).slice(0, 400); }
 }
-if (process.type === 'browser') { try { patchElectron(); } catch { /* never break the app */ } }
+if (process.type === 'browser') { try { patchElectron(); } catch (e) { shapes.patchErr = String(e && e.stack).slice(0, 400); /* never break the app */ } }
 
 // ---------------------------------------------------------------------------------------------------------------
 // Dump
@@ -293,7 +314,7 @@ function dump(final) {
 			pid: process.pid, ppid: process.ppid, final: !!final, uptimeMs: Date.now() - startedAt,
 			type: process.type || 'node', entry: process.env.VSCODE_ESM_ENTRYPOINT || null, argv1: process.argv[1] ? String(process.argv[1]).slice(-120) : null,
 			execArgv: process.execArgv.slice(0, 8), electron: process.versions.electron || null, node: process.versions.node, platform: process.platform,
-			loadedBuiltinsNote: 'includes the ~28 modules this hook loads itself; do not use', nativeAddons: [...nativeAddons].sort(), appCalled: [...appKeys].sort(), childLaunches, stacks, counts
+			loadedBuiltinsNote: 'includes the ~28 modules this hook loads itself; do not use', nativeAddons: [...nativeAddons].sort(), appCalled: [...appKeys].sort(), childLaunches, shapes, stacks, counts
 		};
 		const f = path.join(TRACE_DIR, process.pid + '.json');
 		writeFileSync(f + '.tmp', JSON.stringify(out)); renameSync(f + '.tmp', f);

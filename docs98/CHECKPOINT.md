@@ -1,6 +1,6 @@
 # Checkpoint — Resume Here
 
-**Last updated:** 2026-10-11, after the process-side trace (this session's commit follows `a9788173`, which is the last one pushed to `origin/main`, the fork `TakenakaKenji/vscode98`; check `git status` / `git log origin/main..` for anything unpushed).
+**Last updated:** 2026-10-12, after finishing the process-side trace (language-server children + `webContents`/`session`). Work is on branch `claude/adoring-heisenberg-ipwnb8`; check `git status` / `git log origin/main..` for anything unpushed (the cloud session could not push for a while: GitHub access 403).
 Update this file at the end of each working session (what's done, what's next, what to watch for).
 
 ## Where we are
@@ -14,19 +14,18 @@ Goal recap ([01-goal-and-scope.md](01-goal-and-scope.md)): full VS Code feature 
 - Static inventory of Electron, Node, DOM/CSS/Web, native modules, JS level ([inventory/README.md](inventory/README.md)).
 - Built stock VS Code on the Fedora dev machine and ran it headless ([inventory/baseline-build.md](inventory/baseline-build.md)).
 - **Measured renderer traces:** startup ([runtime-trace.md](inventory/runtime-trace.md)), 9 feature scenarios ([runtime-trace-scenarios.md](inventory/runtime-trace-scenarios.md)), markdown webview ([runtime-trace-webview.md](inventory/runtime-trace-webview.md)).
-- **Measured process-side trace:** Node + Electron API usage of the main process and 5 utility processes during the same scenarios ([runtime-trace-processes.md](inventory/runtime-trace-processes.md)).
+- **Measured process-side trace:** Node + Electron API usage of the main process, 5 utility processes and 5 language-server/worker Node children during the same scenarios ([runtime-trace-processes.md](inventory/runtime-trace-processes.md)). Re-run 2026-10-12 after fixing two hook defects (see that doc); the first run's "75 Electron entries" was an undercount, the correct figure is 102.
 
 ### Key measured facts (details in the linked docs)
 - Electron is imported in ~52 files (47 in `electron-main`); the renderer reaches it via one preload bridge (`src/vs/base/parts/sandbox/electron-browser/preload.ts`).
 - ~312 distinct DOM/Web members were called across startup + 9 scenarios; 227 distinct standard CSS properties; layout is block/inline/flex/absolute (no grid, no sticky live).
 - Editor input is a `<textarea>` (no contentEditable) but needs the full legacy keyboard event model; Canvas 2D and `OffscreenCanvas` are used (no WebGL); legacy WebKit APIs are used (`caretRangeFromPoint`, `wheelDelta*`).
 - WebAssembly is required (syntax highlighting).
-- Process side: the app calls only 118 distinct Node functions (~13 modules) and 75 Electron methods/events; renderer↔main IPC is one multiplexed `vscode:message` channel plus ~3 MessagePort handoffs; the renderer's files are served through the `vscode-file://` protocol (`net.fetch`); programs launched: `rg`, `git`, `tsserver`, shells.
+- Process side: the app calls only 119 distinct Node functions (~13 modules) and 102 Electron methods/events (incl. `webContents`/`session`/`utilityProcess`); renderer↔main IPC is one multiplexed `vscode:message` channel plus ~3 MessagePort handoffs; the renderer's files are served through the `vscode-file://` protocol (`net.fetch`); programs launched: `rg`, `git`, `tsserver`, shells.
 - Webviews = iframe-in-iframe on a `vscode-webview:` origin + service worker; need a real HTML engine (incl. table layout, `@layer`, web fonts).
 - Emitted JS is ES2024 ES modules, not downleveled.
 
 ### Not done yet (open)
-- **Language-server children not traced** (`tsserver`, JSON server, worker forked by the extension host): the hook didn't reach them. Fix idea in [runtime-trace-processes.md](inventory/runtime-trace-processes.md) (wrap `child_process.fork/spawn` to add `--require`). Also `webContents`/`session` instance methods are unmeasured.
 - Inventory pass 2: built-in `extensions/`, `build/`, finer CSS inventory.
 - Production bundle (non-dev) build and baseline memory/startup numbers.
 - Other webview types (notebooks, custom editors, simple browser); API counters inside webview frames.
@@ -35,14 +34,13 @@ Goal recap ([01-goal-and-scope.md](01-goal-and-scope.md)): full VS Code feature 
 - Deepen git history / fetch upstream tags (`git fetch upstream --tags`) if an old-tag reference build is wanted.
 - Phase 1 feasibility spikes ([04-roadmap.md](04-roadmap.md)): JS engine (QuickJS-ng or other), minimal DOM/layout/GDI render, Node shim, downleveled build. **Decisions D-003 to D-006 are still `proposed`** ([05-decisions.md](05-decisions.md)).
 
-## Status of step 1 (finish the process-side trace), 2026-10-12, cloud session
-- **Done, untested on VS Code:** `node_hook.cjs` injects itself into Node children (tsserver, language servers, workers) by wrapping `child_process`; `analyze_proc_trace.py` names children by script. Toy test under Node 24 passes.
-- **Blocked:** the cloud container has no Electron/`out/`. `npm ci` fails because the network policy denies `electronjs.org` (Electron headers for native modules, 403 on CONNECT). The owner must allow `electronjs.org` (cloud environment settings → Network access → Allowed domains; Electron binary comes from `github.com` releases, which is reachable) or run the trace on the Fedora dev machine. Also needed in the container: Node 24.18.0 (downloaded to the scratchpad; the image has 22.22) and `libkrb5-dev libxkbfile-dev libsecret-1-dev` (installed via apt this session, not persistent).
-- **Not started:** `webContents`/`session` instance-method capture (needs a running Electron).
-- To finish, on a machine with the dev environment: `PROC_TRACE=1 bash docs98/inventory/scripts/run_scenarios.sh <workdir> 9333`, `python3 -I docs98/inventory/scripts/analyze_proc_trace.py <workdir> docs98/inventory/data/process-trace-summary.json`, then update `runtime-trace-processes.md` (children's Node surface, `nodeChildLaunchesByParent`) and INDEX.
+## What the process-side finish added (2026-10-12)
+- Language-server children (2× `tsserver`, `typingsInstaller`, JSON server, markdown worker) are now traced. New hard requirements they show: a working `child_process.fork` **with an IPC channel** (`process.send`, `on('message')`, `on('disconnect')`) and fast **synchronous** `fs.statSync/readdirSync/existsSync` (tsserver makes ~19k `statSync` calls in 90 s). They load no native addons. The typings installer shells out to `npm`.
+- `webContents`/`session`/`utilityProcess` are now measured: the Electron surface is **102** entries, not 75. The earlier gap came from a swallowed exception on `electron.screen` in the hook, not from instance-level methods.
+- Hook changes: `node_hook.cjs` injects itself into Node children (VS Code strips `NODE_OPTIONS` from them), patches each Electron module separately (retry after `ready`), and has a debug aid `VSCODE98_TRACE_SHAPES=1`. `analyze_proc_trace.py` names children by script and reports `nodeChildLaunchesByParent`.
 
 ## Suggested next steps (in order)
-1. **Finish the process-side trace:** trace language-server children (tsserver etc.) and `webContents`/`session` instance methods (see gaps above). Optional, since the main picture is already clear.
+1. ~~Finish the process-side trace~~ done 2026-10-12.
 2. Production bundle build + memory/startup baseline.
 3. Decide the Phase 1 spike order (suggested: JS engine + WASM on the emitted bundle first, since it gates everything).
 4. Set up a Windows 7 VM/machine for real testing before writing host code.
@@ -68,7 +66,24 @@ bash docs98/inventory/scripts/run_scenarios.sh /some/workdir 9333               
 bash docs98/inventory/scripts/run_scenarios.sh /some/workdir 9333 trace_webview.mjs    # markdown webview
 ```
 
+### Rebuilding in a Claude Code cloud container (Ubuntu 24.04), done 2026-10-12
+The image has Node 22 and no build deps; the repo needs Node 24.18.0 (`.nvmrc`). What worked:
+```bash
+apt-get update && apt-get install -y libkrb5-dev libxkbfile-dev libsecret-1-dev libx11-dev libxss1 libgtk-3-0 libnss3 libgbm1 pkg-config ripgrep
+# Node 24.18.0 from nodejs.org into a scratch dir; put its bin first on PATH for every command below
+node build/npm/preinstall.ts && npm ci --ignore-scripts
+mkdir -p node_modules/@vscode/ripgrep/bin && ln -sf /usr/bin/rg node_modules/@vscode/ripgrep/bin/rg   # skips the ripgrep postinstall (see below)
+npm rebuild && node build/npm/postinstall.ts      # if extensions/ or extensions/copilot nested installs fail, run `npm ci` in extensions/ and re-run postinstall
+npm run transpile-client && npm run gulp compile-extensions && npm run gulp compile-extension-media && npm run electron
+cp node_modules/@vscode/codicons/dist/codicon.ttf src/vs/base/browser/ui/codicons/codicon/ && cp node_modules/@vscode/codicons/dist/codicon.ttf out/vs/base/browser/ui/codicons/codicon/
+```
+- Network policy must allow `electronjs.org` (native-module headers; it redirects to `artifacts.electronjs.org`) (`npm run electron` then downloaded the Electron zip without further changes; the serving host was not checked). `electronjs.org` was blocked at first and had to be allowed in the environment's Network access settings.
+- `@vscode/ripgrep`'s postinstall calls `api.github.com/repos/microsoft/ripgrep-prebuilt/...`, which the session proxy denies (403) for repositories that are not attached. The system `rg` (14.1.0) is used instead; fine for tracing, but it is **not** the version the product ships (15.0.1).
+- The container is ephemeral: everything above must be redone in a new session. Consider a SessionStart hook / setup script if cloud sessions will be used regularly.
+
 ## Gotchas to remember
+- Two hand-written launches of the hooked app (headless, no driver) crashed with `Trace/breakpoint trap` in the cloud container while `run_scenarios.sh` runs worked; the cause was not isolated (a missing CDP client is one suspect). Use `run_scenarios.sh` (with a short driver such as `trace_renderer.mjs` for quick checks) rather than launching `code-oss` by hand.
+- Do not trust a trace result that is suspiciously empty for a whole API group: the first process trace silently lost every Electron module after `screen`. `VSCODE98_TRACE_SHAPES=1` records the `webContents` layout and `shapes.deferredModules` / `shapes.patchErr` in the hook's per-process dump.
 - `git-lfs` is not installed; the LFS filter is disabled in this clone's local `.git/config` (D-002). Don't re-enable it without installing git-lfs.
 - Dev-mode runs create `~/.vscode-oss-shared/` in the home directory (outside the temp profile). Safe to delete.
 - The tracers use headless Electron with `--no-sandbox` and synthetic CDP input. A windowed run on Wayland has **not** been tried; the headless run is verified working on Fedora 44.
