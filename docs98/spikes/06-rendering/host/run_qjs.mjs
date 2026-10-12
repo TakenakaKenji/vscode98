@@ -27,7 +27,8 @@ async function main() {
 	const ms = Math.round(performance.now() - t0); const container = doc.getElementById('container');
 	log(`loaded in ${ms} ms; layouts ${doc.__layoutCount} (${Math.round(doc.__layoutMs)} ms); container descendants: ${container ? container.getElementsByTagName('*').length : 'n/a'}`);
 	log('missing: ' + JSON.stringify([...missing].sort((a, b) => b[1] - a[1]).slice(0, 40))); log('unsupported: ' + JSON.stringify([...unsupported]));
-	const ppm = opt('ppm', null); if (ppm) { const t = performance.now(); const r = paintDocument(doc, 800, 520); writeBytes(ppm, toPPM(r.px, r.w, r.h)); log(`painted in ${Math.round(performance.now() - t)} ms ${JSON.stringify(r.stats)} unpainted: ${JSON.stringify([...unpainted])}`); }
+	let backend; if (opt('backend', 'js') === 'native') { const { NativeBackend } = await import('../../07-native-render/host/native_backend.js'); backend = new NativeBackend(800, 520); }
+	const ppm = opt('ppm', null); if (ppm) { const t = performance.now(); const r = paintDocument(doc, 800, 520, backend); writeBytes(ppm, toPPM(r.px, r.w, r.h)); log(`painted in ${Math.round(performance.now() - t)} ms${backend ? ` (record ${Math.round(performance.now() - t - backend.execMs)} ms + native execute ${backend.execMs.toFixed(1)} ms)` : ''} ${JSON.stringify(r.stats)} unpainted: ${JSON.stringify([...unpainted])}`); }
 	const dump = opt('dump', null);
 	if (dump && container) {
 		const rows = []; const walk = (el, depth, p) => { const r = el.getBoundingClientRect(); rows.push({ path: p, tag: el.localName, cls: el.getAttribute('class') || '', id: el.id, x: r.x, y: r.y, w: r.width, h: r.height, depth, text: el.children.length === 0 ? el.textContent.slice(0, 80) : undefined, inlineStyle: el.getAttribute('style') || '', offsetW: el.offsetWidth, offsetH: el.offsetHeight, scrollW: el.scrollWidth, scrollH: el.scrollHeight }); let i = 0; for (const c of el.children) { walk(c, depth + 1, p + '/' + c.localName + '[' + (i++) + ']'); } };

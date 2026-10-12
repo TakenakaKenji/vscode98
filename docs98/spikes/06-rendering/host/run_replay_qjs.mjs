@@ -15,8 +15,10 @@ globalThis.__readFileBytes = (p) => { const f = std.open(p, 'rb'); f.seek(0, std
 const log = (m) => { std.out.puts(m + '\n'); std.out.flush(); };
 const env = installEnvironment({ width: data.w, height: data.h, opentype });
 const t0 = performance.now(); const doc = replayPage(env, data); const t1 = performance.now(); applyScrolls(doc, data.elements); doc.__ensureLayout(); const t2 = performance.now();
+log(`style ${Math.round(doc.__layout.styleMs)} ms, layout ${Math.round(doc.__layout.layoutMs ?? 0)} ms`);
 log(`replay: ${doc.documentElement.getElementsByTagName('*').length} elements; build ${Math.round(t1 - t0)} ms, style+layout ${Math.round(t2 - t1)} ms (styled ${doc.__styleCount})`);
 log('missing: ' + JSON.stringify([...missing].sort((a, b) => b[1] - a[1]).slice(0, 30))); log('unsupported: ' + JSON.stringify([...unsupported]));
-if (opt('ppm')) { const t = performance.now(); const r = paintDocument(doc, data.w, data.h); const u8 = toPPM(r.px, r.w, r.h); const f = std.open(opt('ppm'), 'wb'); f.write(u8.buffer, u8.byteOffset, u8.byteLength); f.close(); log(`painted in ${Math.round(performance.now() - t)} ms ${JSON.stringify(r.stats)} unpainted: ${JSON.stringify([...unpainted])}`); }
+let backend; if (opt('backend', 'js') === 'native') { const { NativeBackend } = await import('../../07-native-render/host/native_backend.js'); backend = new NativeBackend(data.w, data.h); }
+if (opt('ppm')) { const t = performance.now(); const r = paintDocument(doc, data.w, data.h, backend); const u8 = toPPM(r.px, r.w, r.h); const f = std.open(opt('ppm'), 'wb'); f.write(u8.buffer, u8.byteOffset, u8.byteLength); f.close(); log(`painted in ${Math.round(performance.now() - t)} ms${backend ? ` (record ${Math.round(performance.now() - t - backend.execMs)} ms + native execute ${backend.execMs.toFixed(1)} ms, ${backend.commands} commands, ${backend.glyphsProvided} glyphs provided in ${backend.provideMs.toFixed(0)} ms)` : ''} ${JSON.stringify(r.stats)} unpainted: ${JSON.stringify([...unpainted])}`); }
 if (opt('dump')) { const f = std.open(opt('dump'), 'w'); f.puts(JSON.stringify({ elements: dumpRows(doc.documentElement, 'html') })); f.close(); }
 std.exit(0);

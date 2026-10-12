@@ -22,8 +22,11 @@ function blend(px, i, r, g, b, a) {
 	if (oa <= 0) { return; }
 	px[i] = (r * a + px[i] * da * (1 - a)) / oa; px[i + 1] = (g * a + px[i + 1] * da * (1 - a)) / oa; px[i + 2] = (b * a + px[i + 2] * da * (1 - a)) / oa; px[i + 3] = oa * 255;
 }
-class Painter {
-	constructor(doc, w, h) { this.doc = doc; this.S = new Surface(w, h); this.S.fill(255, 255, 255, 255); this.clipStack = [[0, 0, w, h]]; this.glyphCache = new Map(); this.stats = { rects: 0, glyphs: 0, glyphMisses: 0 }; }
+/** The JavaScript software backend: executes drawing operations immediately into an RGBA surface. A second backend (native/render.js) records the same operations as a display list for the C rasterizer. */
+export class JsBackend {
+	constructor(w, h) { this.S = new Surface(w, h); this.S.fill(255, 255, 255, 255); this.clipStack = [[0, 0, w, h]]; this.glyphCache = new Map(); this.layers = []; this.stats = { rects: 0, glyphs: 0, glyphMisses: 0 }; }
+	get pixels() { return this.S.px; }
+	finish() { return this.S.px; }
 	get clip() { return this.clipStack[this.clipStack.length - 1]; }
 	pushClip(x0, y0, x1, y1) { const c = this.clip; this.clipStack.push([Math.max(c[0], x0), Math.max(c[1], y0), Math.min(c[2], x1), Math.min(c[3], y1)]); }
 	popClip() { this.clipStack.pop(); }
@@ -87,12 +90,9 @@ class Painter {
 		}
 		g = { left, top, w, h, cov }; this.glyphCache.set(key, g); return g;
 	}
-	drawText(frag, dx, dy, alphaMul) {
-		const v = frag.v, color = v.color; if (!color || color[3] <= 0 || v.visibility === 'hidden') { return; }
-		const font = frag.font, size = frag.size, ls = frag.ls; const S = this.S, c = this.clip; let x = frag.ax + dx; const by = Math.round(frag.abaseline + dy);
-		const wsp = typeof v['word-spacing'] === 'number' ? v['word-spacing'] : 0;
-		let prevCp = 0;
-		for (const ch of frag.text) {
+	glyphRun(font, size, ls, wsp, x, by, color, alphaMul, text) {
+		const S = this.S, c = this.clip; let prevCp = 0;
+		for (const ch of text) {
 			const cp = ch.codePointAt(0); const adv = advance(font, cp, size); if (ls === 0 && prevCp) { x += kern(font, prevCp, cp, size); } prevCp = cp;
 			if (cp !== 32 && cp !== 160 && cp !== 9) {
 				const fx = Math.round((x - Math.floor(x)) * 4) / 4; const g = this.glyph(font, cp, size, fx); this.stats.glyphs++;
@@ -100,6 +100,22 @@ class Painter {
 			}
 			x += adv + ls + (cp === 32 ? wsp : 0);
 		}
+	}
+	pushLayer() { this.layers.push(this.S); this.S = new Surface(this.S.w, this.S.h); }
+	popLayer(alpha) { const sub = this.S; this.S = this.layers.pop(); for (let i = 0; i < sub.px.length; i += 4) { if (sub.px[i + 3]) { blend(this.S.px, i, sub.px[i], sub.px[i + 1], sub.px[i + 2], sub.px[i + 3] / 255 * alpha); } } }
+}
+class Painter {
+	constructor(doc, backend) { this.doc = doc; this.b = backend; }
+	get stats() { return this.b.stats; }
+	fillRect(x, y, w, h, color, alphaMul = 1) { this.b.fillRect(x, y, w, h, color, alphaMul); }
+	fillRoundRect(x, y, w, h, radii, color, alphaMul = 1) { this.b.fillRoundRect(x, y, w, h, radii, color, alphaMul); }
+	pushClip(x0, y0, x1, y1) { this.b.pushClip(x0, y0, x1, y1); }
+	popClip() { this.b.popClip(); }
+	drawText(frag, dx, dy, alphaMul) {
+		const v = frag.v, color = v.color; if (!color || color[3] <= 0 || v.visibility === 'hidden') { return; }
+		const font = frag.font, size = frag.size, ls = frag.ls; const x = frag.ax + dx; const by = Math.round(frag.abaseline + dy);
+		const wsp = typeof v['word-spacing'] === 'number' ? v['word-spacing'] : 0;
+		this.b.glyphRun(font, size, ls, wsp, x, by, color, alphaMul, frag.text);
 		const tdl = v['text-decoration-line']; if (tdl && tdl !== 'none') { const thick = Math.max(1, Math.round(size / 14)); const w = frag.w; if (tdl.includes('underline')) { this.fillRect(frag.ax + dx, by + Math.round(size * 0.1), w, thick, v['text-decoration-color'] || color, alphaMul); } if (tdl.includes('line-through')) { this.fillRect(frag.ax + dx, by - Math.round(size * 0.3), w, thick, v['text-decoration-color'] || color, alphaMul); } if (tdl.includes('overline')) { this.fillRect(frag.ax + dx, by - frag.asc, w, thick, color, alphaMul); } }
 	}
 	// ---- boxes
@@ -120,7 +136,7 @@ class Painter {
 		// transforms: translation is exact; other matrices are approximated by their translation (recorded)
 		let tdx = 0, tdy = 0; if (b.matrix) { tdx = b.matrix[4]; tdy = b.matrix[5]; if (b.matrix[0] !== 1 || b.matrix[3] !== 1 || b.matrix[1] || b.matrix[2]) { note('non-translate transform'); } dx += tdx; dy += tdy; }
 		const opacity = typeof v.opacity === 'number' ? v.opacity : 1; if (opacity <= 0) { return; }
-		let layer = null; if (opacity < 1) { layer = this.S; const sub = new Surface(layer.w, layer.h); this.S = sub; }
+		const layered = opacity < 1; if (layered) { this.b.pushLayer(); }
 		const clips = (v['overflow-x'] !== 'visible' || v['overflow-y'] !== 'visible'); const sx = b.el && b.el.__scrollLeft || 0, sy = b.el && b.el.__scrollTop || 0;
 		this.paintBackgroundAndBorders(b, dx, dy, 1);
 		if (clips) { const x0 = b.ax + dx + b.bl, y0 = b.ay + dy + b.bt; this.pushClip(x0, y0, x0 + b.w - b.bl - b.br, y0 + b.h - b.bt - b.bb); }
@@ -138,7 +154,7 @@ class Painter {
 		for (const c of mid) { const [fx, fy] = fixedShift(c); this.paintBox(c, cdx + fx, cdy + fy, 1); }
 		for (const c of pos) { const [fx, fy] = fixedShift(c); this.paintBox(c, cdx + fx, cdy + fy, 1); }
 		if (clips) { this.popClip(); }
-		if (layer) { const sub = this.S; this.S = layer; const a = opacity * alphaMul; for (let i = 0; i < sub.px.length; i += 4) { if (sub.px[i + 3]) { blend(this.S.px, i, sub.px[i], sub.px[i + 1], sub.px[i + 2], sub.px[i + 3] / 255 * a); } } }
+		if (layered) { this.b.popLayer(opacity * alphaMul); }
 	}
 	paintInline(container, dx, dy) {
 		// inline element backgrounds/borders (per line rect), then text, then atomic inlines
@@ -148,14 +164,15 @@ class Painter {
 		const atomic = (b) => { for (const c of b.children) { if (c.kind === 'inline-block' && !c.oof) { this.paintBox(c, dx, dy, 1); } else if (c.kind === 'inline') { atomic(c); } } }; atomic(container);
 	}
 }
-export function paintDocument(doc, width, height) {
-	doc.__ensureLayout(); const lay = doc.__layout; const p = new Painter(doc, width, height);
-	if (!lay.rootBox) { return { px: p.S.px, w: width, h: height, stats: p.stats }; }
+/** Paints the laid-out document through a backend (default: the JS software backend). Returns { px, w, h, stats }. */
+export function paintDocument(doc, width, height, backend = new JsBackend(width, height)) {
+	doc.__ensureLayout(); const lay = doc.__layout; const p = new Painter(doc, backend);
+	if (!lay.rootBox) { return { px: backend.finish(), w: width, h: height, stats: p.stats }; }
 	// canvas background: html or body background colour
 	const rb = lay.rootBox; let bg = rb.v['background-color']; if (!(bg && bg[3] > 0)) { const body = doc.body && lay.boxOf.get(doc.body); if (body && body.v['background-color'] && body.v['background-color'][3] > 0) { bg = body.v['background-color']; } }
 	if (bg && bg[3] > 0) { p.fillRect(0, 0, width, height, bg); }
 	const saveBg = rb.v['background-color']; rb.v['background-color'] = [0, 0, 0, 0]; const body = doc.body && lay.boxOf.get(doc.body); const saveBodyBg = body && body.v['background-color']; if (body && !(saveBg && saveBg[3] > 0)) { body.v['background-color'] = [0, 0, 0, 0]; }
 	p.paintBox(rb, 0, 0, 1); rb.v['background-color'] = saveBg; if (body && saveBodyBg) { body.v['background-color'] = saveBodyBg; }
-	return { px: p.S.px, w: width, h: height, stats: p.stats };
+	return { px: backend.finish(), w: width, h: height, stats: p.stats };
 }
 export function toPPM(px, w, h) { const header = `P6\n${w} ${h}\n255\n`; const out = new Uint8Array(header.length + w * h * 3); for (let i = 0; i < header.length; i++) { out[i] = header.charCodeAt(i); } let o = header.length; for (let i = 0; i < w * h; i++) { const a = px[i * 4 + 3] / 255; out[o++] = Math.round(px[i * 4] * a + 255 * (1 - a)); out[o++] = Math.round(px[i * 4 + 1] * a + 255 * (1 - a)); out[o++] = Math.round(px[i * 4 + 2] * a + 255 * (1 - a)); } return out; }

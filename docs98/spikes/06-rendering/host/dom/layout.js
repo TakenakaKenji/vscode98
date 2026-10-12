@@ -31,7 +31,7 @@ const REPLACED = new Set(['img', 'canvas', 'video', 'svg', 'iframe', 'input', 's
 export class Layout {
 	constructor(doc, env) { this.doc = doc; this.env = env; this.boxOf = new Map(); this.oofList = []; }
 	run() {
-		resolveStyles(this.doc, this.env);
+		const ts = performance.now(); resolveStyles(this.doc, this.env); this.styleMs = performance.now() - ts; const tl = performance.now();
 		const root = this.doc.documentElement; this.rootBox = null; this.boxOf.clear(); this.fragsByText = new Map();
 		if (!root) { return; }
 		const rootBox = this.build(root, null); this.rootBox = rootBox; if (!rootBox) { return; }
@@ -42,7 +42,7 @@ export class Layout {
 		this.absolutize(rootBox, 0, 0);
 		// body background propagates to the canvas; absolutely positioned boxes are laid out after the flow is known
 		for (const b of this.oofList) { this.layoutOof(b); }
-		this.computeScroll(rootBox);
+		this.computeScroll(rootBox); this.layoutMs = performance.now() - tl;
 	}
 	// ---- tree building
 	build(el, parent) {
