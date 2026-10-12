@@ -1,5 +1,7 @@
 # Spike 3 — Loading real extensions through `require()` on QuickJS-ng
 
+> **Update (spike 5):** the blockers listed here (`child_process.fork`, sync `require(esm)`, the module-resolver hook) were removed afterwards: 29 of 34 built-in extensions now activate with no pre-bundling, see [../05-child-process/README.md](../05-child-process/README.md).
+
 **Question** (follows [../02-node-shim/README.md](../02-node-shim/README.md)): spike 2 left extension loading as the biggest open item for the extension host: extensions are CommonJS, loaded with `require()`, and VS Code intercepts `require('vscode')` by patching private `Module` internals. Can the extension host on QuickJS-ng load and activate VS Code's own built-in extensions?
 
 - **Engine:** QuickJS-ng 0.17.0, same Linux/Xeon machine as the earlier spikes. **Extension host:** the production bundle (`out-vscode-min/`), unmodified apart from import rewriting (see spike 2). **Extensions:** the 34 built-in extensions in this repo that have compiled output (`extensions/*/out`, TypeScript compiler output, **not** the product's bundled/minified extensions).
