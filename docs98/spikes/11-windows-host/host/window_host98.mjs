@@ -25,7 +25,7 @@ function keyInfo(vk, mods, extended) {
 const editable = (el) => el && (el.localName === 'textarea' || (el.localName === 'input' && !/^(button|checkbox|radio|submit)$/.test(el.type || 'text')) || el.isContentEditable);
 
 /** opens the window and keeps it in sync with the document; returns { id, repaint(), close() } */
-export function openWindow(ctx, { width, height, title = 'vscode98', exact = false, fps = 30 } = {}) {
+export function openWindow(ctx, { width, height, title = 'vscode98', exact = false, fps = 30, onClose } = {}) {
 	const { doc, env, log } = ctx; const id = win.create(width, height, title); let W = width, H = height;
 	const Ev = (name, o) => new env.window.MouseEvent(name, { bubbles: true, cancelable: true, composed: true, view: env.window, ...o });
 	let hover = null, downTarget = null, lastPaint = 0, forced = true, paints = 0, paintMs = 0;
@@ -66,7 +66,7 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 			}
 			case 'resize': W = a; H = b; log?.(`[window] resize ${a}x${b}`); env.resize?.(a, b); repaint(); break;
 			case 'focus': { if (a) { env.window.dispatchEvent(new env.window.Event('focus')); } else { env.window.dispatchEvent(new env.window.Event('blur')); } break; }
-			case 'close': win.destroy(wid); log?.('[window] closed'); std.exit(0); break;
+			case 'close': win.destroy(wid); log?.('[window] closed'); try { onClose?.(); } finally { std.exit(0); } break;
 			case 'paint': break;
 		}
 		repaint();

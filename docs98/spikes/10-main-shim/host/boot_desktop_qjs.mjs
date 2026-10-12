@@ -22,7 +22,7 @@ import { encode, decode } from './codec98.js';
 
 const nodeProcess = globalThis.process;
 const args = nodeProcess.argv.slice(2); const opt = (n, d) => { const i = args.indexOf('--' + n); return i >= 0 ? args[i + 1] : d; };
-const appRoot = nodePath.resolve(args[0]); const seconds = Number(opt('seconds', 60)); const W = 1280, H = 800;
+const appRoot = nodePath.resolve(args[0]); const seconds = Number(opt('seconds', 60)); const W = Number(opt('width', 1280)), H = Number(opt('height', 800));
 const userDataDir = nodePath.resolve(opt('user-data-dir', nodePath.join(globalThis.__builtins.os.tmpdir(), 'ud98'))), extDir = nodePath.resolve(opt('extensions-dir', nodePath.join(globalThis.__builtins.os.tmpdir(), 'ext98')));
 const here = nodePath.dirname(fileURLToPath(import.meta.url));
 const fileOf = (u) => fileURLToPath('file://' + u.replace(/^vscode-file:\/\/vscode-app/, '').replace(/[?#].*$/, ''));   // vscode-file://vscode-app/<file URL path>, also /C:/dir on Windows
@@ -93,12 +93,19 @@ log('[harness] page scripts: ' + JSON.stringify(scripts));
 for (const s of scripts) { try { await import(s); log('[harness] imported ' + s); } catch (e) { log('[harness] import failed ' + s + ': ' + (e && e.stack || e)); note('import ' + s, e); } }
 const tLoaded = performance.now(); const rssAfterImport = rss();
 const ctx = { env, doc, note, rss, layoutTiming, opt, log, W, H, consoleLog };
+let winHost = null;
+if (opt('window', '0') === '1') {                      // a real window (Win32/GDI through spike:win): the document is painted whenever it changes, input goes to the DOM
+	const { openWindow } = await import('../../11-windows-host/host/window_host98.mjs');
+	winHost = openWindow(ctx, { width: W, height: H, title: 'vscode98', exact: opt('backend') === 'native-exact', onClose: () => { try { child.kill(); } catch { /* gone */ } } });
+	log('[harness] window opened');
+}
 await runScenario(ctx, { seconds, stableRounds: Number(opt('stable', 25)) });
 const done = performance.now();
 summarizeRun(ctx, { tImport, tLoaded, done, t00, errors, consoleLog, rssAfterImport, missing, unsupported });
 if (opt('scenario')) { const sc = await import(opt('scenario')); await sc.run(ctx); }
 log('--- main process output (last 40 lines)\n' + mainLog.join('').split('\n').slice(-40).join('\n'));
 if (opt('ppm')) { let backend; if (opt('backend', 'js').startsWith('native')) { const { NativeBackend } = await import('../../07-native-render/host/native_backend.js'); backend = new NativeBackend(W, H, { exact: opt('backend') === 'native-exact' }); } const r = paintDocument(doc, W, H, backend); const u8 = toPPM(r.px, r.w, r.h); const f = std.open(opt('ppm'), 'wb'); f.write(u8.buffer, u8.byteOffset, u8.byteLength); f.close(); log('painted ' + JSON.stringify(r.stats)); }
+if (winHost) { log('[harness] window mode: close the window to exit'); return; }
 child.kill(); std.exit(0);
 }
 main().catch(e => { std.err.puts('FATAL ' + (e && e.message) + '\n' + (e && e.stack || e) + '\n'); std.exit(1); });

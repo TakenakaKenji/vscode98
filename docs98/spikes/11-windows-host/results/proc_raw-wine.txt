@@ -1,0 +1,11 @@
+PASS spawn returns a pid pid=308
+PASS child stdout echoed "HELLO WORLD\nSECOND LINE\n"
+PASS IPC both directions "hello-from-child pid=308\nack:ping1\nack:ping2\n"
+PASS child exited with 0 (watchExit) {"code":0,"killed":false}
+PASS spawn of a missing program fails with ENOENT r=-2
+PASS kill(pid, 0) sees a live process 
+PASS exit code 7 code=7
+PASS killed child reported as killed {"c":1,"k":true}
+PASS pollSync output {"s":0,"o":"SYNC DATA\n"}
+PASS 2.5 MB through a pipe got 2621440
+ALL PASSED
