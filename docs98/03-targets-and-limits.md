@@ -4,6 +4,12 @@ Staged OS targets. Each stage builds on the previous one. "Limit" means a proper
 
 > Several facts below come from general knowledge of Windows versions and have not been re-verified against sources in this project. Items marked **(unverified)** should be checked before being relied on.
 
+## CPU baseline (decision D-009, 2026-10-12)
+
+- **Baseline binary:** 32-bit x86, Pentium-class with an FPU, **no SSE/SSE2, no MMX, no CMOV** (x87 floating point, `-march=i586`). Built and statically checked by `docs98/spikes/07-native-render/host/build_baseline.sh`. An FPU is required (JS numbers are doubles).
+- **Owner's stated oldest target (2026-10-12):** an AMD K7 (Athlon) with 128 MB RAM. The first goal is to get the application complete on newer targets, and to back-port to the oldest ones afterwards. (From general knowledge, not verified here: the original Athlon has MMX/3DNow! and CMOV but no SSE; Athlon XP adds SSE; SSE2 starts with the Pentium 4 and Athlon 64.)
+- **Not yet measured:** any run on a real or emulated Pentium/K6/Athlon CPU. All measurements so far are on a modern Xeon. Memory is the likely harder limit than the instruction set on a 128 MB machine: one captured workbench view alone used 218 MB RSS and the compiled workbench is ~86 MB of QuickJS heap (spikes 1 and 6).
+
 ## Stage 1 — Windows 7
 
 - NT kernel, Unicode (`W`) APIs, NTFS, overlapped I/O / IOCP, job objects, modern threading primitives.

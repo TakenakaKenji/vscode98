@@ -28,7 +28,7 @@ async function main() {
 	const ms = Math.round(performance.now() - t0); const container = doc.getElementById('container');
 	log(`loaded in ${ms} ms; layouts ${doc.__layoutCount} (${Math.round(doc.__layoutMs)} ms${layoutTiming ? `; native engine runs ${JSON.stringify(layoutTiming.perRun)}: pack ${layoutTiming.pack.toFixed(0)} + C ${layoutTiming.native.toFixed(0)} + apply ${layoutTiming.apply.toFixed(0)} ms` : ''}); container descendants: ${container ? container.getElementsByTagName('*').length : 'n/a'}`);
 	log('missing: ' + JSON.stringify([...missing].sort((a, b) => b[1] - a[1]).slice(0, 40))); log('unsupported: ' + JSON.stringify([...unsupported]));
-	let backend; if (opt('backend', 'js') === 'native') { const { NativeBackend } = await import('../../07-native-render/host/native_backend.js'); backend = new NativeBackend(800, 520); }
+	let backend; if (opt('backend', 'js').startsWith('native')) { const { NativeBackend } = await import('../../07-native-render/host/native_backend.js'); backend = new NativeBackend(800, 520, { exact: opt('backend', 'js') === 'native-exact' }); }
 	const ppm = opt('ppm', null); if (ppm) { const t = performance.now(); const r = paintDocument(doc, 800, 520, backend); const paintMs = performance.now() - t; writeBytes(ppm, toPPM(r.px, r.w, r.h)); log(`painted in ${Math.round(paintMs)} ms${backend ? ` (record ${Math.round(paintMs - backend.execMs)} ms + native execute ${backend.execMs.toFixed(1)} ms)` : ''} ${JSON.stringify(r.stats)} unpainted: ${JSON.stringify([...unpainted])}`); }
 	const dump = opt('dump', null);
 	if (dump && container) {

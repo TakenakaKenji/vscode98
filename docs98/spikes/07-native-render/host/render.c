@@ -7,7 +7,9 @@
  * glyph is used; nothing here parses a font file. Pure C99 + libm, no platform calls, so it builds for Windows 98/XP/7 unchanged.
  */
 #include <math.h>
+#include <time.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "quickjs.h"
@@ -30,7 +32,7 @@ static Slot *map_find(Map *m, uint64_t key, int insert) {
 /* ---------------------------------------------------------------- fonts and glyphs */
 typedef struct { double adv; int ncmd; double *cmd; } Outline;   /* adv in em; cmd: groups of 7 doubles {type,x,y,x1,y1,x2,y2} in font units */
 typedef struct { int left, top, w, h, empty; uint8_t *cov; } Glyph;
-typedef struct { double upm, asc, desc, gap; Map outlines, kerns, glyphs; } Font;   /* asc/desc/gap: hhea metrics in em */
+typedef struct { double upm, asc, desc, gap; Map outlines, kerns, glyphs, iglyphs; } Font;   /* asc/desc/gap: hhea metrics in em */
 static Font fonts[256]; static int nfonts;
 static uint8_t GAMMA[256]; static int gamma_init;
 
@@ -50,7 +52,6 @@ static void edge_cubic(Edges *E, double x0, double y0, double x1, double y1, dou
 	for (int i = 1; i <= n; i++) { double t = (double)i / n, u = 1 - t; double x = u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3, y = u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3; edge_line(E, px, py, x, y); px = x; py = y; }
 }
 static double js_round(double v) { return floor(v + 0.5); }
-static int cmp_x(const void *a, const void *b);
 typedef struct { double x; int dir; } Cross;
 
 /* Build (and cache) the coverage bitmap of one glyph at `size` px with sub-pixel x offset fx (a multiple of 1/4). */
@@ -109,7 +110,9 @@ static Glyph *get_glyph(Font *f, int fontId, uint32_t cp, double size, int fxq, 
 }
 
 /* ---------------------------------------------------------------- surface, blend */
-typedef struct { uint8_t *px; int w, h; } Surf;
+/* px is addressed as px[(y * w + x) * 4] with absolute coordinates. For an opacity layer only the region [bx0,bx1) x [by0,by1) (the clip when the layer was pushed) is allocated: px is then
+ * offset so absolute coordinates still work, and base is the allocation. */
+typedef struct { uint8_t *px, *base; int w, h, bx0, by0, bx1, by1; } Surf;
 /* ToUint8Clamp as performed when JavaScript stores into a Uint8ClampedArray (round half to even) */
 static inline uint8_t c8(double v) { if (!(v > 0)) { return 0; } if (v >= 255) { return 255; } double f = floor(v); double d = v - f; if (d < 0.5) { return (uint8_t)f; } if (d > 0.5) { return (uint8_t)(f + 1); } return (uint8_t)(((int)f & 1) ? f + 1 : f); }
 static inline void blend(uint8_t *px, size_t i, double r, double g, double b, double a) {
@@ -123,7 +126,7 @@ static inline void blend(uint8_t *px, size_t i, double r, double g, double b, do
 }
 
 typedef struct { double c[4]; } Clip;
-typedef struct { Surf s; Surf layers[16]; int nlayers; Clip clips[256]; int nclips; long rects, glyphs, misses; } Ctx;
+typedef struct { Surf s; Surf layers[16]; int nlayers; Clip clips[256]; int nclips; long rects, glyphs, misses; int integer; } Ctx;
 static inline Surf *cur(Ctx *c) { return c->nlayers ? &c->layers[c->nlayers - 1] : &c->s; }
 
 static void fill_rect(Ctx *c, double x, double y, double w, double h, const double *col, double alphaMul) {
@@ -169,6 +172,8 @@ static void glyph_run(Ctx *c, int fontId, double size, double ls, double wsp, do
 	}
 }
 
+#include "raster_int.h"
+
 /* ---------------------------------------------------------------- command stream */
 enum { OP_FILL_RECT = 1, OP_FILL_RRECT, OP_PUSH_CLIP, OP_POP_CLIP, OP_PUSH_LAYER, OP_POP_LAYER, OP_GLYPH_RUN };
 static int get_f64(JSContext *ctx, JSValueConst v, double **out, size_t *count) {
@@ -213,30 +218,46 @@ static JSValue js_execute(JSContext *ctx, JSValueConst t, int argc, JSValueConst
 	double *cmd; size_t cn; if (get_f64(ctx, argv[3], &cmd, &cn) < 0) { return JS_EXCEPTION; }
 	if (pn < (size_t)w * h * 4 || (size_t)count > cn) { return JS_ThrowRangeError(ctx, "buffer too small"); }
 	if (!gamma_init) { for (int i = 0; i < 256; i++) { GAMMA[i] = (uint8_t)i; } gamma_init = 1; }
-	Ctx *c = (Ctx *)calloc(1, sizeof(Ctx)); c->s.px = px; c->s.w = w; c->s.h = h; c->nclips = 1; c->clips[0].c[0] = 0; c->clips[0].c[1] = 0; c->clips[0].c[2] = w; c->clips[0].c[3] = h;
+	int mode = 0; if (argc > 5) { JS_ToInt32(ctx, &mode, argv[5]); } int prof = (mode & 2) != 0; mode &= 1; double opNs[8] = { 0 }; long opN[8] = { 0 }; struct timespec ts0, ts1;
+	Ctx *c = (Ctx *)calloc(1, sizeof(Ctx)); c->integer = mode == 1; c->s.px = px; c->s.w = w; c->s.h = h; c->s.bx0 = 0; c->s.by0 = 0; c->s.bx1 = w; c->s.by1 = h; c->nclips = 1; c->clips[0].c[0] = 0; c->clips[0].c[1] = 0; c->clips[0].c[2] = w; c->clips[0].c[3] = h;
 	for (int i = 0; i < count;) {
-		int op = (int)cmd[i++];
+		int op = (int)cmd[i++]; if (prof) { clock_gettime(CLOCK_MONOTONIC, &ts0); }
 		switch (op) {
-		case OP_FILL_RECT: fill_rect(c, cmd[i], cmd[i + 1], cmd[i + 2], cmd[i + 3], &cmd[i + 4], cmd[i + 8]); i += 9; break;
-		case OP_FILL_RRECT: fill_rrect(c, cmd[i], cmd[i + 1], cmd[i + 2], cmd[i + 3], &cmd[i + 4], &cmd[i + 8], cmd[i + 12]); i += 13; break;
+		case OP_FILL_RECT: (c->integer ? fill_rect_i : fill_rect)(c, cmd[i], cmd[i + 1], cmd[i + 2], cmd[i + 3], &cmd[i + 4], cmd[i + 8]); i += 9; break;
+		case OP_FILL_RRECT: (c->integer ? fill_rrect_i : fill_rrect)(c, cmd[i], cmd[i + 1], cmd[i + 2], cmd[i + 3], &cmd[i + 4], &cmd[i + 8], cmd[i + 12]); i += 13; break;
 		case OP_PUSH_CLIP: { const double *p = c->clips[c->nclips - 1].c; Clip n; n.c[0] = fmax(p[0], cmd[i]); n.c[1] = fmax(p[1], cmd[i + 1]); n.c[2] = fmin(p[2], cmd[i + 2]); n.c[3] = fmin(p[3], cmd[i + 3]); if (c->nclips < 256) { c->clips[c->nclips++] = n; } i += 4; break; }
 		case OP_POP_CLIP: if (c->nclips > 1) { c->nclips--; } break;
-		case OP_PUSH_LAYER: if (c->nlayers < 16) { Surf *L = &c->layers[c->nlayers++]; L->w = w; L->h = h; L->px = (uint8_t *)calloc((size_t)w * h, 4); } break;
-		case OP_POP_LAYER: { double alpha = cmd[i++]; if (c->nlayers) { Surf sub = c->layers[--c->nlayers]; Surf *d = cur(c); for (size_t k = 0; k < (size_t)w * h * 4; k += 4) { if (sub.px[k + 3]) { blend(d->px, k, sub.px[k], sub.px[k + 1], sub.px[k + 2], sub.px[k + 3] / 255.0 * alpha); } } free(sub.px); } break; }
-		case OP_GLYPH_RUN: { int fid = (int)cmd[i]; int n = (int)cmd[i + 11]; glyph_run(c, fid, cmd[i + 1], cmd[i + 2], cmd[i + 3], cmd[i + 4], cmd[i + 5], &cmd[i + 6], cmd[i + 10], n, &cmd[i + 12]); i += 12 + n; break; }
+		case OP_PUSH_LAYER: if (c->nlayers < 16) { const double *cp = c->clips[c->nclips - 1].c; Surf *P = cur(c); int bx0 = (int)floor(cp[0]), by0 = (int)floor(cp[1]), bx1 = (int)ceil(cp[2]), by1 = (int)ceil(cp[3]); if (bx0 < 0) { bx0 = 0; } if (by0 < 0) { by0 = 0; } if (bx1 > w) { bx1 = w; } if (by1 > h) { by1 = h; } if (bx1 < bx0) { bx1 = bx0; } if (by1 < by0) { by1 = by0; } (void)P;
+			Surf *L = &c->layers[c->nlayers++]; int rw = bx1 - bx0, rh = by1 - by0; L->base = (uint8_t *)calloc((size_t)(rw ? rw : 1) * (rh ? rh : 1), 4); L->w = rw; L->h = rh; L->bx0 = bx0; L->by0 = by0; L->bx1 = bx1; L->by1 = by1; L->px = L->base - ((size_t)by0 * rw + bx0) * 4; } break;
+		case OP_POP_LAYER: { double alpha = cmd[i++]; if (c->integer) { pop_layer_i(c, alpha); break; } if (c->nlayers) { Surf sub = c->layers[--c->nlayers]; Surf *d = cur(c); for (int yy = sub.by0; yy < sub.by1; yy++) { for (int xx = sub.bx0; xx < sub.bx1; xx++) { const uint8_t *sp = sub.px + ((size_t)yy * sub.w + xx) * 4; if (sp[3]) { blend(d->px, ((size_t)yy * d->w + xx) * 4, sp[0], sp[1], sp[2], sp[3] / 255.0 * alpha); } } } free(sub.base); } break; }
+		case OP_GLYPH_RUN: { int fid = (int)cmd[i]; int n = (int)cmd[i + 11]; (c->integer ? glyph_run_i : glyph_run)(c, fid, cmd[i + 1], cmd[i + 2], cmd[i + 3], cmd[i + 4], cmd[i + 5], &cmd[i + 6], cmd[i + 10], n, &cmd[i + 12]); i += 12 + n; break; }
 		default: free(c); return JS_ThrowRangeError(ctx, "bad opcode %d at %d", op, i - 1);
 		}
+		if (prof) { clock_gettime(CLOCK_MONOTONIC, &ts1); opNs[op] += (ts1.tv_sec - ts0.tv_sec) * 1e9 + (ts1.tv_nsec - ts0.tv_nsec); opN[op]++; }
 	}
 	JSValue r = JS_NewObject(ctx); JS_SetPropertyStr(ctx, r, "rects", JS_NewInt32(ctx, (int)c->rects)); JS_SetPropertyStr(ctx, r, "glyphs", JS_NewInt32(ctx, (int)c->glyphs)); JS_SetPropertyStr(ctx, r, "glyphMisses", JS_NewInt32(ctx, (int)c->misses));
-	while (c->nlayers) { free(c->layers[--c->nlayers].px); } free(c); return r;
+	if (prof) { static const char *names[] = { "", "fillRect", "fillRoundRect", "pushClip", "popClip", "pushLayer", "popLayer", "glyphRun" }; JSValue o = JS_NewObject(ctx); for (int k = 1; k < 8; k++) { JSValue e = JS_NewObject(ctx); JS_SetPropertyStr(ctx, e, "ms", JS_NewFloat64(ctx, opNs[k] / 1e6)); JS_SetPropertyStr(ctx, e, "n", JS_NewInt32(ctx, (int)opN[k])); JS_SetPropertyStr(ctx, o, names[k], e); } JS_SetPropertyStr(ctx, r, "profile", o); }
+	while (c->nlayers) { free(c->layers[--c->nlayers].base); } free(c); return r;
 }
 
 static const JSCFunctionListEntry funcs[] = {
 	JS_CFUNC_DEF("registerFont", 4, js_register_font), JS_CFUNC_DEF("provideAdvance", 3, js_provide_advance), JS_CFUNC_DEF("provideOutline", 3, js_provide_outline), JS_CFUNC_DEF("provideKern", 4, js_provide_kern),
-	JS_CFUNC_DEF("setGamma", 1, js_set_gamma), JS_CFUNC_DEF("execute", 5, js_execute),
+	JS_CFUNC_DEF("setGamma", 1, js_set_gamma), JS_CFUNC_DEF("execute", 6, js_execute),
 };
 static int render_init(JSContext *ctx, JSModuleDef *m) { return JS_SetModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); }
-void spike_init_render(JSContext *ctx) { JSModuleDef *m = JS_NewCModule(ctx, "spike:render", render_init); if (m) { JS_AddModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); } }
+/* x87: make doubles behave as IEEE doubles (53-bit mantissa) instead of 80-bit extended, as ECMAScript requires and as SSE2 does */
+#if defined(__i386__) || defined(_M_IX86)
+#if defined(_WIN32)
+#include <float.h>
+static void set_fpu_double(void) { _controlfp(_PC_53, _MCW_PC); }
+#else
+#include <fpu_control.h>
+static void set_fpu_double(void) { fpu_control_t cw; _FPU_GETCW(cw); cw = (cw & ~_FPU_EXTENDED) | _FPU_DOUBLE; _FPU_SETCW(cw); }
+#endif
+#else
+static void set_fpu_double(void) { }
+#endif
+void spike_init_render(JSContext *ctx) { set_fpu_double(); JSModuleDef *m = JS_NewCModule(ctx, "spike:render", render_init); if (m) { JS_AddModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); } }
 
 /* accessors for layout.c */
 int render_font_metrics(int id, double *asc, double *desc, double *gap) { if (id < 0 || id >= nfonts) { return 0; } *asc = fonts[id].asc; *desc = fonts[id].desc; *gap = fonts[id].gap; return 1; }

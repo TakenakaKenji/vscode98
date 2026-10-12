@@ -39,6 +39,12 @@ Format: ID, date, status (`accepted`, `proposed`, `rejected`, `superseded`), dec
 - **Known consequence:** The Claude Code extension, which the owner uses heavily, will not run on the old targets (CPU/runtime limits). The owner will work around that later. Candidate ideas, none evaluated yet: use it from a modern machine against the same project, or a remote/terminal-based workflow.
 - **Open:** exact list of modules/folders to exclude is to be produced during inventory pass 2.
 
+## D-009 — CPU baseline: one Pentium-class x87 binary, integer rasterizer (2026-10-12) — accepted
+- **Decision:** The native code (QuickJS host, `layout.c`, `render.c`) is built as one 32-bit x86 binary for Pentium-class x87 CPUs: no SSE/SSE2, no MMX, no CMOV (`-march=i586 -mno-sse -mno-sse2 -mno-mmx -mfpmath=387`, x87 precision set to 53 bits at start-up). Rasterization uses an integer implementation; the double-precision one stays as the byte-exact reference.
+- **Why:** Many target machines (Athlon/K7, Pentium III, K6) lack SSE2; requiring it would exclude most of them. Measured in spike 7: the build passes all comparison tests with 0 SSE/MMX/CMOV instructions; the double rasterizer was 6× slower on x87 (~300 ms/frame) but the integer one needs 4 ms on the baseline and is within 2 colour levels of the reference; layout and the JS-side style work are not sensitive to SSE2.
+- **Alternatives (not chosen):** require SSE2; ship separate SSE2/x87 builds; runtime CPUID dispatch (worth revisiting only if SIMD kernels are written); soft-float for CPUs without an FPU.
+- **Open:** run on a real or emulated old CPU; the Windows C runtime and Oniguruma/wasm3 native builds were not checked for newer instructions; 128 MB RAM budget for the oldest target (owner: back-port after the application works).
+
 ## D-007 — Project docs location (2026-10-11) — accepted
 - **Decision:** All project docs live in `docs98/` with `INDEX.md` as table of contents; root `CLAUDE.md` points to it.
 - **Why:** Keep project-specific files out of upstream paths to ease merges; make context easy to reload.

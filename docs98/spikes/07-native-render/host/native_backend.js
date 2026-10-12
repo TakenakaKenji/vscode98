@@ -8,7 +8,9 @@ import { textGamma } from '../../06-rendering/host/dom/paint.js';
 const OP_FILL_RECT = 1, OP_FILL_RRECT = 2, OP_PUSH_CLIP = 3, OP_POP_CLIP = 4, OP_PUSH_LAYER = 5, OP_POP_LAYER = 6, OP_GLYPH_RUN = 7;
 
 export class NativeBackend {
-	constructor(w, h) {
+	/** exact: use the double-precision rasterizer (byte-identical to the JS backend); default is the integer rasterizer */
+	constructor(w, h, { exact = false } = {}) {
+		this.mode = (exact ? 0 : 1) | (globalThis.__rasterProfile ? 2 : 0);
 		this.w = w; this.h = h; this.pixels = new Uint8ClampedArray(w * h * 4); this.pixels.fill(255);
 		this.buf = new Float64Array(1 << 14); this.n = 0; this.stats = { rects: 0, glyphs: 0, glyphMisses: 0 }; this.execMs = 0; this.commands = 0; 
 		const g = new Uint8Array(256); for (let i = 0; i < 256; i++) { g[i] = Math.round(255 * Math.pow(i / 255, textGamma)); } nr.setGamma(g);
@@ -32,5 +34,5 @@ export class NativeBackend {
 		b[n++] = OP_GLYPH_RUN; b[n++] = id; b[n++] = size; b[n++] = ls; b[n++] = wsp; b[n++] = x; b[n++] = by; b[n++] = color[0]; b[n++] = color[1]; b[n++] = color[2]; b[n++] = color[3]; b[n++] = alphaMul; b[n++] = cps.length;
 		for (let i = 0; i < cps.length; i++) { b[n++] = cps[i]; } this.n = n; this.commands++;
 	}
-	finish() { const t = performance.now(); const s = nr.execute(this.pixels, this.w, this.h, this.buf, this.n); this.execMs = performance.now() - t; this.stats = s; return this.pixels; }
+	finish() { const t = performance.now(); const s = nr.execute(this.pixels, this.w, this.h, this.buf, this.n, this.mode); this.execMs = performance.now() - t; this.stats = s; if (s.profile) { globalThis.__lastRasterProfile = s.profile; } return this.pixels; }
 }
