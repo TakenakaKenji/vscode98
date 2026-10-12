@@ -1,7 +1,7 @@
 // Style resolution + layout for the rendering spike: block flow with margin collapsing, inline formatting (line breaking, white-space modes, baseline alignment),
 // inline-block and replaced elements, absolute/fixed/relative positioning, flexbox (single and multi-line), overflow/scroll geometry, translate/scale transforms.
 // Not implemented (recorded in `unsupported`): floats, tables (laid out as blocks), grid, multi-column, writing modes, bidi, ::first-line/letter.
-import { buildRuleIndex, computeStyle, resolveLen, PROPS } from './css.js';
+import { buildRuleIndex, computeStyle, resolveLen, PROPS, ancestorFilter } from './css.js';
 import { resolveFont, fontMetrics, advance, kern } from './fonts.js';
 import { noteMissing } from './dom.js';
 
@@ -12,12 +12,12 @@ const unsup = (k) => { unsupported.set(k, (unsupported.get(k) || 0) + 1); };
 // ---- style pass -------------------------------------------------------------------------------------------------------------------------------
 export function resolveStyles(doc, env) {
 	const index = buildRuleIndex(doc, env); doc.__ruleIndex = index; let n = 0;
-	const walk = (el, parentCS) => {
-		const cs = computeStyle(el, parentCS, index, env, null); el.__cs = cs; n++;
+	const walk = (el, parentCS, parentAnc) => {
+		el.__anc = ancestorFilter(el, parentAnc); const cs = computeStyle(el, parentCS, index, env, null); el.__cs = cs; n++;
 		for (const pe of ['before', 'after']) { const pcs = computeStyle(el, cs, index, env, pe); const c = pcs && pcs.values.content; el['__' + pe] = (c && c !== 'none' && c !== 'normal') ? pcs : null; }
-		for (const c of el.__children) { if (c.nodeType === 1) { walk(c, cs); } }
+		for (const c of el.__children) { if (c.nodeType === 1) { walk(c, cs, el.__anc); } }
 	};
-	const root = doc.documentElement; if (root) { walk(root, null); } doc.__styleCount = n;
+	const root = doc.documentElement; if (root) { walk(root, null, null); } doc.__styleCount = n;
 }
 export function parseContent(v) { if (!v) { return ''; } let out = ''; const re = /"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'/g; let m; while ((m = re.exec(v))) { out += (m[1] ?? m[2]).replace(/\\([0-9a-f]{1,6})\s?|\\(.)/gi, (_, h, c) => h ? String.fromCodePoint(parseInt(h, 16)) : c); } return out; }
 

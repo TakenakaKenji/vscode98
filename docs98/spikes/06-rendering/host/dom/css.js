@@ -238,11 +238,30 @@ export function buildRuleIndex(doc, env) {
 		let list; try { list = f.rule.selectors; } catch { noteMissing('css: unparsable selector'); continue; }
 		const decls = expandRuleDecls(f.rule);
 		for (const complex of list) {
-			const c = complex.parts[complex.parts.length - 1].compound; const e = { complex, decls, ua: f.ua, order: f.order, spec: complex.spec, pseudoElement: c.pseudoElement }; count++;
+			const c = complex.parts[complex.parts.length - 1].compound; const e = { complex, decls, ua: f.ua, order: f.order, spec: complex.spec, pseudoElement: c.pseudoElement, need: needOf(complex) }; count++;
 			if (c.id) { push(byId, c.id, e); } else if (c.classes.length) { push(byClass, c.classes[0], e); } else if (c.tag) { push(byTag, c.tag, e); } else { universal.push(e); }
 		}
 	}
 	return { byId, byClass, byTag, universal, count };
+}
+// ---- ancestor Bloom filter (as in WebKit/Blink): rejects descendant/child selectors whose required ancestor tag/id/class is not on the element's ancestor chain
+const BLOOM_WORDS = 32;   // 1024 bits
+const hashStr = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 16777619); } return h >>> 0; };
+const bloomBits = (h) => [(h & 1023), ((h >>> 10) ^ (h >>> 20)) & 1023];
+function needOf(complex) {
+	const need = []; const parts = complex.parts;
+	for (let k = parts.length - 1; k >= 1; k--) {
+		const comb = parts[k].comb; if (comb !== ' ' && comb !== '>') { break; }
+		const c = parts[k - 1].compound; const hs = []; if (c.id) { hs.push(hashStr('#' + c.id)); } for (const cl of c.classes) { hs.push(hashStr('.' + cl)); } if (c.tag) { hs.push(hashStr('T' + c.tag)); }
+		for (const h of hs) { for (const b of bloomBits(h)) { need.push(b >> 5, 1 << (b & 31)); } }
+	}
+	return need;
+}
+/** adds an element's own tag/id/class bits to a copy of its parent's ancestor filter */
+export function ancestorFilter(el, parentFilter) {
+	const f = parentFilter ? parentFilter.slice() : new Int32Array(BLOOM_WORDS); const add = (h) => { for (const b of bloomBits(h)) { f[b >> 5] |= 1 << (b & 31); } };
+	add(hashStr('T' + el.localName)); const id = el.getAttribute('id'); if (id) { add(hashStr('#' + id)); } const cls = el.classes(); for (let i = 0; i < cls.length; i++) { add(hashStr('.' + cls[i])); }
+	return f;
 }
 const push = (m, k, e) => { const l = m.get(k); if (l) { l.push(e); } else { m.set(k, [e]); } };
 const declCache = new WeakMap();
@@ -259,8 +278,8 @@ export function expandDecls(decls) {
 	return out;
 }
 export function matchedDeclarations(el, index, inlineDecls, pseudo) {
-	const cands = [];
-	const consider = (list) => { if (list) { for (const e of list) { if ((e.pseudoElement || null) !== (pseudo || null)) { continue; } if (matchesComplex(el, e.complex)) { cands.push(e); } } } };
+	const cands = []; const filter = el.__anc;   // ancestor Bloom filter, set by resolveStyles
+	const consider = (list) => { if (list) { for (const e of list) { if ((e.pseudoElement || null) !== (pseudo || null)) { continue; } const need = e.need; if (filter && need.length) { let ok = true; for (let i = 0; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { ok = false; break; } } if (!ok) { continue; } } if (matchesComplex(el, e.complex)) { cands.push(e); } } } };
 	const id = el.getAttribute('id'); if (id) { consider(index.byId.get(id)); }
 	const cls = el.classes(); for (let i = 0; i < cls.length; i++) { consider(index.byClass.get(cls[i])); }
 	consider(index.byTag.get(el.localName)); consider(index.universal);

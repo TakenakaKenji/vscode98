@@ -16,6 +16,6 @@ const out = (m) => process.stdout.write(m + '\n');
 out(`style ${Math.round(doc.__layout.styleMs)} ms, layout ${Math.round(doc.__layout.layoutMs ?? 0)} ms`);
 out(`replay: ${doc.documentElement.getElementsByTagName('*').length} elements; build ${Math.round(t1 - t0)} ms (parse ${data.sheets.length} sheets), style+layout ${Math.round(t2 - t1)} ms (styled ${doc.__styleCount})`);
 out('missing: ' + JSON.stringify([...missing].sort((a, b) => b[1] - a[1]).slice(0, 30))); out('unsupported: ' + JSON.stringify([...unsupported]));
-if (opt('ppm')) { const t = performance.now(); const r = paintDocument(doc, data.w, data.h); fs.writeFileSync(opt('ppm'), toPPM(r.px, r.w, r.h)); out(`painted in ${Math.round(performance.now() - t)} ms ${JSON.stringify(r.stats)} unpainted: ${JSON.stringify([...unpainted])}`); }
+if (opt('ppm')) { const t = performance.now(); const r = paintDocument(doc, data.w, data.h); const paintMs = performance.now() - t; fs.writeFileSync(opt('ppm'), toPPM(r.px, r.w, r.h)); out(`painted in ${Math.round(paintMs)} ms ${JSON.stringify(r.stats)} unpainted: ${JSON.stringify([...unpainted])}`); }
 if (opt('dump')) { fs.writeFileSync(opt('dump'), JSON.stringify({ elements: dumpRows(doc.documentElement, 'html') })); }
 process.exit(0);

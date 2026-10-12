@@ -16,7 +16,7 @@ out(`loaded in ${ms} ms; layouts ${doc.__layoutCount} (${Math.round(doc.__layout
 out('missing: ' + JSON.stringify([...missing].sort((a, b) => b[1] - a[1]).slice(0, 40)));
 out('unsupported: ' + JSON.stringify([...unsupported]));
 const ppmPath = opt('ppm', null);
-if (ppmPath) { const { paintDocument, toPPM, unpainted, setTextGamma } = await import('./dom/paint.js'); if (process_env_gamma()) { setTextGamma(process_env_gamma()); } const t = performance.now(); const r = paintDocument(doc, 800, 520); fs.writeFileSync(ppmPath, toPPM(r.px, r.w, r.h)); out(`painted in ${Math.round(performance.now() - t)} ms ${JSON.stringify(r.stats)} unpainted: ${JSON.stringify([...unpainted])}`); }
+if (ppmPath) { const { paintDocument, toPPM, unpainted, setTextGamma } = await import('./dom/paint.js'); if (process_env_gamma()) { setTextGamma(process_env_gamma()); } const t = performance.now(); const r = paintDocument(doc, 800, 520); const paintMs = performance.now() - t; fs.writeFileSync(ppmPath, toPPM(r.px, r.w, r.h)); out(`painted in ${Math.round(paintMs)} ms ${JSON.stringify(r.stats)} unpainted: ${JSON.stringify([...unpainted])}`); }
 const dumpPath = opt('dump', null);
 if (dumpPath && container) {
 	const props = ['display', 'position'];
