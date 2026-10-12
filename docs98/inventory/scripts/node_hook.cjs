@@ -117,6 +117,72 @@ for (const name of BUILTINS) {
 		if (name === 'dns' && m.promises) { patchObject(m.promises, 'dns.promises'); }
 	} catch { /* module not available in this process */ }
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Propagation into Node children. VS Code strips NODE_OPTIONS from the environment it hands to extension-host children
+// (see `dangerousEnvVariables` in src/vs/base/common/processes.ts), so tsserver / language servers / workers never load this hook
+// through the environment. Instead, wrap fork/spawn/execFile so that children which are Node (the same executable in
+// ELECTRON_RUN_AS_NODE mode, or a plain `node`) get `--require=<this file>` and VSCODE98_TRACE_DIR. Programs such as rg and git are untouched.
+// ---------------------------------------------------------------------------------------------------------------
+const HOOK_FILE = __filename;
+const rawEnv = process.env;                 // captured before the Proxy below, so the hook's own reads are not counted
+const realExecPath = process.execPath;
+const realExecArgv = process.execArgv.slice();
+const cp = require('child_process');
+const childLaunches = Object.create(null);   // "<program or script basename>" -> count, for the report (never arguments)
+
+function withHookEnv(options) { const e = Object.assign({}, (options && options.env) || rawEnv); e.VSCODE98_TRACE_DIR = TRACE_DIR; return e; }
+function hasHook(list) { return list.some(a => typeof a === 'string' && a.includes(HOOK_FILE)); }
+function isNodeChild(cmd, env) {
+	const base = path.basename(String(cmd)).toLowerCase();
+	return /^node(\.exe)?$/.test(base) || (cmd === realExecPath && !!env.ELECTRON_RUN_AS_NODE);
+}
+/** Split (cmd, [args], [options], [callback]) in any of the shapes Node accepts. */
+function splitArgs(argv) {
+	let args = [], options, cb;
+	for (let i = 1; i < argv.length; i++) {
+		const v = argv[i];
+		if (Array.isArray(v)) { args = v; } else if (typeof v === 'function') { cb = v; } else if (v && typeof v === 'object') { options = v; }
+	}
+	return { args, options, cb };
+}
+function wrapChildLauncher(name) {
+	const orig = cp[name];
+	if (typeof orig !== 'function') { return; }
+	const w = function () {
+		try {
+			const cmd = arguments[0];
+			if (typeof cmd === 'string') {
+				const { args, options, cb } = splitArgs(arguments);
+				const env = (options && options.env) || rawEnv;
+				let nextArgs = args, nextOptions = options;
+				if (name === 'fork') {
+					if (!process.versions.electron || env.ELECTRON_RUN_AS_NODE) {
+						const base = (options && options.execArgv) || realExecArgv;
+						nextOptions = Object.assign({}, options, { env: withHookEnv(options), execArgv: hasHook(base) ? base : [...base, '--require=' + HOOK_FILE] });
+						childLaunches['fork:' + path.basename(cmd)] = (childLaunches['fork:' + path.basename(cmd)] | 0) + 1;
+					}
+				} else if (isNodeChild(cmd, env) && !hasHook(args)) {
+					nextArgs = ['--require=' + HOOK_FILE, ...args];
+					nextOptions = Object.assign({}, options, { env: withHookEnv(options) });
+					const script = args.find(a => typeof a === 'string' && !a.startsWith('-'));
+					childLaunches[name + ':' + (script ? path.basename(script) : 'node')] = (childLaunches[name + ':' + (script ? path.basename(script) : 'node')] | 0) + 1;
+				}
+				if (nextArgs !== args || nextOptions !== options) {
+					const call = [cmd, nextArgs]; if (nextOptions) { call.push(nextOptions); } if (cb) { call.push(cb); }
+					return Reflect.apply(orig, this, call);
+				}
+			}
+		} catch { /* never break the app */ }
+		return Reflect.apply(orig, this, arguments);
+	};
+	copyProps(orig, w);
+	try { Object.defineProperty(w, 'name', { value: orig.name, configurable: true }); } catch { /* ignore */ }
+	patched.add(w);
+	cp[name] = w;
+}
+for (const name of ['fork', 'spawn', 'spawnSync', 'execFile', 'execFileSync']) { try { wrapChildLauncher(name); } catch { /* ignore */ } }
+
 try { Module.syncBuiltinESMExports(); } catch { /* ignore */ }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -227,7 +293,7 @@ function dump(final) {
 			pid: process.pid, ppid: process.ppid, final: !!final, uptimeMs: Date.now() - startedAt,
 			type: process.type || 'node', entry: process.env.VSCODE_ESM_ENTRYPOINT || null, argv1: process.argv[1] ? String(process.argv[1]).slice(-120) : null,
 			execArgv: process.execArgv.slice(0, 8), electron: process.versions.electron || null, node: process.versions.node, platform: process.platform,
-			loadedBuiltinsNote: 'includes the ~28 modules this hook loads itself; do not use', nativeAddons: [...nativeAddons].sort(), appCalled: [...appKeys].sort(), stacks, counts
+			loadedBuiltinsNote: 'includes the ~28 modules this hook loads itself; do not use', nativeAddons: [...nativeAddons].sort(), appCalled: [...appKeys].sort(), childLaunches, stacks, counts
 		};
 		const f = path.join(TRACE_DIR, process.pid + '.json');
 		writeFileSync(f + '.tmp', JSON.stringify(out)); renameSync(f + '.tmp', f);

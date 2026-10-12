@@ -119,7 +119,7 @@ So the preload bridge (`ipcRenderer.send/invoke/on` + `ipcMessagePort.acquire`) 
 
 ## Next
 
-- [ ] Trace language-server children (wrap `child_process.fork/spawn`), then re-measure the extension-host-side Node surface.
-- [ ] Capture `webContents`/`session` instance methods (patch instances on `web-contents-created`).
+- [ ] Trace language-server children, then re-measure the extension-host-side Node surface. **Hook implemented, not yet run on VS Code:** `node_hook.cjs` now wraps `child_process.fork/spawn/spawnSync/execFile/execFileSync` and adds `--require=<hook>` + `VSCODE98_TRACE_DIR` to Node children (a plain `node`, or the Electron binary with `ELECTRON_RUN_AS_NODE`), because VS Code strips `NODE_OPTIONS` from the environment of extension-host children (`dangerousEnvVariables` in `src/vs/base/common/processes.ts`), which is why they never reported. Verified only with a toy parent/child under plain Node 24 (fork with/without args/options, spawn of the executable, env without `NODE_OPTIONS`: all children reported; non-Node programs untouched). `analyze_proc_trace.py` now names children by script and reports `nodeChildLaunchesByParent`.
+- [ ] Capture `webContents`/`session` instance methods (patch instances on `web-contents-created`). Not started: needs a running Electron to see why the prototype patch missed them.
 - [ ] Windows run of the same scenarios (registry, ConPTY, `windows-process-tree`, `policy-watcher` paths), once a Windows test machine exists.
 - [ ] More scenarios (git, extension install, debugging, dialogs).

@@ -4,7 +4,11 @@ Usage: python3 -I docs98/inventory/scripts/analyze_proc_trace.py <dir containing
 import json, glob, collections, re, sys
 S = sys.argv[1]; OUT = sys.argv[2] if len(sys.argv) > 2 else None
 procs = [json.load(open(f)) for f in sorted(glob.glob(S + '/proc/*.json'))]
-pname = lambda d: (d['entry'] or '').split('/')[-1] or 'main'
+def pname(d):
+    # utility processes carry VSCODE_ESM_ENTRYPOINT; the Electron main process has type 'browser'; Node children (tsserver, language servers) are named by their script
+    if d['entry']: return d['entry'].split('/')[-1]
+    if d['type'] == 'browser': return 'main'
+    return '/'.join((d['argv1'] or '?').split('/')[-2:]) + ' (child)'
 BUILT = ('original-fs.promises','fs.promises','dns.promises','original-fs','fs','child_process','net','dgram','dns','http','https','http2','tls','os','crypto','zlib','worker_threads','cluster','readline','vm','v8','inspector','perf_hooks','util','url','querystring','string_decoder','module','async_hooks','tty','stream','buffer')
 def modof(k):
     for m in sorted(BUILT, key=len, reverse=True):
@@ -55,6 +59,10 @@ for d in procs:
     per[pname(d)] = {'distinctAppCalledNodeFunctions': dict(m2.most_common()), 'electronApiKeysCalled': sum(1 for k in app if k.startswith('electron.')),
                      'childProcesses': sorted({k[len('child_process.'):] for k in app if k.startswith('child_process.') and '(' in k and not k.startswith('child_process.ChildProcess')})}
 res['perProcess'] = per
+launch = collections.defaultdict(lambda: collections.Counter())
+for d in procs:
+    for k, v in (d.get('childLaunches') or {}).items(): launch[pname(d)][k] += v
+res['nodeChildLaunchesByParent'] = {p: dict(c) for p, c in sorted(launch.items())}
 if OUT: json.dump(res, open(OUT, 'w'), indent=1)
 # ---- human summary
 print('processes:', [(p['name'], p['type']) for p in res['processes']])

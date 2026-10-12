@@ -35,6 +35,12 @@ Goal recap ([01-goal-and-scope.md](01-goal-and-scope.md)): full VS Code feature 
 - Deepen git history / fetch upstream tags (`git fetch upstream --tags`) if an old-tag reference build is wanted.
 - Phase 1 feasibility spikes ([04-roadmap.md](04-roadmap.md)): JS engine (QuickJS-ng or other), minimal DOM/layout/GDI render, Node shim, downleveled build. **Decisions D-003 to D-006 are still `proposed`** ([05-decisions.md](05-decisions.md)).
 
+## Status of step 1 (finish the process-side trace), 2026-10-12, cloud session
+- **Done, untested on VS Code:** `node_hook.cjs` injects itself into Node children (tsserver, language servers, workers) by wrapping `child_process`; `analyze_proc_trace.py` names children by script. Toy test under Node 24 passes.
+- **Blocked:** the cloud container has no Electron/`out/`. `npm ci` fails because the network policy denies `electronjs.org` (Electron headers for native modules, 403 on CONNECT). The owner must allow `electronjs.org` (cloud environment settings → Network access → Allowed domains; Electron binary comes from `github.com` releases, which is reachable) or run the trace on the Fedora dev machine. Also needed in the container: Node 24.18.0 (downloaded to the scratchpad; the image has 22.22) and `libkrb5-dev libxkbfile-dev libsecret-1-dev` (installed via apt this session, not persistent).
+- **Not started:** `webContents`/`session` instance-method capture (needs a running Electron).
+- To finish, on a machine with the dev environment: `PROC_TRACE=1 bash docs98/inventory/scripts/run_scenarios.sh <workdir> 9333`, `python3 -I docs98/inventory/scripts/analyze_proc_trace.py <workdir> docs98/inventory/data/process-trace-summary.json`, then update `runtime-trace-processes.md` (children's Node surface, `nodeChildLaunchesByParent`) and INDEX.
+
 ## Suggested next steps (in order)
 1. **Finish the process-side trace:** trace language-server children (tsserver etc.) and `webContents`/`session` instance methods (see gaps above). Optional, since the main picture is already clear.
 2. Production bundle build + memory/startup baseline.
