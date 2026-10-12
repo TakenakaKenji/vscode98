@@ -12,6 +12,6 @@ mkdir -p "$OUT/empty-bundle" && : > "$OUT/empty-bundle/x.js"
 SHIM_RELATIVE=1 node "$S/05-child-process/host/build_impl.mjs" "$J/s11.impl" "$J/s11/shims" >/dev/null
 # gen_shims runs from the package copy, so the paths it writes (relative to the shims) point at the package copy of the implementations
 ( cd "$J" && SHIM_RELATIVE=1 SHIM_IMPL_DIRS="$J/s11.impl" node "$S/02-node-shim/host/gen_shims.mjs" "$OUT/empty-bundle" "$J/s11" x.js >/dev/null )
-cp "$S/11-windows-host/package/"*.cmd "$OUT/"
+for f in "$S/11-windows-host/package/"*.cmd; do sed 's/\r$//; s/$/\r/' "$f" > "$OUT/$(basename "$f")"; done   # batch files want CRLF
 rm -rf "$OUT/build" "$OUT/empty-bundle"
 echo "package: $OUT ($(du -sh "$OUT" | cut -f1))"
