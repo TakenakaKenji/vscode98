@@ -12,6 +12,7 @@ import { paintDocument, toPPM, unpainted } from '../../06-rendering/host/dom/pai
 import { installWebShims, resolveUrl, absolutizeCssUrls } from '../../08-workbench-boot/host/web_shims.js';
 import { summarizeRun, runScenario } from '../../08-workbench-boot/host/boot_common.js';
 import { installPreload } from './preload98.js';
+import { PortTable } from './ports98.js';
 
 register('./loader_hooks.mjs', import.meta.url);
 const args = process.argv.slice(2); const opt = (n, d) => { const i = args.indexOf('--' + n); return i >= 0 ? args[i + 1] : d; };
@@ -38,11 +39,15 @@ const ipc = {
 	once: (ch, fn) => { const w = (...a) => { ipc.off(ch, w); fn(...a); }; ipc.on(ch, w); },
 	off: (ch, fn) => { const l = listeners.get(ch); if (l) { const i = l.indexOf(fn); if (i >= 0) { l.splice(i, 1); } } },
 };
+const ports = new PortTable((m) => child.send({ ...m, wc: wcId }));
 let onWindowLoad; const loadRequested = new Promise((r) => { onWindowLoad = r; }); let createOpts;
 child.on('message', (m) => {
 	if (m.t === 'createWindow') { createOpts = m; wcId = m.wc; }
 	else if (m.t === 'loadURL') { onWindowLoad(m); }
 	else if (m.t === 'send') { for (const fn of [...(listeners.get(m.channel) || [])]) { fn({ sender: null, ports: [] }, ...m.args); } }
+	else if (m.t === 'postMessage') { for (const fn of [...(listeners.get(m.channel) || [])]) { fn({ sender: null, ports: m.ports.map(id => ports.make(id)) }, m.message); } }
+	else if (m.t === 'portMsg') { ports.deliver(m); }
+	else if (m.t === 'portClose') { const p = ports.ports.get(m.id); if (p) { p._closed = true; p.dispatchEvent({ type: 'close' }); } }
 	else if (m.t === 'invokeResult') { const p = pending.get(m.id); pending.delete(m.id); if (m.error !== undefined) { p.rej(new Error(m.error)); } else { p.res(m.result); } }
 });
 
@@ -71,6 +76,7 @@ nodeProcess.on('unhandledRejection', (e) => note('unhandledRejection', e)); node
 env.window.addEventListener('error', (ev) => note('window.onerror', ev.error || ev.message));
 { const pm = performance.measure.bind(performance); performance.measure = (...a) => { try { return pm(...a); } catch { return undefined; } }; }
 env.window.queryLocalFonts = async () => [];
+env.window.postMessage = (data, origin, transfer) => { const ev = Object.assign(new env.window.Event('message'), { data, origin: '', source: env.window, ports: transfer || [] }); setTimeout(() => env.window.dispatchEvent(ev), 0); };
 Object.defineProperty(globalThis, 'process', { value: undefined, configurable: true, writable: true });
 const consoleLog = []; for (const k of ['log', 'info', 'warn', 'error', 'debug', 'trace']) { console[k] = (...a) => { consoleLog.push([k, a.map(x => (x && x.stack) || String(x)).join(' ')]); }; }
 const tImport = performance.now();
@@ -78,7 +84,7 @@ for (const s of scripts) { try { await import(s); } catch (e) { note('import ' +
 const tLoaded = performance.now();
 doc.__passStats = [];
 const ctx = { env, doc, note, rss: () => ({ rss: Math.round(nodeProcess.memoryUsage().rss / 1048576), peak: 0 }), layoutTiming: null, opt, log: (m) => nodeProcess.stdout.write(m + '\n'), W, H };
-await runScenario(ctx, { seconds });
+await runScenario(ctx, { seconds, stableRounds: Number(opt('stable', 25)) });
 const done = performance.now();
 summarizeRun(ctx, { tImport, tLoaded, done, t00, errors, consoleLog, rssAfterImport: { rss: 0 }, missing, unsupported });
 ctx.log('--- main process output (last 40 lines)\n' + mainLog.join('').split('\n').slice(-40).join('\n'));

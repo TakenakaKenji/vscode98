@@ -61,7 +61,8 @@ class App extends EventEmitter {
 }
 export const app = lenient(new App(), 'app');
 // the real main waits for 'ready'; emit it after its module graph has registered listeners
-setImmediate(() => { log('EMIT ready'); app.emit('ready'); });
+const IS_MAIN = process.type === 'browser';   // the same module is also loaded (as `electron`) inside utility processes, where none of the main-process behaviour applies
+if (IS_MAIN) { setImmediate(() => { log('EMIT ready'); app.emit('ready'); }); }
 
 // ---- ipcMain: messages arrive from the renderer harness
 class IpcMain extends EventEmitter {
@@ -82,7 +83,7 @@ class WebContents extends EventEmitter {
 		contents.set(this.id, this);
 	}
 	send(channel, ...args) { toRenderer({ t: 'send', wc: this.id, channel, args }); }
-	postMessage(channel, message, transfer) { toRenderer({ t: 'postMessage', wc: this.id, channel, message, ports: (transfer || []).map(p => p.id) }); }
+	postMessage(channel, message, transfer) { const h = holderForWc(this); giveTo(h, transfer || []); toRenderer({ t: 'postMessage', wc: this.id, channel, message, ports: (transfer || []).map(p => p.id) }); }
 	loadURL(url) { this._url = url; this.mainFrame.url = url; toRenderer({ t: 'loadURL', wc: this.id, url, options: this._options }); return Promise.resolve(); }
 	getURL() { return this._url; } isDestroyed() { return this._destroyed; } isLoading() { return false; } isOffscreen() { return false; } isDevToolsOpened() { return false; }
 	getOSProcessId() { return process.pid; } getProcessId() { return 1; } getType() { return 'window'; }
@@ -112,8 +113,9 @@ export { BrowserWindow };
 export const webContents = { fromId: (id) => contents.get(id) ? wcProxy(contents.get(id)) : undefined, getAllWebContents: () => [...contents.values()].map(wcProxy), getFocusedWebContents: () => null };
 
 // ---- renderer harness -> main
-process.on('message', (m) => {
+if (IS_MAIN) process.on('message', (m) => {
 	if (!m || !m.t) { return; }
+	if (m.t === 'portMsg' || m.t === 'portClose') { handlePortMessage(m); return; }
 	const wc = contents.get(m.wc); if (!wc) { log('MSG for unknown webContents ' + show(m)); return; }
 	const event = { sender: wcProxy(wc), senderFrame: wc.mainFrame, processId: 1, frameId: 1, reply: (ch, ...a) => wc.send(ch, ...a), preventDefault() { } };
 	if (m.t === 'send') { event.returnValue = undefined; if (!ipcMain.emit(m.channel, event, ...m.args)) { log('UNHANDLED send ' + m.channel); } }
@@ -124,6 +126,64 @@ process.on('message', (m) => {
 	}
 });
 
+
+// ---- message ports: the main process relays between the processes that hold the two ends of a channel
+let nextPortId = 1;
+const portTable = new Map();   // id -> { id, peer, holder: 'main' | Holder, obj?: MessagePortMain }
+class MessagePortMain extends EventEmitter {
+	constructor(id) { super(); this.id = id; this._started = false; this._queue = []; this._closed = false; }
+	postMessage(data, transfer = []) { postFrom(this.id, data, transfer.map(p => p.id)); }
+	start() { this._started = true; const q = this._queue; this._queue = []; for (const e of q) { this.emit('message', e); } }
+	close() { if (this._closed) { return; } this._closed = true; this.emit('close'); const e = portTable.get(this.id); const peer = e && portTable.get(e.peer); if (peer && peer.holder !== 'main') { peer.holder.send({ t: 'portClose', id: peer.id }); } else if (peer?.obj) { peer.obj.emit('close'); } }
+	_deliver(data, ids) { const ev = { data, ports: ids.map(i => portTable.get(i).obj ?? this._adopt(i)) }; if (!this._started) { this._queue.push(ev); } else { this.emit('message', ev); } }
+	_adopt(id) { const e = portTable.get(id); e.obj = e.obj ?? new MessagePortMain(id); e.holder = 'main'; return e.obj; }
+	on(ev, fn) { super.on(ev, fn); if (ev === 'message') { this.start(); } return this; }
+}
+export class MessageChannelMain {
+	constructor() {
+		const a = nextPortId++, b = nextPortId++; const pa = new MessagePortMain(a), pb = new MessagePortMain(b);
+		portTable.set(a, { id: a, peer: b, holder: 'main', obj: pa }); portTable.set(b, { id: b, peer: a, holder: 'main', obj: pb });
+		this.port1 = pa; this.port2 = pb;
+	}
+}
+/** a port id was posted a message by its holder: forward to the holder of the peer; transferred ports change holder */
+function postFrom(fromId, data, transferIds) {
+	const e = portTable.get(fromId); const peer = e && portTable.get(e.peer); if (!peer) { return; }
+	if (peer.holder === 'main') { peer.obj._deliver(data, transferIds); for (const i of transferIds) { portTable.get(i).holder = 'main'; } }
+	else { for (const i of transferIds) { portTable.get(i).holder = peer.holder; } peer.holder.send({ t: 'portMsg', id: peer.id, data: clean(data), ports: transferIds }); }
+}
+/** main hands ports to another process together with a message */
+function giveTo(holder, ports) { for (const p of ports) { portTable.get(p.id).holder = holder; } }
+const holderOf = (sendFn) => ({ send: sendFn });
+const windowHolders = new Map();   // webContents id -> holder
+const holderForWc = (wc) => { let h = windowHolders.get(wc.id); if (!h) { h = holderOf((m) => toRenderer({ ...m, wc: wc.id })); windowHolders.set(wc.id, h); } return h; };
+function handlePortMessage(m, holder) {
+	if (m.t === 'portMsg') { postFrom(m.id, m.data, m.ports || []); return true; }
+	if (m.t === 'portClose') { const e = portTable.get(m.id); const peer = e && portTable.get(e.peer); if (peer) { if (peer.holder === 'main') { peer.obj.emit('close'); } else { peer.holder.send({ t: 'portClose', id: peer.id }); } } return true; }
+	return false;
+}
+
+// ---- utility processes: real child processes with `process.parentPort`
+import { fork } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+const here = fileURLToPath(new URL('.', import.meta.url));
+class UtilityProcess extends EventEmitter {
+	constructor(modulePath, args, options) {
+		super(); this.pid = undefined; this._killed = false;
+		const execArgv = [...(options.execArgv || []).filter(a => !a.startsWith('--js-flags')), '--import', new URL('./util_child_preload.mjs', import.meta.url).href];
+		const stdio = options.stdio === 'inherit' ? ['inherit', 'inherit', 'inherit', 'ipc'] : ['ignore', 'pipe', 'pipe', 'ipc'];
+		this._child = fork(modulePath, args, { execArgv, env: { ...(options.env || process.env), APP98_ROOT: process.env.APP98_ROOT, ELECTRON_STUB_LOG: (process.env.ELECTRON_STUB_LOG || '') + '.' + options.serviceName }, serialization: 'advanced', stdio, cwd: process.cwd() });
+		this.stdout = this._child.stdout; this.stderr = this._child.stderr; if (process.env.UTILITY_OUT) { for (const [st, tag] of [[this.stdout, 'out'], [this.stderr, 'err']]) { st?.on('data', (d) => fs.appendFileSync(process.env.UTILITY_OUT, `[${options.serviceName} ${tag}] ${d}`)); } } this.holder = holderOf((m) => this._child.send(m));
+		this._child.once('spawn', () => { this.pid = this._child.pid; this.emit('spawn'); });
+		this._child.on('exit', (code, signal) => { log(`utility ${options.serviceName} exit ${code} ${signal}`); this.emit('exit', code ?? 0); });
+		this._child.on('error', (e) => { log('utility error ' + e); this.emit('error', 'FatalError', e.message); });
+		this._child.on('message', (m) => { if (handlePortMessage(m, this.holder)) { return; } if (m.t === 'upm') { this.emit('message', m.data); } });
+	}
+	postMessage(message, transfer = []) { giveTo(this.holder, transfer); this._child.send({ t: 'upm', data: clean(message), ports: transfer.map(p => p.id) }); }
+	kill() { if (this._killed) { return false; } this._killed = true; return this._child.kill(); }
+}
+export const utilityProcess = { fork: (modulePath, args = [], options = {}) => new UtilityProcess(modulePath, args, options) };
+
 // ---- the rest: logging recorders until a run needs more
 export const session = { defaultSession: recorder('session.defaultSession'), fromPartition: () => recorder('session.partition') };
 export const screen = Object.assign(new EventEmitter(), { getPrimaryDisplay: () => ({ id: 1, bounds: { x: 0, y: 0, width: 1280, height: 800 }, workArea: { x: 0, y: 0, width: 1280, height: 800 }, workAreaSize: { width: 1280, height: 800 }, size: { width: 1280, height: 800 }, scaleFactor: 1, rotation: 0, accelerometerSupport: 'unknown', colorDepth: 24, internal: false, touchSupport: 'unknown', monochrome: false, label: 'display98' }), getAllDisplays() { return [this.getPrimaryDisplay()]; }, getDisplayMatching() { return this.getPrimaryDisplay(); }, getDisplayNearestPoint() { return this.getPrimaryDisplay(); }, getCursorScreenPoint: () => ({ x: 0, y: 0 }) });
@@ -131,6 +191,6 @@ export const protocol = recorder('protocol'), crashReporter = recorder('crashRep
 export const powerMonitor = Object.assign(new EventEmitter(), { getSystemIdleState: () => 'active', getSystemIdleTime: () => 0, isOnBatteryPower: () => false, onBatteryPower: false });
 export const systemPreferences = Object.assign(new EventEmitter(), { isAeroGlassEnabled: () => true, getColor: () => '000000', getAccentColor: () => '0078d7', isInvertedColorScheme: () => false, isHighContrastColorScheme: () => false, getUserDefault: () => undefined, getMediaAccessStatus: () => 'granted', canPromptTouchID: () => false });
 export const nativeTheme = Object.assign(new EventEmitter(), { shouldUseDarkColors: true, shouldUseHighContrastColors: false, shouldUseInvertedColorScheme: false, themeSource: 'dark', inForcedColorsMode: false });
-export const shell = recorder('shell'), net = recorder('net'), clipboard = recorder('clipboard'), utilityProcess = recorder('utilityProcess'), safeStorage = recorder('safeStorage'), Notification = recorder('Notification'), powerSaveBlocker = recorder('powerSaveBlocker'), webFrameMain = recorder('webFrameMain'), MenuItem = recorder('MenuItem'), BaseWindow = recorder('BaseWindow'), WebContentsView = recorder('WebContentsView'), autoUpdater = recorder('autoUpdater'), nativeImage = recorder('nativeImage'), Tray = recorder('Tray'), MessageChannelMain = recorder('MessageChannelMain'), JumpListCategory = recorder('JumpListCategory');
+export const shell = recorder('shell'), net = recorder('net'), clipboard = recorder('clipboard'), safeStorage = recorder('safeStorage'), Notification = recorder('Notification'), powerSaveBlocker = recorder('powerSaveBlocker'), webFrameMain = recorder('webFrameMain'), MenuItem = recorder('MenuItem'), BaseWindow = recorder('BaseWindow'), WebContentsView = recorder('WebContentsView'), autoUpdater = recorder('autoUpdater'), nativeImage = recorder('nativeImage'), Tray = recorder('Tray'), JumpListCategory = recorder('JumpListCategory');
 export const ipcRenderer = recorder('ipcRenderer'), contextBridge = recorder('contextBridge'), webFrame = recorder('webFrame'), webUtils = recorder('webUtils');
 export default { app, BrowserWindow, ipcMain, webContents, session, screen, protocol, crashReporter, Menu, contentTracing, dialog, desktopCapturer, globalShortcut, powerMonitor, systemPreferences, nativeTheme, shell, net, clipboard, utilityProcess, safeStorage, Notification, powerSaveBlocker, webFrameMain, MenuItem, BaseWindow, WebContentsView, autoUpdater, nativeImage, Tray, MessageChannelMain, JumpListCategory };
