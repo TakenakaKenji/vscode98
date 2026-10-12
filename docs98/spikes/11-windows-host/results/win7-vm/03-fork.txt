@@ -1,0 +1,12 @@
+   31 child says hello {"type":"hello","pid":3564,"ppidIsParent":true}
+   31 pong 1 len 100010
+   31 pong 2 len 70000
+   31 pong 3 len 140000
+   46 pong 4 len 210000
+   46 pong 5 len 280000
+   46 disconnect (parent side), connected = false
+   46 exit 5 null
+   46 close 5 pongs 5 stdout "child argv [\"--flag\",\"arg2\"] connected true typeof send function\r\nchild: disconnect, exiting 5" stderr "child stderr line"
+  171 killed sleep: exit null SIGTERM killed flag true
+  171 spawn error ENOENT spawn definitely-not-a-program
+  171 bad close -2

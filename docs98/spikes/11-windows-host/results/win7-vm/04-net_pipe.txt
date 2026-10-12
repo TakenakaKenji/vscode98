@@ -1,0 +1,4 @@
+PASS connect to a missing pipe fails with ENOENT ENOENT
+PASS three clients served [["a","HELLO A"],["b","HELLO B"],["c","HELLO C"]]
+PASS 300 KB echoed through the pipe n=300000
+ALL PASSED
