@@ -62,6 +62,9 @@ globalThis.setInterval = (fn, ms = 0, ...args) => { const id = ++timerId; const 
 globalThis.clearInterval = globalThis.clearTimeout;
 globalThis.setImmediate = (fn, ...a) => globalThis.setTimeout(fn, 0, ...a);
 globalThis.clearImmediate = globalThis.clearTimeout;
+// Dynamic import() with a runtime-computed specifier (the extension host does import(uri.toString()) for ESM extensions). gen_shims.mjs rewrites such calls to this.
+const realImport = new Function('s', 'return import(s)');
+globalThis.__dynImport = (spec) => { let s = String(spec); if (s.startsWith('file://')) { s = decodeURIComponent(s.slice(7)); } return realImport(s); };
 globalThis.structuredClone ??= (v) => JSON.parse(JSON.stringify(v));
 globalThis.self ??= globalThis;
 globalThis.global ??= globalThis;

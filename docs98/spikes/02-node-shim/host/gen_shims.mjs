@@ -31,11 +31,15 @@ for (const entry of entries) {
 		const at = all.lastIndexOf(spec);   // the specifier is always the LAST occurrence in the match (earlier text may contain it, e.g. 'os' in 'hostname')
 		return all.slice(0, at) + target + all.slice(at + spec.length);
 	});
+	text = text.replace(/\bimport\((?!\s*["'`])/g, '__dynImport(');   // runtime-computed specifiers (file:// URLs of ESM extensions) go through globals.js
 	const dest = path.join(outDir, 'bundle', entry);
 	fs.mkdirSync(path.dirname(dest), { recursive: true });
 	fs.writeFileSync(dest, text);
 	rewritten.push(dest);
 }
+// Every Node builtin gets a shim (lenient stub by default) so CommonJS code can require() any of them, not only what the bundles import statically.
+const NODE_BUILTINS = ['assert', 'assert/strict', 'async_hooks', 'buffer', 'child_process', 'cluster', 'console', 'constants', 'crypto', 'dgram', 'diagnostics_channel', 'dns', 'dns/promises', 'domain', 'events', 'fs', 'fs/promises', 'http', 'http2', 'https', 'inspector', 'module', 'net', 'os', 'path', 'path/posix', 'path/win32', 'perf_hooks', 'process', 'punycode', 'querystring', 'readline', 'readline/promises', 'repl', 'stream', 'stream/promises', 'string_decoder', 'sys', 'timers', 'timers/promises', 'tls', 'tty', 'url', 'util', 'util/types', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib', 'original-fs'];
+for (const b of NODE_BUILTINS) { if (!mods.has(b)) { mods.set(b, { named: new Set(), default: false }); } }
 for (const [mod, e] of mods) {
 	const implFile = path.join(implDir, fileFor(mod));
 	const hasImpl = fs.existsSync(implFile);

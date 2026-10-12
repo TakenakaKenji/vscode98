@@ -4,7 +4,8 @@ import * as os from 'qjs:os';
 import * as std from 'qjs:std';
 
 const S_IFMT = 0o170000, S_IFDIR = 0o040000, S_IFREG = 0o100000, S_IFLNK = 0o120000;
-const CODES = { [os.ENOENT]: 'ENOENT', [os.EEXIST]: 'EEXIST', [os.ENOTDIR]: 'ENOTDIR', [os.EACCES]: 'EACCES', [os.EISDIR]: 'EISDIR', [os.EINVAL]: 'EINVAL', [os.EBADF]: 'EBADF', [os.ENOTEMPTY]: 'ENOTEMPTY', [os.EPERM]: 'EPERM' };
+const E = std.Error;   // errno constants live on std.Error in QuickJS (E.ENOENT etc. do not exist)
+const CODES = { [E.ENOENT]: 'ENOENT', [E.EEXIST]: 'EEXIST', [E.ENOTDIR]: 'ENOTDIR', [E.EACCES]: 'EACCES', [E.EISDIR]: 'EISDIR', [E.EINVAL]: 'EINVAL', [E.EBADF]: 'EBADF', [E.ENOTEMPTY]: 'ENOTEMPTY', [E.EPERM]: 'EPERM' };
 function fail(errno, syscall, path) { const e = new Error(`${CODES[-errno] || CODES[errno] || 'E' + errno}: ${syscall} '${path}'`); e.errno = -Math.abs(errno); e.code = CODES[Math.abs(errno)] || 'EUNKNOWN'; e.syscall = syscall; e.path = path; return e; }
 
 export class Stats {
@@ -22,8 +23,8 @@ export class Buf extends Uint8Array {   // tiny Buffer stand-in
 const toBuf = (ab, n) => new Buf(ab, 0, n);
 const enc = (o) => typeof o === 'string' ? o : o && o.encoding;
 
-export function statSync(p, opts) { const [o, e] = os.stat(String(p)); if (e) { if (opts && opts.throwIfNoEntry === false && e === os.ENOENT) { return undefined; } throw fail(e, 'stat', p); } return new Stats(o); }
-export function lstatSync(p, opts) { const [o, e] = os.lstat(String(p)); if (e) { if (opts && opts.throwIfNoEntry === false && e === os.ENOENT) { return undefined; } throw fail(e, 'lstat', p); } return new Stats(o); }
+export function statSync(p, opts) { const [o, e] = os.stat(String(p)); if (e) { if (opts && opts.throwIfNoEntry === false && e === E.ENOENT) { return undefined; } throw fail(e, 'stat', p); } return new Stats(o); }
+export function lstatSync(p, opts) { const [o, e] = os.lstat(String(p)); if (e) { if (opts && opts.throwIfNoEntry === false && e === E.ENOENT) { return undefined; } throw fail(e, 'lstat', p); } return new Stats(o); }
 export function existsSync(p) { return os.stat(String(p))[1] === 0; }
 export function accessSync(p) { const e = os.stat(String(p))[1]; if (e) { throw fail(e, 'access', p); } }
 export function readdirSync(p, opts) {
@@ -33,12 +34,12 @@ export function readdirSync(p, opts) {
 }
 export function readFileSync(p, opts) {
 	const encoding = enc(opts);
-	if (encoding) { const s = std.loadFile(String(p)); if (s === null) { throw fail(os.ENOENT, 'open', p); } return s; }
-	const f = std.open(String(p), 'rb'); if (!f) { throw fail(os.ENOENT, 'open', p); }
+	if (encoding) { const s = std.loadFile(String(p)); if (s === null) { throw fail(E.ENOENT, 'open', p); } return s; }
+	const f = std.open(String(p), 'rb'); if (!f) { throw fail(E.ENOENT, 'open', p); }
 	f.seek(0, std.SEEK_END); const n = f.tell(); f.seek(0, std.SEEK_SET); const ab = new ArrayBuffer(n); f.read(ab, 0, n); f.close(); return toBuf(ab, n);
 }
-export function writeFileSync(p, data) { const f = std.open(String(p), 'wb'); if (!f) { throw fail(os.EACCES, 'open', p); } if (typeof data === 'string') { f.puts(data); } else { f.write(data.buffer, data.byteOffset, data.byteLength); } f.close(); }
-export function mkdirSync(p, opts) { const rec = opts && opts.recursive; if (rec) { let cur = String(p).startsWith('/') ? '' : '.'; for (const seg of String(p).split('/').filter(Boolean)) { cur += '/' + seg; const e = os.mkdir(cur, 0o777); if (e && e !== -os.EEXIST && e !== os.EEXIST) { throw fail(e, 'mkdir', cur); } } return; } const e = os.mkdir(String(p), 0o777); if (e) { throw fail(e, 'mkdir', p); } }
+export function writeFileSync(p, data) { const f = std.open(String(p), 'wb'); if (!f) { throw fail(E.EACCES, 'open', p); } if (typeof data === 'string') { f.puts(data); } else { f.write(data.buffer, data.byteOffset, data.byteLength); } f.close(); }
+export function mkdirSync(p, opts) { const rec = opts && opts.recursive; if (rec) { let cur = String(p).startsWith('/') ? '' : '.'; for (const seg of String(p).split('/').filter(Boolean)) { cur += '/' + seg; const e = os.mkdir(cur, 0o777); if (e && e !== -E.EEXIST && e !== E.EEXIST) { throw fail(e, 'mkdir', cur); } } return; } const e = os.mkdir(String(p), 0o777); if (e) { throw fail(e, 'mkdir', p); } }
 export function realpathSync(p) { const [r, e] = os.realpath(String(p)); if (e) { throw fail(e, 'realpath', p); } return r; }
 export function unlinkSync(p) { const e = os.remove(String(p)); if (e) { throw fail(e, 'unlink', p); } }
 export function renameSync(a, b) { const e = os.rename(String(a), String(b)); if (e) { throw fail(e, 'rename', a); } }
