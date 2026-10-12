@@ -25,6 +25,7 @@ Format: ID, date, status (`accepted`, `proposed`, `rejected`, `superseded`), dec
 ## D-005 — Render strategy — proposed (pending Phase 1)
 - **Candidate:** Minimal DOM + CSS layout engine drawing via GDI.
 - **Open:** how much CSS; Monaco rendering path; font/Unicode handling.
+- **Evidence (spike 6, 2026-10-12):** a ~210 KB JS DOM + CSS + layout + software painter runs the real Monaco on QuickJS-ng; element geometry equals Chromium's (every non-SVG box within 0.5 px in 4 scenarios), framebuffers identical on Node and QuickJS. A static replay of the real workbench (the workbench's JS was not run on it) puts 422 of 566 boxes within 1 px and 924/975 `offsetWidth` values right; the CSS surface needed is block/inline/inline-block/absolute/fixed/relative/flex, no grid/float/table. Known gaps: SVG, `box-shadow`, rounded borders, rotation, kerning for Inter, `env(titlebar-area-*)`, Canvas 2D. **Cost:** on QuickJS one cold workbench pass is 7.3 s style+layout and 3.3 s paint (5.7× and 11× slower than Node), so layout and rasterization must be native; whether the DOM/style stay in JS depends on interactive load, not measured. Not tested: GDI/Windows, the workbench running on this DOM (events, focus, IME), webviews (table layout), 64-256 MB RAM budgets. Details: [spikes/06-rendering/README.md](spikes/06-rendering/README.md).
 
 ## D-006 — Process and IPC model — proposed (pending Phase 1)
 - **Open:** processes vs threads for UI / extension host / shared process; replace Electron IPC with named pipes or sockets.

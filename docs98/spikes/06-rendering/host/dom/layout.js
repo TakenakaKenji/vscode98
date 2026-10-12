@@ -68,8 +68,8 @@ export class Layout {
 		else if (c.nodeType === 1) { const b = this.build(c, parent); if (b) { parent.children.push(b); } }
 	}
 	pseudoBox(parent, pcs, which) {
-		const v = pcs.values; if (v.display === 'none') { return; } const content = parseContent(v.content); const isBlock = isBlockLevel(v.display) || v.position === 'absolute' || v.position === 'fixed';
-		const pb = new Box(null, pcs, isBlock ? 'block' : (v.display === 'inline-block' ? 'inline-block' : 'inline')); pb.display = v.display; pb.parent = parent; pb.pseudo = which; pb.oof = pb.pos === 'absolute' || pb.pos === 'fixed';
+		const v = pcs.values; if (v.display === 'none') { return; } const content = parseContent(v.content); const inFlex = parent.display === 'flex' || parent.display === 'inline-flex'; const isOof = v.position === 'absolute' || v.position === 'fixed'; const isBlock = isBlockLevel(v.display) || isOof || inFlex;
+		const pb = new Box(null, pcs, isBlock ? 'block' : (v.display === 'inline-block' ? 'inline-block' : 'inline')); pb.display = (inFlex && !isOof && v.display !== 'flex') ? 'block' : v.display; pb.parent = parent; pb.pseudo = which; pb.oof = pb.pos === 'absolute' || pb.pos === 'fixed';
 		if (content) { const t = new Box(null, null, 'text'); t.text = content; t.parent = pb; t.v = v; t.cs = pcs; pb.children.push(t); }
 		parent.children.push(pb);
 	}
