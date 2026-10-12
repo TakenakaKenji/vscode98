@@ -11,7 +11,7 @@ export function inherits(ctor, superCtor) { Object.setPrototypeOf(ctor.prototype
 export function deprecate(fn) { return fn; }
 export function debuglog() { const f = () => { }; f.enabled = false; return f; }
 export function format(f, ...args) {
-	if (typeof f !== 'string') { return [f, ...args].map(a => inspect(a)).join(' '); }
+	if (typeof f !== 'string') { return [f, ...args].map(a => typeof a === 'string' ? a : inspect(a)).join(' '); }
 	let i = 0; const out = f.replace(/%[sdifjoO%]/g, m => { if (m === '%%') { return '%'; } if (i >= args.length) { return m; } const a = args[i++]; return m === '%s' ? String(a) : m === '%d' || m === '%i' ? String(Number(a)) : m === '%f' ? String(parseFloat(a)) : m === '%j' ? JSON.stringify(a) : inspect(a); });
 	return [out, ...args.slice(i).map(a => typeof a === 'string' ? a : inspect(a))].join(' ');
 }

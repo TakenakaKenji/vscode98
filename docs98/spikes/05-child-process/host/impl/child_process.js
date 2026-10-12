@@ -6,6 +6,7 @@ import * as p from 'spike:proc';
 import { EventEmitter } from '__SHIMS__/events.js';
 import { FdReadable, FdWritable, FdDuplex, errnoError } from './fdstreams.js';
 
+const TRACE = !!std.getenv('VSCODE98_TRACE_PROC');   // debug aid: log spawns, exits and child stderr to our stderr
 const SIGNALS = { SIGHUP: 1, SIGINT: 2, SIGQUIT: 3, SIGABRT: 6, SIGKILL: 9, SIGUSR1: 10, SIGSEGV: 11, SIGUSR2: 12, SIGPIPE: 13, SIGALRM: 14, SIGTERM: 15, SIGCHLD: 17, SIGCONT: 18, SIGSTOP: 19 };
 const SIGNAMES = Object.fromEntries(Object.entries(SIGNALS).map(([k, v]) => [v, k]));
 const sigNum = (s) => s === undefined ? SIGNALS.SIGTERM : typeof s === 'number' ? s : (SIGNALS[s] ?? (() => { throw Object.assign(new TypeError(`Unknown signal: ${s}`), { code: 'ERR_UNKNOWN_SIGNAL' }); })());
@@ -103,6 +104,7 @@ export function spawn(command, args, options) {
 		if (i === 0) { cp.stdin = s; } else if (i === 1) { cp.stdout = s; } else if (i === 2) { cp.stderr = s; }
 	}
 	track(cp);
+	if (TRACE) { std.err.puts(`[proc] spawn pid=${pid} ${file} ${JSON.stringify(argList).slice(0, 300)}\n`); cp.on('exit', (c, sg) => std.err.puts(`[proc] exit pid=${pid} code=${c} signal=${sg}\n`)); cp.stderr?.on('data', d => std.err.puts(`[proc] pid=${pid} stderr: ${d}`)); }
 	queueMicrotask(() => cp.emit('spawn'));
 	return cp;
 }

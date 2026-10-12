@@ -29,7 +29,7 @@ async function preload() { for (const n of BUILTINS) { try { const ns = await im
 // ---- RPC wire format -----------------------------------------------------------------------------------------------------------------------
 const w32 = (a, o, v) => { a[o] = v >>> 24; a[o + 1] = v >>> 16; a[o + 2] = v >>> 8; a[o + 3] = v; };
 const r32 = (a, o) => ((a[o] << 24) | (a[o + 1] << 16) | (a[o + 2] << 8) | a[o + 3]) >>> 0;
-function encodeRequest(req, rpcId, method, args) { const m = u8(method), j = u8(JSON.stringify(args)); const b = new Uint8Array(1 + 4 + 1 + 1 + m.length + 4 + j.length); b[0] = 1; w32(b, 1, req); b[5] = rpcId; b[6] = m.length; b.set(m, 7); w32(b, 7 + m.length, j.length); b.set(j, 11 + m.length); return b; }
+function encodeRequest(req, rpcId, method, args, cancellable) { const m = u8(method), j = u8(JSON.stringify(args)); const b = new Uint8Array(1 + 4 + 1 + 1 + m.length + 4 + j.length); b[0] = cancellable ? 2 : 1; w32(b, 1, req); b[5] = rpcId; b[6] = m.length; b.set(m, 7); w32(b, 7 + m.length, j.length); b.set(j, 11 + m.length); return b; }
 function encodeReply(req, value) { if (value === undefined) { const b = new Uint8Array(5); b[0] = 7; w32(b, 1, req); return b; } const j = u8(JSON.stringify(value)); const b = new Uint8Array(9 + j.length); b[0] = 9; w32(b, 1, req); w32(b, 5, j.length); b.set(j, 9); return b; }
 function decode(b) {
 	const type = b[0], req = r32(b, 1);
@@ -43,11 +43,13 @@ function decode(b) {
 }
 
 // ---- fake renderer ------------------------------------------------------------------------------------------------------------------------
+const registrations = {};
 const requestLog = new Map();           // "Proxy.$method" -> { count, firstArgs }
 const activation = { activated: [], errors: [], consoleMessages: [], timings: {} };
 let ready = false, initialized = false, nextReq = 1; const pending = new Map();
 const listeners = { message: [] };
 const answers = {                        // canned answers, keyed by "MainThreadX.$method"; default is an empty OK reply
+	'MainThreadWorkspace.$requestResourceTrust': () => true,
 	'MainThreadWindow.$getInitialState': () => ({ isFocused: true, isActive: true }),
 	'MainThreadLanguageModelTools.$getTools': () => [],
 	'MainThreadExtensionService.$onDidActivateExtension': (a) => { activation.activated.push(a[0] && a[0].value); activation.timings[a[0] && a[0].value] = { codeLoadingMs: Math.round(a[1]), activateCallMs: Math.round(a[2]), activateResolvedMs: Math.round(a[3]) }; },
@@ -64,13 +66,14 @@ const fakePort = {
 		if (m.kind === 'request') {
 			const name = (mainById[m.rpcId] || ('proxy' + m.rpcId)) + '.' + m.method;
 			const e = requestLog.get(name) ?? requestLog.set(name, { count: 0, firstArgs: JSON.stringify(m.args).slice(0, /Error/.test(name) ? 1800 : 200) }).get(name); e.count++;
+			if (name.startsWith('MainThreadLanguageFeatures.$register')) { (registrations[name] ??= []).push(m.args); }
 			let r; try { r = answers[name] ? answers[name](m.args) : undefined; } catch (err) { r = undefined; }
 			Promise.resolve(r).then(v => send(encodeReply(m.req, v)));
 		} else if (m.kind === 'reply' || m.kind === 'error') { const p = pending.get(m.req); if (p) { pending.delete(m.req); (m.kind === 'reply' ? p.res : p.rej)(m.kind === 'reply' ? m.value : m.message); } }
 	},
 };
 const send = (bytes) => listeners.message.forEach(f => f({ data: bytes }));
-function call(extHostProxy, method, args) { const id = ids.extHost[extHostProxy]; const req = nextReq++; return new Promise((res, rej) => { pending.set(req, { res, rej }); send(encodeRequest(req, id, method, args)); }); }
+function call(extHostProxy, method, args, cancellable) { const id = ids.extHost[extHostProxy]; const req = nextReq++; return new Promise((res, rej) => { pending.set(req, { res, rej }); send(encodeRequest(req, id, method, args, cancellable)); }); }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 async function waitFor(cond, ms) { const end = performance.now() + ms; while (!cond() && performance.now() < end) { await sleep(20); } return cond(); }
 
@@ -86,6 +89,8 @@ const dbg = (m) => { if (std.getenv('SPIKE_DEBUG')) { std.err.puts('[' + Math.ro
 async function main() {
 	const result = { extDirs, steps: {}, error: null };
 	dbg('preload start'); await preload(); dbg('preload done');
+	// Spike 5: with the child_process/net shims (qjs-spike5 host + SHIM_IMPL_DIRS), give the extension host a real process object so extensions can fork servers.
+	if (std.getenv('SPIKE5')) { const abs = (p) => p.startsWith('/') ? p : os.getcwd()[0] + '/' + p; const { setupProcess } = await import(abs(here + '../05-child-process/host/proc_setup.mjs')); await setupProcess(outDir, abs(here + '../05-child-process/host/fork_main.mjs'), null, []); }
 	const exts = extDirs.map(describeExtension);
 	for (const e of exts) { os.mkdir('/tmp/spike/logs/' + e.identifier.value, 0o777); os.mkdir('/tmp/spike/globalStorage/' + e.identifier.value, 0o777); }   // the main thread creates these per extension
 	dbg('importing ext host'); await import(outDir + '/bundle/vs/workbench/api/node/extensionHostProcess.js'); dbg('ext host imported');
@@ -93,10 +98,15 @@ async function main() {
 	(globalThis.__parentPortListeners.get('message') || []).forEach(f => f({ data: undefined, ports: [fakePort] }));
 	result.steps.gotReady = await waitFor(() => ready, 3000); dbg('ready=' + ready);
 	const activationEvents = Object.fromEntries(exts.map(e => [e.identifier.value, e.activationEvents || []]));
+	const wsDir = std.getenv('WORKSPACE');   // spike 5: optional single-folder workspace (git needs one)
+	const wsData = wsDir ? { id: 'ws1', name: wsDir.split('/').pop(), folders: [{ uri: uri(wsDir), name: wsDir.split('/').pop(), index: 0 }], configuration: undefined, isUntitled: false, transient: false } : null;
+	const cfgContents = std.getenv('CONFIG') ? JSON.parse(std.getenv('CONFIG')) : {};   // spike 5: default settings, e.g. {"git":{"enabled":true}}
+	const flat = (o, pre = '') => Object.entries(o).flatMap(([k, v]) => v && typeof v === 'object' && !Array.isArray(v) ? flat(v, pre + k + '.') : [pre + k]);
+	const emptyModel2 = { contents: cfgContents, keys: flat(cfgContents), overrides: [] };
 	const initData = {
 		version: '1.142.0', parentPid: 0, autoStart: true,
 		environment: { isExtensionDevelopmentDebug: false, appName: 'vscode98', appHost: 'desktop', appRoot: uri(std.getenv('APP_ROOT') || '/home/user/vscode98'), appLanguage: 'en', isExtensionTelemetryLoggingOnly: false, appUriScheme: 'vscode98', globalStorageHome: uri('/tmp/spike/globalStorage'), workspaceStorageHome: uri('/tmp/spike/workspaceStorage') },
-		workspace: null, extensions: { versionId: 1, allExtensions: exts, activationEvents, myExtensions: exts.map(e => e.identifier) },
+		workspace: wsData, extensions: { versionId: 1, allExtensions: exts, activationEvents, myExtensions: exts.map(e => e.identifier) },
 		telemetryInfo: { sessionId: 's', machineId: 'm', sqmId: '', devDeviceId: '', firstSessionDate: '' },
 		logLevel: Number(std.getenv('LOGLEVEL') || 3), loggers: [], logsLocation: uri('/tmp/spike/logs'),
 		remote: { isRemote: false, authority: undefined, connectionData: null }, consoleForward: { includeStack: true, logNative: false }, uiKind: 1,
@@ -105,10 +115,10 @@ async function main() {
 	result.steps.gotInitialized = await waitFor(() => initialized, 3000);
 	// what a real renderer sends right after Initialized
 	result.replies = {};
-	call('ExtHostConfiguration', '$initializeConfiguration', [{ defaults: emptyModel, policy: emptyModel, application: emptyModel, userLocal: emptyModel, userRemote: emptyModel, workspace: emptyModel, folders: [], configurationScopes: [] }]).then(() => { result.replies.initializeConfiguration = 'ok'; }, (e) => { result.replies.initializeConfiguration = 'error: ' + String(e).slice(0, 300); });
+	call('ExtHostConfiguration', '$initializeConfiguration', [{ defaults: emptyModel2, policy: emptyModel, application: emptyModel, userLocal: emptyModel, userRemote: emptyModel, workspace: emptyModel, folders: [], configurationScopes: [] }]).then(() => { result.replies.initializeConfiguration = 'ok'; }, (e) => { result.replies.initializeConfiguration = 'error: ' + String(e).slice(0, 300); });
 	// editor state a real renderer pushes right after init (extensions such as the TypeScript one read window.tabGroups.activeTabGroup immediately)
 	call('ExtHostEditorTabs', '$acceptEditorTabModel', [[{ groupId: 1, isActive: true, viewColumn: 0, activeTabId: '', tabs: [] }]]).catch(() => { });
-	call('ExtHostWorkspace', '$initializeWorkspace', [null, true]).then(() => { result.replies.initializeWorkspace = 'ok'; }, (e) => { result.replies.initializeWorkspace = 'error: ' + String(e).slice(0, 300); });
+	call('ExtHostWorkspace', '$initializeWorkspace', [wsData, true]).then(() => { result.replies.initializeWorkspace = 'ok'; }, (e) => { result.replies.initializeWorkspace = 'error: ' + String(e).slice(0, 300); });
 	// A real renderer fires activation events as they happen (startup finished, a language opened, a command run...). Fire each event the extensions declare.
 	await sleep(800);
 	const events = [...new Set(['onStartupFinished', ...exts.flatMap(e => e.activationEvents || [])])].filter(ev => ev !== '*' && !ev.startsWith('workspaceContains')).slice(0, 12);
@@ -116,6 +126,19 @@ async function main() {
 	for (const ev of events) {
 		const r = await Promise.race([call('ExtHostExtensionService', '$activateByEvent', [ev, 0]).then(() => 'ok', (e) => 'error: ' + String(e).slice(0, 200)), sleep(8000).then(() => 'timeout')]);
 		result.eventResults[ev] = r;
+	}
+	if (std.getenv('OPEN_DOC')) {   // spike 5: open a JSON document and make the (forked) language server answer through the extension host
+		const text = '{\n  "name": "x",\n  "flag": ,\n  "obj": { "a": true, }\n}\n';
+		await call('ExtHostDocumentsAndEditors', '$acceptDocumentsAndEditorsDelta', [{ addedDocuments: [{ uri: uri('/tmp/spike/test.json'), versionId: 1, lines: text.split('\n'), EOL: '\n', languageId: 'json', isDirty: false, encoding: 'utf8' }] }]).catch(e => { result.openDocError = String(e).slice(0, 200); });
+		const t1 = performance.now();
+		result.diagnosticsArrived = await waitFor(() => requestLog.has('MainThreadDiagnostics.$changeMany'), 3000); result.diagnosticsMs = Math.round(performance.now() - t1);
+		const handle = (name) => (registrations[name] || [])[0] && registrations[name][0][0];
+		const hc = handle('MainThreadLanguageFeatures.$registerCompletionsProvider'), hh = handle('MainThreadLanguageFeatures.$registerHoverProvider'), hs = handle('MainThreadLanguageFeatures.$registerDocumentSymbolProvider');
+		const pos = { lineNumber: 3, column: 11 };
+		const t2 = performance.now();
+		if (hc !== undefined) { const r = await Promise.race([call('ExtHostLanguageFeatures', '$provideCompletionItems', [hc, uri('/tmp/spike/test.json'), pos, { triggerKind: 0 }], true).then(v => v, e => 'error: ' + e), sleep(10000).then(() => 'timeout')]); result.completion = typeof r === 'string' ? r : JSON.stringify(r).slice(0, 400); result.completionMs = Math.round(performance.now() - t2); }
+		if (hs !== undefined) { const r = await Promise.race([call('ExtHostLanguageFeatures', '$provideDocumentSymbols', [hs, uri('/tmp/spike/test.json')], true).then(v => v, e => 'error: ' + e), sleep(10000).then(() => 'timeout')]); result.documentSymbols = typeof r === 'string' ? r : (r && r.length); }
+		result.diagnosticsSample = (requestLog.get('MainThreadDiagnostics.$changeMany') || {}).firstArgs;
 	}
 	await sleep(Number(settle));
 	const cache = Object.keys(globalThis.__builtins.module._cache);
