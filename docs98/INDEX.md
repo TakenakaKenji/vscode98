@@ -43,6 +43,8 @@ Start here. Every doc in `docs98/` is listed below with a one-line summary. Upda
 
 | [spikes/02-node-shim/README.md](spikes/02-node-shim/README.md) | **Measured** spike 2: QuickJS-ng executes a TypeScript type-check 8.5× slower than V8 JIT (2.2× slower than V8 jitless) with identical results; the extension host, shared process, pty host and file watcher bundles boot on QuickJS-ng with ~260 lines of shim; extension host handshake and first RPC burst work. Code: `ts_bench_core.mjs`, `host/` (shim generator, globals, runner) |
 
+| [spikes/03-extension-loading/README.md](spikes/03-extension-loading/README.md) | **Measured** spike 3: 24 of 34 built-in extensions load through `require()` and activate on QuickJS-ng (git, typescript-language-features, emmet, npm...); 4 language-client extensions stop at `child_process.fork`; ESM-only deps need pre-bundling (no sync `require(esm)`); `github` (ESM extension) needs a native resolver hook. Code: `run_ext.mjs` (RPC-speaking fake renderer), `run_sweep.sh`, `../02-node-shim/host/impl/module.js` |
+
 ## Key facts to remember (quick reference)
 
 - Electron is imported in only ~52 files (47 in `electron-main`); the renderer reaches it through one preload bridge (`src/vs/base/parts/sandbox/electron-browser/preload.ts`).
@@ -55,6 +57,7 @@ Start here. Every doc in `docs98/` is listed below with a one-line summary. Upda
 - **Bundle baseline (measured):** the desktop bundle is 58 MB of minified ES2024 ES modules in 30 files (workbench 20.6 MB); renderer reaches a restored workbench ~2.0 s after start, of which ~1.3 s is loading the workbench bundle; idle with an empty workspace is ~1.5 GB RSS / ~0.84 GB PSS across 10 processes.
 - **Spike 1 step 1 (measured):** QuickJS-ng compiles all 30 bundle files with zero syntax changes; compiling the workbench takes 2.8 to 3.4 s on a 2.1 GHz Xeon (V8 loads and runs it in 1.3 s) but only 0.2 s from precompiled bytecode; `Intl`, `WebAssembly`, `structuredClone` are missing; execution speed still unmeasured.
 - **Spike 2 (measured):** QuickJS-ng is 8.5× slower than V8 JIT / 2.2× slower than V8 `--jitless` on TypeScript type-checking (same answers); Node-side bundles boot on it with ~260 lines of shim and an enumerated small API need; extension loading (`require`), `net`, `child_process`, native modules not yet tested.
+- **Spike 3 (measured):** 24 of 34 built-in extensions activate on QuickJS-ng via `require()`; `require('vscode')` interception works through a patched `Module._load`; code loading per extension median 7.5 ms (max 202 ms); blocked next on `child_process.fork` (4 language servers) and on native sync-ESM/resolver hooks.
 - Build targets are ES2024 (no downleveling today).
 - Open proposals: D-003 (custom host), D-004/5/6 (engine, render, IPC), D-008 (scope out AI/cloud features) in [05-decisions.md](05-decisions.md).
 

@@ -1,6 +1,6 @@
 # Checkpoint — Resume Here
 
-**Last updated:** 2026-10-12, after Phase 1 spike 2 (execution speed + Node-side shim on QuickJS-ng), on top of spike 1 step 1, the bundle baseline and the finished process-side trace. Work is on branch `claude/adoring-heisenberg-ipwnb8`; check `git status` / `git log origin/main..` for anything unpushed (the cloud session could not push for a while: GitHub access 403).
+**Last updated:** 2026-10-12, after Phase 1 spike 3 (loading real extensions via `require()` on QuickJS-ng), on top of spike 2, spike 1 step 1, the bundle baseline and the finished process-side trace. Work is on branch `claude/adoring-heisenberg-ipwnb8`; check `git status` / `git log origin/main..` for anything unpushed (the cloud session could not push for a while: GitHub access 403).
 Update this file at the end of each working session (what's done, what's next, what to watch for).
 
 ## Where we are
@@ -14,6 +14,7 @@ Goal recap ([01-goal-and-scope.md](01-goal-and-scope.md)): full VS Code feature 
 - Static inventory of Electron, Node, DOM/CSS/Web, native modules, JS level ([inventory/README.md](inventory/README.md)).
 - Built stock VS Code on the Fedora dev machine and ran it headless ([inventory/baseline-build.md](inventory/baseline-build.md)).
 - **Measured renderer traces:** startup ([runtime-trace.md](inventory/runtime-trace.md)), 9 feature scenarios ([runtime-trace-scenarios.md](inventory/runtime-trace-scenarios.md)), markdown webview ([runtime-trace-webview.md](inventory/runtime-trace-webview.md)).
+- **Measured Phase 1 spike 3 (extension loading):** [spikes/03-extension-loading/README.md](spikes/03-extension-loading/README.md). 24 of 34 built-in extensions load via `require()` and activate on QuickJS-ng (incl. git, typescript-language-features); 4 language-client extensions load fully then block on `child_process.fork`; no sync `require(esm)` (4 ESM-only deps pre-bundled), ESM extensions need a native resolver hook.
 - **Measured Phase 1 spike 2 (execution speed, Node-side shim):** [spikes/02-node-shim/README.md](spikes/02-node-shim/README.md). QuickJS-ng 8.5× slower than V8 JIT, 2.2× slower than V8 jitless, identical results; extension host/shared process/pty host/watcher bundles boot on QuickJS-ng; extension host completes the handshake and sends its first 10 RPC requests.
 - **Measured Phase 1 spike 1, step 1 (JS engine, compile-only):** [spikes/01-js-engine/README.md](spikes/01-js-engine/README.md). QuickJS-ng 0.17.0 parses all 30 bundle files unmodified; gaps `Intl`, `WebAssembly`, `structuredClone`; ES2015 lowering floor; compile cost makes precompiled bytecode necessary.
 - **Measured production bundle baseline:** bundle size/JS level, startup time and memory, bundled vs dev ([inventory/baseline-bundle.md](inventory/baseline-bundle.md)).
@@ -46,7 +47,7 @@ Goal recap ([01-goal-and-scope.md](01-goal-and-scope.md)): full VS Code feature 
 ## Suggested next steps (in order)
 1. ~~Finish the process-side trace~~ done 2026-10-12.
 2. ~~Production bundle build + memory/startup baseline~~ done 2026-10-12 ([baseline-bundle.md](inventory/baseline-bundle.md)). Not done: full packaging (`vscode-linux-x64-min`, marketplace built-in extensions), baseline on a real Windows machine.
-3. ~~Decide the Phase 1 spike order~~ agreed 2026-10-12: (1) JS engine load test [step 1 done], (2) Node shim + `tsserver` benchmark on QuickJS (execution speed; boot the extension-host bundle on a shim), (3) WebAssembly (wasm3 vs native bindings), (4) rendering (start with a logging stub DOM). Step 2 done 2026-10-12. **Next: spike 3, WebAssembly (wasm3 vs native oniguruma/tree-sitter bindings), then rendering. Also open from spike 2: extension loading via `require`/`registerHooks`, `net`/`child_process` on QuickJS, native module ports.**
+3. ~~Decide the Phase 1 spike order~~ agreed 2026-10-12: (1) JS engine load test [step 1 done], (2) Node shim + `tsserver` benchmark on QuickJS (execution speed; boot the extension-host bundle on a shim), (3) WebAssembly (wasm3 vs native bindings), (4) rendering (start with a logging stub DOM). Step 2 done 2026-10-12; extension loading (spike 3) done 2026-10-12. **Next candidates: (a) WebAssembly (wasm3 vs native oniguruma/tree-sitter bindings), (b) `child_process.fork` with an IPC channel, `net`, process spawn on QuickJS (unblocks 4 language servers, git, tasks), which needs a small native host (C) also for sync `require(esm)` and a module-resolver hook, (c) rendering. Order is the owner's call.**
 4. Set up a Windows 7 VM/machine for real testing before writing host code.
 
 ## How to resume the dev environment
