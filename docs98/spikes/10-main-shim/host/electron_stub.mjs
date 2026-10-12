@@ -4,6 +4,7 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { encode, decode } from './codec98.js';
 
 const LOG = process.env.ELECTRON_STUB_LOG ? fs.createWriteStream(process.env.ELECTRON_STUB_LOG) : null;
 const log = (m) => { if (LOG) { LOG.write(m + '\n'); } };
@@ -30,14 +31,7 @@ function lenient(obj, name) {
 }
 
 // ---- channel to the renderer harness
-/** structured-clone-safe copy: functions (lenient stubs that leaked into data) are dropped and reported */
-function clean(v, path = '', depth = 0) {
-	if (typeof v === 'function') { log('LEAK function at ' + path); return undefined; }
-	if (v === null || typeof v !== 'object' || depth > 40) { return v; }
-	if (ArrayBuffer.isView(v) || v instanceof ArrayBuffer || v instanceof Date) { return v; }
-	if (Array.isArray(v)) { return v.map((x, i) => clean(x, path + '[' + i + ']', depth + 1)); }
-	const o = {}; for (const k of Object.keys(v)) { const c = clean(v[k], path + '.' + k, depth + 1); if (c !== undefined) { o[k] = c; } } return o;
-}
+const clean = (v, path = 'msg') => encode(v, (p) => log('LEAK function at ' + p), path);   // JSON-safe (binary as { $u8 }); functions that leaked in as data are dropped and reported
 const toRenderer = (msg) => { if (process.send) { process.send(clean(msg, 'msg')); } else { log('NOSEND ' + show(msg)); } };
 
 // ---- app
@@ -113,8 +107,8 @@ export { BrowserWindow };
 export const webContents = { fromId: (id) => contents.get(id) ? wcProxy(contents.get(id)) : undefined, getAllWebContents: () => [...contents.values()].map(wcProxy), getFocusedWebContents: () => null };
 
 // ---- renderer harness -> main
-if (IS_MAIN) process.on('message', (m) => {
-	if (!m || !m.t) { return; }
+if (IS_MAIN) process.on('message', (m0) => {
+	const m = decode(m0); if (!m || !m.t) { return; }
 	if (m.t === 'portMsg' || m.t === 'portClose') { handlePortMessage(m); return; }
 	const wc = contents.get(m.wc); if (!wc) { log('MSG for unknown webContents ' + show(m)); return; }
 	const event = { sender: wcProxy(wc), senderFrame: wc.mainFrame, processId: 1, frameId: 1, reply: (ch, ...a) => wc.send(ch, ...a), preventDefault() { } };
@@ -172,14 +166,14 @@ class UtilityProcess extends EventEmitter {
 		super(); this.pid = undefined; this._killed = false;
 		const execArgv = [...(options.execArgv || []).filter(a => !a.startsWith('--js-flags')), '--import', new URL('./util_child_preload.mjs', import.meta.url).href];
 		const stdio = options.stdio === 'inherit' ? ['inherit', 'inherit', 'inherit', 'ipc'] : ['ignore', 'pipe', 'pipe', 'ipc'];
-		this._child = fork(modulePath, args, { execArgv, env: { ...(options.env || process.env), APP98_ROOT: process.env.APP98_ROOT, ELECTRON_STUB_LOG: (process.env.ELECTRON_STUB_LOG || '') + '.' + options.serviceName }, serialization: 'advanced', stdio, cwd: process.cwd() });
-		this.stdout = this._child.stdout; this.stderr = this._child.stderr; if (process.env.UTILITY_OUT) { for (const [st, tag] of [[this.stdout, 'out'], [this.stderr, 'err']]) { st?.on('data', (d) => fs.appendFileSync(process.env.UTILITY_OUT, `[${options.serviceName} ${tag}] ${d}`)); } } this.holder = holderOf((m) => this._child.send(m));
+		this._child = fork(modulePath, args, { execArgv, env: { ...(options.env || process.env), APP98_ROOT: process.env.APP98_ROOT, ELECTRON_STUB_LOG: (process.env.ELECTRON_STUB_LOG || '') + '.' + options.serviceName }, serialization: 'json', stdio, cwd: process.cwd() });
+		this.stdout = this._child.stdout; this.stderr = this._child.stderr; if (process.env.UTILITY_OUT) { for (const [st, tag] of [[this.stdout, 'out'], [this.stderr, 'err']]) { st?.on('data', (d) => fs.appendFileSync(process.env.UTILITY_OUT, `[${options.serviceName} ${tag}] ${d}`)); } } this.holder = holderOf((m) => this._child.send(clean(m)));
 		this._child.once('spawn', () => { this.pid = this._child.pid; this.emit('spawn'); });
 		this._child.on('exit', (code, signal) => { log(`utility ${options.serviceName} exit ${code} ${signal}`); this.emit('exit', code ?? 0); });
 		this._child.on('error', (e) => { log('utility error ' + e); this.emit('error', 'FatalError', e.message); });
-		this._child.on('message', (m) => { if (handlePortMessage(m, this.holder)) { return; } if (m.t === 'upm') { this.emit('message', m.data); } });
+		this._child.on('message', (m0) => { const m = decode(m0); if (handlePortMessage(m, this.holder)) { return; } if (m.t === 'upm') { this.emit('message', m.data); } });
 	}
-	postMessage(message, transfer = []) { giveTo(this.holder, transfer); this._child.send({ t: 'upm', data: clean(message), ports: transfer.map(p => p.id) }); }
+	postMessage(message, transfer = []) { giveTo(this.holder, transfer); this._child.send(clean({ t: 'upm', data: message, ports: transfer.map(p => p.id) })); }
 	kill() { if (this._killed) { return false; } this._killed = true; return this._child.kill(); }
 }
 export const utilityProcess = { fork: (modulePath, args = [], options = {}) => new UtilityProcess(modulePath, args, options) };

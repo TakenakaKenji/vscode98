@@ -13,6 +13,7 @@ import { installWebShims, resolveUrl, absolutizeCssUrls } from '../../08-workben
 import { summarizeRun, runScenario } from '../../08-workbench-boot/host/boot_common.js';
 import { installPreload } from './preload98.js';
 import { PortTable } from './ports98.js';
+import { encode, decode } from './codec98.js';
 
 register('./loader_hooks.mjs', import.meta.url);
 const args = process.argv.slice(2); const opt = (n, d) => { const i = args.indexOf('--' + n); return i >= 0 ? args[i + 1] : d; };
@@ -26,22 +27,23 @@ globalThis.__readFileBytes = (p) => readBytes(p);
 
 // ---- main process
 const mainArgs = ['--user-data-dir', userDataDir, '--extensions-dir', extDir, '--disable-gpu', '--disable-telemetry', ...(opt('workspace') ? [path.resolve(opt('workspace'))] : [])];
-const child = fork(path.join(path.dirname(new URL(import.meta.url).pathname), 'run_main_node.mjs'), [appRoot, ...mainArgs], { serialization: 'advanced', stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...process.env, APP98_ROOT: appRoot, ELECTRON_STUB_LOG: opt('stub-log', '/tmp/claude-0/stub.log') } });
+const child = fork(path.join(path.dirname(new URL(import.meta.url).pathname), 'run_main_node.mjs'), [appRoot, ...mainArgs], { serialization: 'json', stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...process.env, APP98_ROOT: appRoot, ELECTRON_STUB_LOG: opt('stub-log', '/tmp/claude-0/stub.log') } });
 child.stdout.on('data', (d) => mainLog.push(String(d))); child.stderr.on('data', (d) => mainLog.push(String(d)));
 child.on('exit', (c) => { mainLog.push(`[main exited ${c}]`); });
 
 // ---- ipcRenderer transport
 const listeners = new Map(); const pending = new Map(); let nextInvoke = 1; let wcId = 0;
 const ipc = {
-	send: (channel, ...args) => child.send({ t: 'send', wc: wcId, channel, args }),
-	invoke: (channel, ...args) => new Promise((res, rej) => { const id = nextInvoke++; pending.set(id, { res, rej }); child.send({ t: 'invoke', id, wc: wcId, channel, args }); }),
+	send: (channel, ...args) => child.send(encode({ t: 'send', wc: wcId, channel, args })),
+	invoke: (channel, ...args) => new Promise((res, rej) => { const id = nextInvoke++; pending.set(id, { res, rej }); child.send(encode({ t: 'invoke', id, wc: wcId, channel, args })); }),
 	on: (ch, fn) => { let l = listeners.get(ch); if (!l) { l = []; listeners.set(ch, l); } l.push(fn); },
 	once: (ch, fn) => { const w = (...a) => { ipc.off(ch, w); fn(...a); }; ipc.on(ch, w); },
 	off: (ch, fn) => { const l = listeners.get(ch); if (l) { const i = l.indexOf(fn); if (i >= 0) { l.splice(i, 1); } } },
 };
-const ports = new PortTable((m) => child.send({ ...m, wc: wcId }));
+const ports = new PortTable((m) => child.send(encode({ ...m, wc: wcId })));
 let onWindowLoad; const loadRequested = new Promise((r) => { onWindowLoad = r; }); let createOpts;
-child.on('message', (m) => {
+child.on('message', (m0) => {
+	const m = decode(m0);
 	if (m.t === 'createWindow') { createOpts = m; wcId = m.wc; }
 	else if (m.t === 'loadURL') { onWindowLoad(m); }
 	else if (m.t === 'send') { for (const fn of [...(listeners.get(m.channel) || [])]) { fn({ sender: null, ports: [] }, ...m.args); } }
@@ -87,6 +89,7 @@ const ctx = { env, doc, note, rss: () => ({ rss: Math.round(nodeProcess.memoryUs
 await runScenario(ctx, { seconds, stableRounds: Number(opt('stable', 25)) });
 const done = performance.now();
 summarizeRun(ctx, { tImport, tLoaded, done, t00, errors, consoleLog, rssAfterImport: { rss: 0 }, missing, unsupported });
+if (opt('scenario')) { const sc = await import(pathToFileURL(path.resolve(opt('scenario'))).href); await sc.run(ctx); }
 ctx.log('--- main process output (last 40 lines)\n' + mainLog.join('').split('\n').slice(-40).join('\n'));
 if (opt('ppm')) { const r = paintDocument(doc, W, H); fs.writeFileSync(opt('ppm'), toPPM(r.px, r.w, r.h)); ctx.log('painted ' + JSON.stringify(r.stats)); }
 child.kill(); nodeProcess.exit(0);
