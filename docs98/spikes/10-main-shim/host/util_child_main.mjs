@@ -1,6 +1,7 @@
 // Entry of every utility process the main process forks (Node or QuickJS): installs Electron's `process.parentPort`, the `electron` stub for the few modules that import it
 // and the port table that lets MessagePorts handed over by main work, then runs the real entry (UTIL_TARGET, normally bootstrap-fork.js).
 import Module from 'node:module';
+import './error_stack98.js';
 import './node_globals98.js';
 import { installAddons } from './native_addons98.js';
 installAddons();

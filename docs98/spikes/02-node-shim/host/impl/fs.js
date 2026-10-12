@@ -6,7 +6,7 @@ import * as std from 'qjs:std';
 const S_IFMT = 0o170000, S_IFDIR = 0o040000, S_IFREG = 0o100000, S_IFLNK = 0o120000;
 const E = std.Error;   // errno constants live on std.Error in QuickJS (E.ENOENT etc. do not exist)
 const CODES = { [E.ENOENT]: 'ENOENT', [E.EEXIST]: 'EEXIST', [E.ENOTDIR]: 'ENOTDIR', [E.EACCES]: 'EACCES', [E.EISDIR]: 'EISDIR', [E.EINVAL]: 'EINVAL', [E.EBADF]: 'EBADF', [E.ENOTEMPTY]: 'ENOTEMPTY', [E.EPERM]: 'EPERM' };
-function fail(errno, syscall, path) { const e = new Error(`${CODES[-errno] || CODES[errno] || 'E' + errno}: ${syscall} '${path}'`); e.errno = -Math.abs(errno); e.code = CODES[Math.abs(errno)] || 'EUNKNOWN'; e.syscall = syscall; e.path = path; return e; }
+function fail(errno, syscall, path) { if (globalThis.__fsDebug) { std.err.puts(`FSFAIL ${CODES[-errno] || CODES[errno] || errno} ${syscall} ${path}\n`); } const e = new Error(`${CODES[-errno] || CODES[errno] || 'E' + errno}: ${syscall} '${path}'`); e.errno = -Math.abs(errno); e.code = CODES[Math.abs(errno)] || 'EUNKNOWN'; e.syscall = syscall; e.path = path; return e; }
 
 export class Stats {
 	constructor(o) { Object.assign(this, { dev: o.dev, ino: o.ino, mode: o.mode, nlink: o.nlink, uid: o.uid, gid: o.gid, rdev: o.rdev, size: o.size, atimeMs: o.atime, mtimeMs: o.mtime, ctimeMs: o.ctime, mtime: new Date(o.mtime), atime: new Date(o.atime), ctime: new Date(o.ctime), birthtime: new Date(o.ctime), birthtimeMs: o.ctime }); }

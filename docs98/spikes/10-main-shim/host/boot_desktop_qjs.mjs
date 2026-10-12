@@ -13,6 +13,7 @@ import { unsupported } from '../../06-rendering/host/dom/layout.js';
 import { paintDocument, toPPM, unpainted } from '../../06-rendering/host/dom/paint.js';
 import { installWebShims, resolveUrl, absolutizeCssUrls } from '../../08-workbench-boot/host/web_shims.js';
 import { summarizeRun, runScenario } from '../../08-workbench-boot/host/boot_common.js';
+import './error_stack98.js';
 import { installPreload } from './preload98.js';
 import { PortTable } from './ports98.js';
 import { encode, decode } from './codec98.js';
@@ -33,6 +34,9 @@ async function main() {
 const t00 = performance.now(); const mainLog = []; log('[harness] start');
 // ---- vscode-file://vscode-app/<abs path> -> file path, for import()
 Module.registerHooks({ resolve(specifier, context, nextResolve) { if (specifier.startsWith('vscode-file://vscode-app/')) { return { url: 'file://' + specifier.slice('vscode-file://vscode-app'.length).replace(/[?#].*$/, ''), shortCircuit: true }; } return nextResolve(specifier, context); } });
+// ---- user settings for a headless run: no trust prompt (the git extension is limited in untrusted workspaces), no welcome page, no telemetry or update checks
+{ const dir = userDataDir + '/User'; let cur = ''; for (const seg of dir.split('/').filter(Boolean)) { cur += '/' + seg; os.mkdir(cur, 0o777); }
+	if (opt('seed-settings', '1') === '1' && !std.loadFile(dir + '/settings.json')) { const f = std.open(dir + '/settings.json', 'w'); f.puts(JSON.stringify({ 'security.workspace.trust.enabled': false, 'workbench.startupEditor': 'none', 'telemetry.telemetryLevel': 'off', 'update.mode': 'none', 'extensions.autoUpdate': false, 'extensions.autoCheckUpdates': false }, null, 2)); f.close(); } }
 // ---- main process
 const mainArgs = ['--user-data-dir', userDataDir, '--extensions-dir', extDir, '--disable-gpu', '--disable-telemetry', ...(opt('workspace') ? [opt('workspace')] : [])];
 const child = cp.fork(here + '/run_main.mjs', [appRoot, ...mainArgs], { serialization: 'json', stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...nodeProcess.env, APP98_ROOT: appRoot, ELECTRON_STUB_LOG: opt('stub-log', '/tmp/claude-0/stubq.log') } });
@@ -85,7 +89,7 @@ doc.__passStats = []; if (opt('verify', '0') === '1') { doc.__verifyStyles = tru
 const tImport = performance.now();
 for (const s of scripts) { try { await import(s); } catch (e) { note('import ' + s, e); } }
 const tLoaded = performance.now(); const rssAfterImport = rss();
-const ctx = { env, doc, note, rss, layoutTiming, opt, log, W, H };
+const ctx = { env, doc, note, rss, layoutTiming, opt, log, W, H, consoleLog };
 await runScenario(ctx, { seconds, stableRounds: Number(opt('stable', 25)) });
 const done = performance.now();
 summarizeRun(ctx, { tImport, tLoaded, done, t00, errors, consoleLog, rssAfterImport, missing, unsupported });
