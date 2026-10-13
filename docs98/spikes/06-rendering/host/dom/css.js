@@ -229,24 +229,47 @@ function flattenRules(rules, env, out, ua, state) {
 		else if (r.type === 12 || r.type === 0) { if (r.type === 0 || !/^\s*not\b/i.test(r.conditionText)) { flattenRules(r.cssRules, env, out, ua, state); } }
 	}
 }
+/**
+ * The index buckets a rule is filed under, as a flat [kind, key, kind, key, ...] list (kind 0 id, 1 class, 2 tag), or null when it must be tried on every element: an element can only match a rule
+ * whose subject compound has an id, a class or a tag if it has it, and a compound made of `:is(...)`/`:where(...)` of such selectors (most of the rules without a tag or class) only if it has the key
+ * of one of the alternatives (an alternative without a key sends the rule to the universal bucket); `:root` can only be the <html> element.
+ */
+function bucketKeys(c) {
+	if (c.id) { return [0, c.id]; } if (c.classes.length === 1) { return [1, c.classes[0]]; } if (c.classes.length) { return [3, c.classes]; } if (c.tag) { return [2, c.tag]; }
+	for (const p of c.pseudos) {
+		if (p.name === 'root') { return [2, 'html']; }
+		if ((p.name === 'is' || p.name === 'where' || p.name === 'matches' || p.name === '-webkit-any' || p.name === 'any') && Array.isArray(p.arg) && p.arg.length) {
+			const out = []; for (const alt of p.arg) { const k = bucketKeys(alt.parts[alt.parts.length - 1].compound); if (k === null) { out.length = 0; break; } for (let i = 0; i < k.length; i += 2) { out.push(k[i], k[i + 1]); } }
+			if (out.length) { return out; }
+		}
+	}
+	return null;
+}
+function rarest(classes, freq) { let best = classes[0], n = freq.get(best) || 0; for (let i = 1; i < classes.length; i++) { const m = freq.get(classes[i]) || 0; if (m < n) { n = m; best = classes[i]; } } return best; }
+let matchToken = 0;   // an entry filed under several buckets is considered once per matching walk (entry.mk)
 const baseEntries = new WeakMap();   // CSSStyleRule -> the cascade-independent parts of its index entries (null: unparsable)
 /** Builds an index of all active style rules for a document: array of { complex selector, decls, ua, order }, bucketed by the rightmost compound's id/class/tag. */
 export function buildRuleIndex(doc, env) {
 	const flat = []; const state = { order: 0 };
 	for (const { sheet, ua } of sheetsOf(doc)) { flattenRules(sheet.cssRules, env, flat, ua, state); }
-	const byId = new Map(), byClass = new Map(), byTag = new Map(), universal = []; let count = 0;
-	for (const f of flat) {
-		let cached = baseEntries.get(f.rule), base;   // the parsed selectors, expanded declarations and ancestor-filter bits of a rule only change when the rule is edited (declarations replaced, selector text set): the rebuilds after a stylesheet change reuse them
+	const byId = new Map(), byClass = new Map(), byTag = new Map(), universal = []; let count = 0; const freq = new Map();
+	const bases = new Array(flat.length);
+	for (let n = 0; n < flat.length; n++) {
+		const f = flat[n]; let cached = baseEntries.get(f.rule), base;   // the parsed selectors, expanded declarations and ancestor-filter bits of a rule only change when the rule is edited (declarations replaced, selector text set): the rebuilds after a stylesheet change reuse them
 		if (cached !== undefined && cached.src === f.rule.__decls && cached.sel === f.rule.selectorText) { base = cached.base; }
 		else {
 			let list; try { list = f.rule.selectors; } catch { noteMissing('css: unparsable selector'); base = null; }
-			if (list) { const decls = expandRuleDecls(f.rule), sel = f.rule.selectorText; base = list.map((complex) => ({ complex, decls, spec: complex.spec, pseudoElement: complex.parts[complex.parts.length - 1].compound.pseudoElement, need: needOf(complex), sel })); }
+			if (list) { const decls = expandRuleDecls(f.rule), sel = f.rule.selectorText; base = list.map((complex) => ({ complex, decls, spec: complex.spec, pseudoElement: complex.parts[complex.parts.length - 1].compound.pseudoElement, need: needOf(complex), needAny: needAnyOf(complex), sel, keys: bucketKeys(complex.parts[complex.parts.length - 1].compound) })); }
 			baseEntries.set(f.rule, { src: f.rule.__decls, sel: f.rule.selectorText, base });
 		}
-		if (!base) { continue; }
+		bases[n] = base;
+		if (base) { for (const b of base) { const k = b.keys; if (k !== null) { for (let i = 0; i < k.length; i += 2) { if (k[i] === 3) { for (const cl of k[i + 1]) { freq.set(cl, (freq.get(cl) || 0) + 1); } } else if (k[i] === 1) { freq.set(k[i + 1], (freq.get(k[i + 1]) || 0) + 1); } } } } }   // how many rules use each class
+	}
+	for (let n = 0; n < flat.length; n++) {
+		const base = bases[n]; if (!base) { continue; } const f = flat[n];
 		for (const b of base) {
-			const complex = b.complex; const c = complex.parts[complex.parts.length - 1].compound; const e = { complex, decls: b.decls, ua: f.ua, order: f.order, spec: b.spec, pseudoElement: b.pseudoElement, need: b.need, sel: b.sel }; count++;
-			if (c.id) { push(byId, c.id, e); } else if (c.classes.length) { push(byClass, c.classes[0], e); } else if (c.tag) { push(byTag, c.tag, e); } else { universal.push(e); }
+			const e = { complex: b.complex, decls: b.decls, ua: f.ua, order: f.order, spec: b.spec, pseudoElement: b.pseudoElement, need: b.need, needAny: b.needAny, sel: b.sel, mk: 0 }; count++;
+			const keys = b.keys; if (keys === null) { universal.push(e); } else { for (let i = 0; i < keys.length; i += 2) { const k = keys[i]; if (k === 3) { push(byClass, rarest(keys[i + 1], freq), e); } else { push(k === 0 ? byId : k === 1 ? byClass : byTag, keys[i + 1], e); } } }
 		}
 	}
 	return { byId, byClass, byTag, universal, count };
@@ -263,6 +286,28 @@ function needOf(complex) {
 		for (const h of hs) { for (const b of bloomBits(h)) { need.push(b >> 5, 1 << (b & 31)); } }
 	}
 	return need;
+}
+/**
+ * Ancestor requirements that are "one of": a `:is(.a, .b)` compound on the way up the selector needs an ancestor with the bits of at least one alternative (the alternative's own tag/id/classes;
+ * an alternative without any sends the group away). Returns null, or a list of groups, each a list of flat [word, mask, ...] alternatives.
+ */
+function needAnyOf(complex) {
+	let out = null; const parts = complex.parts;
+	for (let k = parts.length - 1; k >= 1; k--) {
+		const comb = parts[k].comb; if (comb !== ' ' && comb !== '>') { break; }
+		for (const p of parts[k - 1].compound.pseudos) {
+			if (!((p.name === 'is' || p.name === 'where' || p.name === 'matches' || p.name === '-webkit-any' || p.name === 'any') && Array.isArray(p.arg) && p.arg.length)) { continue; }
+			const group = []; let ok = true;
+			for (const alt of p.arg) { const c = alt.parts[alt.parts.length - 1].compound; const hs = []; if (c.id) { hs.push(hashStr('#' + c.id)); } for (const cl of c.classes) { hs.push(hashStr('.' + cl)); } if (c.tag) { hs.push(hashStr('T' + c.tag)); } if (!hs.length) { ok = false; break; } const flat = []; for (const h of hs) { for (const b of bloomBits(h)) { flat.push(b >> 5, 1 << (b & 31)); } } group.push(flat); }
+			if (ok) { (out ??= []).push(group); }
+		}
+	}
+	return out;
+}
+/** whether the ancestor filter rules out an entry's "one of" groups */
+function anyRejects(filter, groups) {
+	for (const group of groups) { let any = false; for (const alt of group) { let ok = true; for (let i = 0; i < alt.length; i += 2) { if ((filter[alt[i]] & alt[i + 1]) === 0) { ok = false; break; } } if (ok) { any = true; break; } } if (!any) { return true; } }
+	return false;
 }
 /** adds an element's own tag/id/class bits to a copy of its parent's ancestor filter */
 export function ancestorFilter(el, parentFilter) {
@@ -286,7 +331,7 @@ export function expandDecls(decls) {
 }
 export function matchedDeclarations(el, index, inlineDecls, pseudo) {
 	const cands = []; const filter = el.__anc;   // ancestor Bloom filter, set by resolveStyles
-	const consider = (list) => { if (list) { for (const e of list) { if ((e.pseudoElement || null) !== (pseudo || null)) { continue; } const need = e.need; if (filter && need.length) { let ok = true; for (let i = 0; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { ok = false; break; } } if (!ok) { continue; } } if (matchesComplex(el, e.complex)) { cands.push(e); } } } };
+	const tok = ++matchToken; const consider = (list) => { if (list) { for (const e of list) { if (e.mk === tok) { continue; } e.mk = tok; if ((e.pseudoElement || null) !== (pseudo || null)) { continue; } const need = e.need; if (filter && need.length) { let ok = true; for (let i = 0; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { ok = false; break; } } if (!ok) { continue; } } if (matchesComplex(el, e.complex)) { cands.push(e); } } } };
 	const id = el.getAttribute('id'); if (id) { consider(index.byId.get(id)); }
 	const cls = el.classes(); for (let i = 0; i < cls.length; i++) { consider(index.byClass.get(cls[i])); }
 	consider(index.byTag.get(el.localName)); consider(index.universal);
@@ -296,7 +341,7 @@ export function matchedDeclarations(el, index, inlineDecls, pseudo) {
 /** The matched rules of an element, of the element itself and of its ::before and ::after, in one walk over the candidate lists: [main, before, after], each in cascade order. */
 export function matchedDeclarationsAll(el, index) {
 	const out = [[], [], []]; const filter = el.__anc;
-	const consider = (list) => { if (list) { for (const e of list) { const need = e.need; if (filter && need.length) { let ok = true; for (let i = 0; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { ok = false; break; } } if (!ok) { continue; } } const pe = e.pseudoElement; const dst = !pe ? out[0] : pe === 'before' ? out[1] : pe === 'after' ? out[2] : null; if (dst && matchesComplex(el, e.complex)) { dst.push(e); } } } };
+	const tok = ++matchToken; const consider = (list) => { if (list) { for (const e of list) { if (e.mk === tok) { continue; } e.mk = tok; const need = e.need; if (filter && need.length) { let ok = true; for (let i = 0; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { ok = false; break; } } if (!ok) { continue; } } if (filter && e.needAny !== null && anyRejects(filter, e.needAny)) { continue; } const pe = e.pseudoElement; const dst = !pe ? out[0] : pe === 'before' ? out[1] : pe === 'after' ? out[2] : null; if (dst && matchesComplex(el, e.complex)) { dst.push(e); } } } };
 	const id = el.getAttribute('id'); if (id) { consider(index.byId.get(id)); }
 	const cls = el.classes(); for (let i = 0; i < cls.length; i++) { consider(index.byClass.get(cls[i])); }
 	consider(index.byTag.get(el.localName)); consider(index.universal);

@@ -73,11 +73,24 @@ function nthMatches(n, { a, b }) { if (a === 0) { return n === b; } const k = (n
 export function matches(el, list, ctx) { for (const s of list) { if (matchComplex(el, s, s.parts.length - 1, ctx)) { return true; } } return false; }
 export function matchesComplex(el, complex, ctx) { return matchComplex(el, complex, complex.parts.length - 1, ctx); }
 export function closestMatch(el, list) { for (let n = el; n && n.nodeType === 1; n = n.parentNode) { if (matches(n, list)) { return n; } } return null; }
+// While a style pass runs (setMatchMemo(passId)), "does this element or an ancestor match this simple compound (tag, id, classes)" is remembered per element: a pass asks the same few ancestors
+// (the workbench containers) about the same few compounds thousands of times. The DOM does not change during the pass; memoPass 0 (the default) switches this off.
+let memoPass = 0;
+export function setMatchMemo(passId) { memoPass = passId; }
+function simpleKey(c) { let k = c.__sk; if (k === undefined) { k = c.attrs.length === 0 && c.pseudos.length === 0 ? `${c.tag || ''}#${c.id || ''}.${c.classes.join('.')}` : null; c.__sk = k; } return k; }
+function ancHas(p, c, key, ctx) {
+	if (!p || p.nodeType !== 1) { return false; }
+	if (p.__amp !== memoPass) { p.__amp = memoPass; if (p.__am) { p.__am.clear(); } else { p.__am = new Map(); } }
+	let r = p.__am.get(key); if (r === undefined) { r = matchCompound(p, c, ctx) || ancHas(p.parentNode, c, key, ctx); p.__am.set(key, r); } return r;
+}
 function matchComplex(el, s, i, ctx) {
 	const part = s.parts[i]; if (!matchCompound(el, part.compound, ctx)) { return false; } if (i === 0) { return true; }
 	const comb = part.comb;
 	if (comb === '>') { const p = el.parentNode; return !!p && p.nodeType === 1 && matchComplex(p, s, i - 1, ctx); }
-	if (comb === ' ') { for (let p = el.parentNode; p && p.nodeType === 1; p = p.parentNode) { if (matchComplex(p, s, i - 1, ctx)) { return true; } } return false; }
+	if (comb === ' ') {
+		if (memoPass !== 0) { const pc = s.parts[i - 1].compound; const key = simpleKey(pc); if (key !== null) { if (!ancHas(el.parentNode, pc, key, ctx)) { return false; } if (i === 1) { return true; } } }
+		for (let p = el.parentNode; p && p.nodeType === 1; p = p.parentNode) { if (matchComplex(p, s, i - 1, ctx)) { return true; } } return false;
+	}
 	if (comb === '+') { let p = el.previousSibling; while (p && p.nodeType !== 1) { p = p.previousSibling; } return !!p && matchComplex(p, s, i - 1, ctx); }
 	for (let p = el.previousSibling; p; p = p.previousSibling) { if (p.nodeType === 1 && matchComplex(p, s, i - 1, ctx)) { return true; } } return false;
 }

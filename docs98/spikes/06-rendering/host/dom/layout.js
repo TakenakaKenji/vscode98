@@ -5,6 +5,7 @@ import { buildRuleIndex, computeStyle, matchedDeclarations, matchedDeclarationsA
 import { analyzeIndex, diffIndex, mergeInv, planRestyle, logTouchesSheets, inheritedChanged, deepEqual } from './style_invalidation.js';
 import { resolveFont, fontMetrics, advance, kern } from './fonts.js';
 import { noteMissing } from './dom.js';
+import { setMatchMemo } from './selectors.js';
 
 export const unsupported = new Map();
 const box_oof = (v) => v.position === 'absolute' || v.position === 'fixed';
@@ -45,7 +46,7 @@ export function resolveStyles(doc, env, log) {
 		} else if (el.__dd !== passId) { return; } else { anc = ancestorFilter(el, parentAnc); el.__anc = anc; }   // ancestors on the way to a marked element: their filter is rebuilt too, a cached one may predate a class change that no rule cared about then
 		let pe = null; for (const c of el.__children) { if (c.nodeType === 1) { walk(c, cs, anc, childForced, pe); pe = c; } }
 	};
-	if (root) { walk(root, null, null, 0); } doc.__styleCount = total; doc.__styleReady = true; { const ae = doc.__activeElement && doc.__activeElement.isConnected ? doc.__activeElement : null; doc.__styledActive = ae; doc.__styledChain = []; for (let a = ae; a && a.nodeType === 1; a = a.parentNode) { doc.__styledChain.push(a); } } doc.__logOverflow = false; info.ms = performance.now() - t0; doc.__styleInfo = info;
+	if (root) { setMatchMemo(passId); try { walk(root, null, null, 0); } finally { setMatchMemo(0); } } doc.__styleCount = total; doc.__styleReady = true; { const ae = doc.__activeElement && doc.__activeElement.isConnected ? doc.__activeElement : null; doc.__styledActive = ae; doc.__styledChain = []; for (let a = ae; a && a.nodeType === 1; a = a.parentNode) { doc.__styledChain.push(a); } } doc.__logOverflow = false; info.ms = performance.now() - t0; doc.__styleInfo = info;
 	if (doc.__verifyStyles) { verifyStyles(doc, env, index); }
 }
 /** Test oracle: restyle everything from scratch (without the ancestor filter) and record every difference to the cached styles in doc.__styleMismatches. */
