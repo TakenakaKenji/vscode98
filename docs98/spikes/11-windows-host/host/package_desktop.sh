@@ -17,6 +17,11 @@ find "$A/node_modules" -name '*.node' -exec truncate -s 0 {} \;              # t
 rm -rf "$A/node_modules/@vscode/tree-sitter-wasm"                              # 21 MB of parsers the first run does not need
 mkdir -p "$A/extensions"; cp -r extensions/theme-defaults "$A/extensions/"
 mkdir -p "$A/extensions/git"; for f in package.json package.nls.json; do cp "extensions/git/$f" "$A/extensions/git/"; done; cp -r extensions/git/out extensions/git/resources "$A/extensions/git/" 2>/dev/null || true
+# fonts: the renderer's font table names /usr/share/fonts/...; ship the files it uses next to the app (fonts/<same subpath>) and point --font-dir at them
+mkdir -p "$OUT/fonts/opentype/inter" "$OUT/fonts/truetype/dejavu" "$OUT/fonts/truetype/liberation" "$OUT/fonts/LICENSES"
+for f in /usr/share/fonts/opentype/inter/Inter-*.otf; do cp "$f" "$OUT/fonts/opentype/inter/"; done
+cp /usr/share/fonts/truetype/dejavu/DejaVu*.ttf "$OUT/fonts/truetype/dejavu/"; cp /usr/share/fonts/truetype/liberation/Liberation*.ttf "$OUT/fonts/truetype/liberation/"
+for d in fonts-inter fonts-dejavu-core fonts-liberation; do [ -f /usr/share/doc/$d/copyright ] && cp /usr/share/doc/$d/copyright "$OUT/fonts/LICENSES/$d.txt"; done
 mkdir -p "$OUT/sample" && printf 'hello vscode98\nline two\n' > "$OUT/sample/hello.txt" && printf '# sample\n' > "$OUT/sample/README.md"
 sed 's/\r$//; s/$/\r/' "$S/11-windows-host/package/run-desktop.cmd" > "$OUT/run-desktop.cmd"
 echo "desktop package: $OUT ($(du -sh "$OUT" | cut -f1))"

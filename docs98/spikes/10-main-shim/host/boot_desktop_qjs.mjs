@@ -69,6 +69,7 @@ const load = await loadRequested;
 log(`[harness] main created a window and asked to load ${load.url} after ${Math.round(performance.now() - t00)} ms`);
 const pageFile = fileOf(load.url);
 const BASE = 'vscode-file://vscode-app' + pathToFileURL(appRoot).pathname;
+{ const fd = opt('font-dir', nodePath.join(nodePath.dirname(appRoot), 'fonts')); if (os.stat(fd)[1] === 0) { globalThis.__fontRoot = fd.replace(/\\/g, '/'); log('[harness] fonts: ' + globalThis.__fontRoot); } else { log('[harness] no font directory at ' + fd + ': the system font paths of the Linux host are used'); } }
 const env = installEnvironment({ width: W, height: H, opentype, readUrl: (u) => readBytes(fileOf(u)) }); const doc = env.document;
 let layoutTiming = null; if (opt('layout', 'js') === 'native') { const m = await import('../../07-native-render/host/native_layout.js'); env.layoutEngine = m.engine; layoutTiming = m.timing; }
 installWebShims(env, { baseUrl: BASE, readFile: (p) => readBytes(nodePath.join(appRoot, 'out', p)) });

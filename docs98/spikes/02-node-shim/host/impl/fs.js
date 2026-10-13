@@ -48,7 +48,8 @@ function mkdirRec(dir) {                 // creates dir and its missing parents;
 	const [st, e0] = os.stat(dir); if (!e0) { if ((st.mode & S_IFMT) === S_IFDIR) { return undefined; } throw fail(E.EEXIST, 'mkdir', dir); }
 	const parent = nodePath.dirname(dir); let first;
 	if (parent !== dir) { first = mkdirRec(parent); }
-	const e = os.mkdir(dir, 0o777); if (e && e !== -E.EEXIST && e !== E.EEXIST) { throw fail(e, 'mkdir', dir); }
+	const e = os.mkdir(dir, 0o777);
+	if (e) { const [st2, e2] = os.stat(dir); if (!e2 && (st2.mode & S_IFMT) === S_IFDIR) { return first; } throw fail(e, 'mkdir', dir); }   // created by someone else in between (or a Win32 'already exists' code QuickJS returns raw)
 	return first ?? dir;
 }
 export function mkdirSync(p, opts) { const rec = opts && opts.recursive; if (rec) { return mkdirRec(nodePath.resolve(String(p))); } const e = os.mkdir(String(p), 0o777); if (e) { throw fail(e, 'mkdir', p); } }

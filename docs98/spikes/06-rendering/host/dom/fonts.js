@@ -18,9 +18,11 @@ const custom = new Map();   // @font-face: family(lowercase) -> [{ weight, style
 const loaded = new Map();
 export function registerFontFace(family, font, weight = 400, style = 'normal') { const k = family.toLowerCase().replace(/^["']|["']$/g, ''); if (!custom.has(k)) { custom.set(k, []); } custom.get(k).push({ weight, style, font }); loadedKeyCache.clear(); }
 const loadedKeyCache = new Map();
+// The font table names Linux system paths; `globalThis.__fontRoot` (set by a harness with --font-dir) relocates /usr/share/fonts to a directory shipped with the application (Windows has none of these files).
+const fontFile = (path) => globalThis.__fontRoot && path.startsWith('/usr/share/fonts/') ? globalThis.__fontRoot + path.slice('/usr/share/fonts'.length) : path;
 function loadFile(path) {
 	if (loaded.has(path)) { return loaded.get(path); }
-	let f = null; try { f = opentype.parse(globalThis.__readFileBytes(path)); } catch (e) { f = null; }
+	let f = null; try { f = opentype.parse(globalThis.__readFileBytes(fontFile(path))); } catch (e) { f = null; }
 	if (f) { f.__path = path; f.__adv = new Map(); } loaded.set(path, f); return f;
 }
 /** Resolve a CSS font-family list + weight/style to a parsed font (first family available; falls back to the generic serif). */
