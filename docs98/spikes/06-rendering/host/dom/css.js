@@ -293,6 +293,16 @@ export function matchedDeclarations(el, index, inlineDecls, pseudo) {
 	cands.sort((a, b) => (a.ua === b.ua ? 0 : a.ua ? -1 : 1) || cmpSpec(a.spec, b.spec) || a.order - b.order);
 	return cands;
 }
+/** The matched rules of an element, of the element itself and of its ::before and ::after, in one walk over the candidate lists: [main, before, after], each in cascade order. */
+export function matchedDeclarationsAll(el, index) {
+	const out = [[], [], []]; const filter = el.__anc;
+	const consider = (list) => { if (list) { for (const e of list) { const need = e.need; if (filter && need.length) { let ok = true; for (let i = 0; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { ok = false; break; } } if (!ok) { continue; } } const pe = e.pseudoElement; const dst = !pe ? out[0] : pe === 'before' ? out[1] : pe === 'after' ? out[2] : null; if (dst && matchesComplex(el, e.complex)) { dst.push(e); } } } };
+	const id = el.getAttribute('id'); if (id) { consider(index.byId.get(id)); }
+	const cls = el.classes(); for (let i = 0; i < cls.length; i++) { consider(index.byClass.get(cls[i])); }
+	consider(index.byTag.get(el.localName)); consider(index.universal);
+	for (const cands of out) { if (cands.length > 1) { cands.sort((a, b) => (a.ua === b.ua ? 0 : a.ua ? -1 : 1) || cmpSpec(a.spec, b.spec) || a.order - b.order); } }
+	return out;
+}
 const VAR_RE = /var\(\s*(--[\w-]+)\s*(?:,((?:[^()]|\([^()]*\))*))?\)/;
 export function substituteVars(value, vars, depth = 0) {
 	if (!value.includes('var(')) { return value; } if (depth > 10) { return null; }

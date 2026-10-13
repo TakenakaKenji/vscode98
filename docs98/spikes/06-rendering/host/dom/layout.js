@@ -1,7 +1,7 @@
 // Style resolution + layout for the rendering spike: block flow with margin collapsing, inline formatting (line breaking, white-space modes, baseline alignment),
 // inline-block and replaced elements, absolute/fixed/relative positioning, flexbox (single and multi-line), overflow/scroll geometry, translate/scale transforms.
 // Not implemented (recorded in `unsupported`): floats, tables (laid out as blocks), grid, multi-column, writing modes, bidi, ::first-line/letter.
-import { buildRuleIndex, computeStyle, matchedDeclarations, resolveLen, PROPS, ancestorFilter, INH } from './css.js';
+import { buildRuleIndex, computeStyle, matchedDeclarations, matchedDeclarationsAll, resolveLen, PROPS, ancestorFilter, INH } from './css.js';
 import { analyzeIndex, diffIndex, mergeInv, planRestyle, logTouchesSheets, inheritedChanged, deepEqual } from './style_invalidation.js';
 import { resolveFont, fontMetrics, advance, kern } from './fonts.js';
 import { noteMissing } from './dom.js';
@@ -38,8 +38,8 @@ export function resolveStyles(doc, env, log) {
 		let cs = el.__cs, anc = el.__anc, childForced = 0; el.__prev = prev;
 		if (lvl > 0 || !cs) {
 			const rematch = lvl >= 2 || !cs || !el.__cands; anc = ancestorFilter(el, parentAnc); el.__anc = anc;
-			const cands = rematch ? matchedDeclarations(el, index, null, null) : el.__cands; const ncs = computeStyle(el, parentCS, index, env, null, cands); info.recomputed++; if (rematch) { info.rematched++; }
-			const pc = el.__pcands = rematch || !el.__pcands ? [matchedDeclarations(el, index, null, 'before'), matchedDeclarations(el, index, null, 'after')] : el.__pcands;
+			let cands, pc; if (rematch) { const all = matchedDeclarationsAll(el, index); cands = all[0]; pc = el.__pcands = [all[1], all[2]]; } else { cands = el.__cands; pc = el.__pcands ??= [matchedDeclarations(el, index, null, 'before'), matchedDeclarations(el, index, null, 'after')]; }
+			const ncs = computeStyle(el, parentCS, index, env, null, cands); info.recomputed++; if (rematch) { info.rematched++; }
 			['before', 'after'].forEach((pe, i) => { const pcs = pc[i].length ? computeStyle(el, ncs, index, env, pe, pc[i]) : null; const c = pcs && pcs.values.content; el['__' + pe] = (c && c !== 'none' && c !== 'normal') ? pcs : null; });
 			el.__cands = cands; childForced = lvl === 3 ? 3 : (inheritedChanged(cs, ncs, INH) ? 1 : 0); el.__cs = cs = ncs;
 		} else if (el.__dd !== passId) { return; } else { anc = ancestorFilter(el, parentAnc); el.__anc = anc; }   // ancestors on the way to a marked element: their filter is rebuilt too, a cached one may predate a class change that no rule cared about then

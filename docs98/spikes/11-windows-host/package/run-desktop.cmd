@@ -14,6 +14,6 @@ if "%H%"=="" set "H=700"
 if not exist "%HERE%\results" mkdir "%HERE%\results"
 if not exist "%HERE%\userdata" mkdir "%HERE%\userdata"
 echo Starting ... (log: %HERE%\results\desktop.txt)
-"%Q%" --stack-size 0 "%JF%/docs98/spikes/05-child-process/host/fork_main.mjs" "%JF%/s11" "%JF%/docs98/spikes/10-main-shim/host/boot_desktop_qjs.mjs" "%HERE%\app" --layout native --backend native --window 1 --width %W% --height %H% --user-data-dir "%HERE%\userdata" --extensions-dir "%HERE%\userdata\extensions" --workspace "%HERE%\sample" --seconds 20 --stable 300 --echo-main 1 > "%HERE%\results\desktop.txt" 2>&1
+"%Q%" --stack-size 0 "%JF%/docs98/spikes/05-child-process/host/fork_main.mjs" "%JF%/s11" "%JF%/docs98/spikes/10-main-shim/host/boot_desktop_qjs.mjs" "%HERE%\app" --layout native --backend native --window 1 --width %W% --height %H% --user-data-dir "%HERE%\userdata" --extensions-dir "%HERE%\userdata\extensions" --workspace "%HERE%\sample" --seconds 20 --stable 300 --echo-main 1 --debug-input 1 > "%HERE%\results\desktop.txt" 2>&1
 echo Exited. Log: %HERE%\results\desktop.txt
 endlocal
