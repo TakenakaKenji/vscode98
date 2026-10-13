@@ -80,3 +80,19 @@
 ## Desktop run diagnostics (window mode)
 
 `--status-every N` (default 15 s) logs `[status] t= elements= layoutPasses= paints=` and the **working set of the whole process tree** (`processTree` in `winproc.c`: Toolhelp snapshot + `GetProcessMemoryInfo`, which is Windows 7 or later), and `--shot-at 60,150,300` writes `results\window-<s>s.bmp` (24-bit BMP, open it with Paint) so a run can be judged from `desktop.txt` and the bitmaps alone. Under Wine: 396 MB at 21 s (8 elements), 619 MB at 39 s (802 elements), 674 MB at 51 s (873 elements, 118 layout passes).
+
+### First complete desktop run on real Windows 7 (build 7600, x86, 2 GB, `results/win7-vm/`)
+
+The bundled-font package renders the **complete desktop workbench on Windows 7** (`desktop-60s.png`, `desktop-300s.png`: Explorer with the sample folder, activity bar, status bar, chat panel and the Copilot welcome dialog, the same picture as under Wine): the real electron-main bundle, shared process, extension host, file watcher and renderer, all on the 1.6 MB exe.
+
+| | Windows 7 VM | this sandbox (Wine) |
+|---|---|---|
+| until the UI exists (802 elements), counted from the window opening | 64 s | 39 s |
+| working set of the whole process tree at that point | 573 MB | 619 MB |
+| renderer process (QuickJS: DOM, style, layout, raster) | 508 MB at 64 s, 513 to 652 MB later | 518 to 653 MB |
+| main / shared process / extension host / watcher | 29 / 27 / 10 MB (+ 37 to 39 MB) | 39 / 37 / 20 MB |
+| settled state | 911 elements, 393 layout passes after 111 s | 911 elements, 356 passes |
+
+**Bug found by the VM's status lines:** the idle workbench was repainted about 12 times a second (paints 50 → 2428 over 200 s with no layout pass), and the renderer's working set swung between 513 and 652 MB. `present()` makes Windows send `WM_PAINT`, the window forwarded it as a `paint` event and the DOM driver repainted on every event, including that one. Fixed (no repaint on `paint`/`focus`/`leave`) and the 4 MB backend buffer is reused (`NativeBackend.reset()`); after the fix an idle workbench paints 0 times (5 paints in 138 s under Wine, flat memory).
+
+Not yet reported from the VM: whether clicking, typing and the command palette respond, and the time per interaction.

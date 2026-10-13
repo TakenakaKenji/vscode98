@@ -34,5 +34,7 @@ export class NativeBackend {
 		b[n++] = OP_GLYPH_RUN; b[n++] = id; b[n++] = size; b[n++] = ls; b[n++] = wsp; b[n++] = x; b[n++] = by; b[n++] = color[0]; b[n++] = color[1]; b[n++] = color[2]; b[n++] = color[3]; b[n++] = alphaMul; b[n++] = cps.length;
 		for (let i = 0; i < cps.length; i++) { b[n++] = cps[i]; } this.n = n; this.commands++;
 	}
+	/** empties the command list and the framebuffer so one backend (and its 4 bytes/pixel buffer) serves every frame of a window */
+	reset() { this.n = 0; this.commands = 0; this.pixels.fill(255); this.stats = { rects: 0, glyphs: 0, glyphMisses: 0 }; }
 	finish() { const t = performance.now(); const s = nr.execute(this.pixels, this.w, this.h, this.buf, this.n, this.mode); this.execMs = performance.now() - t; this.stats = s; if (s.profile) { globalThis.__lastRasterProfile = s.profile; } return this.pixels; }
 }

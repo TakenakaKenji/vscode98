@@ -28,7 +28,7 @@ const editable = (el) => el && (el.localName === 'textarea' || (el.localName ===
 export function openWindow(ctx, { width, height, title = 'vscode98', exact = false, fps = 30, onClose } = {}) {
 	const { doc, env, log } = ctx; const id = win.create(width, height, title); let W = width, H = height;
 	const Ev = (name, o) => new env.window.MouseEvent(name, { bubbles: true, cancelable: true, composed: true, view: env.window, ...o });
-	let hover = null, downTarget = null, lastPaint = 0, forced = true, paints = 0, paintMs = 0;
+	let backend = null, hover = null, downTarget = null, lastPaint = 0, forced = true, paints = 0, paintMs = 0;
 	const at = (x, y) => doc.elementFromPoint(x, y) || doc.body;
 	const dispatch = (el, ev) => { try { return el.dispatchEvent(ev); } catch (e) { ctx.note?.('window event ' + ev.type, e); return true; } };
 	const setCursor = (el) => { try { const c = env.window.getComputedStyle(el).cursor; win.setCursor(id, c && c !== 'auto' ? c : (editable(el) ? 'text' : 'default')); } catch { /* keep */ } };
@@ -36,7 +36,8 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 	const repaint = () => { forced = true; };
 	function paintNow() {
 		const t0 = performance.now(); doc.__ensureLayout();
-		const backend = new NativeBackend(W, H, { exact }); const r = paintDocument(doc, W, H, backend);
+		if (!backend || backend.w !== W || backend.h !== H) { backend = new NativeBackend(W, H, { exact }); } else { backend.reset(); }
+		const r = paintDocument(doc, W, H, backend);
 		win.present(id, r.px, W, H, 0, 0, W, H); paints++; paintMs += performance.now() - t0; lastPaint = performance.now();
 	}
 	const tick = () => {
@@ -69,7 +70,7 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 			case 'close': win.destroy(wid); log?.('[window] closed'); try { onClose?.(); } finally { std.exit(0); } break;
 			case 'paint': break;
 		}
-		repaint();
+		if (type !== 'paint' && type !== 'focus' && type !== 'leave') { repaint(); }   // 'paint' is the echo of our own present(): repainting on it is an endless loop (found on Windows 7: 12 frames/s of an idle workbench)
 	});
 	tick();
 	return { id, repaint, stats: () => ({ paints, paintMs }), close: () => win.destroy(id) };

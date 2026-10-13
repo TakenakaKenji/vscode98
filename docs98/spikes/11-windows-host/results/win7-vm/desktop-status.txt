@@ -1,0 +1,16 @@
+[status] t=49s elements=8 layoutPasses=2 paints=2 qjs-win-x86:332 qjs-win-x86:26 | total 358 MB
+[status] t=64s elements=802 layoutPasses=81 paints=3 qjs-win-x86:508 qjs-win-x86:29 qjs-win-x86:27 qjs-win-x86:10 | total 573 MB
+[status] t=81s elements=874 layoutPasses=172 paints=6 qjs-win-x86:513 qjs-win-x86:30 qjs-win-x86:27 qjs-win-x86:10 | total 580 MB
+[status] t=126s elements=911 layoutPasses=393 paints=288 qjs-win-x86:599 qjs-win-x86:36 qjs-win-x86:30 qjs-win-x86:10 qjs-win-x86:39 | total 713 MB
+[status] t=141s elements=911 layoutPasses=393 paints=467 qjs-win-x86:652 qjs-win-x86:36 qjs-win-x86:30 qjs-win-x86:10 qjs-win-x86:39 | total 767 MB
+[status] t=156s elements=911 layoutPasses=393 paints=643 qjs-win-x86:556 qjs-win-x86:36 qjs-win-x86:30 qjs-win-x86:10 qjs-win-x86:39 | total 670 MB
+[status] t=171s elements=911 layoutPasses=393 paints=822 qjs-win-x86:612 qjs-win-x86:36 qjs-win-x86:30 qjs-win-x86:10 qjs-win-x86:39 | total 726 MB
+[status] t=186s elements=911 layoutPasses=393 paints=997 qjs-win-x86:513 qjs-win-x86:36 qjs-win-x86:30 qjs-win-x86:10 qjs-win-x86:39 | total 627 MB
+[status] t=201s elements=911 layoutPasses=393 paints=1175 qjs-win-x86:564 qjs-win-x86:36 qjs-win-x86:30 qjs-win-x86:10 qjs-win-x86:39 | total 678 MB
+[status] t=216s elements=911 layoutPasses=393 paints=1355 qjs-win-x86:620 qjs-win-x86:36 qjs-win-x86:30 qjs-win-x86:10 qjs-win-x86:39 | total 734 MB
+[status] t=231s elements=911 layoutPasses=393 paints=1531 qjs-win-x86:524 qjs-win-x86:36 qjs-win-x86:30 qjs-win-x86:10 qjs-win-x86:39 | total 638 MB
+[status] t=246s elements=911 layoutPasses=393 paints=1712 qjs-win-x86:583 qjs-win-x86:36 qjs-win-x86:30 qjs-win-x86:10 qjs-win-x86:39 | total 697 MB
+[status] t=261s elements=911 layoutPasses=393 paints=1895 qjs-win-x86:647 qjs-win-x86:36 qjs-win-x86:30 qjs-win-x86:10 qjs-win-x86:39 | total 761 MB
+[status] t=276s elements=911 layoutPasses=393 paints=2070 qjs-win-x86:548 qjs-win-x86:36 qjs-win-x86:30 qjs-win-x86:10 qjs-win-x86:39 | total 662 MB
+[status] t=291s elements=911 layoutPasses=393 paints=2251 qjs-win-x86:607 qjs-win-x86:36 qjs-win-x86:30 qjs-win-x86:10 qjs-win-x86:39 | total 721 MB
+[status] t=306s elements=911 layoutPasses=393 paints=2428 qjs-win-x86:513 qjs-win-x86:36 qjs-win-x86:30 qjs-win-x86:10 qjs-win-x86:39 | total 627 MB
