@@ -229,16 +229,23 @@ function flattenRules(rules, env, out, ua, state) {
 		else if (r.type === 12 || r.type === 0) { if (r.type === 0 || !/^\s*not\b/i.test(r.conditionText)) { flattenRules(r.cssRules, env, out, ua, state); } }
 	}
 }
+const baseEntries = new WeakMap();   // CSSStyleRule -> the cascade-independent parts of its index entries (null: unparsable)
 /** Builds an index of all active style rules for a document: array of { complex selector, decls, ua, order }, bucketed by the rightmost compound's id/class/tag. */
 export function buildRuleIndex(doc, env) {
 	const flat = []; const state = { order: 0 };
 	for (const { sheet, ua } of sheetsOf(doc)) { flattenRules(sheet.cssRules, env, flat, ua, state); }
 	const byId = new Map(), byClass = new Map(), byTag = new Map(), universal = []; let count = 0;
 	for (const f of flat) {
-		let list; try { list = f.rule.selectors; } catch { noteMissing('css: unparsable selector'); continue; }
-		const decls = expandRuleDecls(f.rule);
-		for (const complex of list) {
-			const c = complex.parts[complex.parts.length - 1].compound; const e = { complex, decls, ua: f.ua, order: f.order, spec: complex.spec, pseudoElement: c.pseudoElement, need: needOf(complex), sel: f.rule.selectorText }; count++;
+		let cached = baseEntries.get(f.rule), base;   // the parsed selectors, expanded declarations and ancestor-filter bits of a rule only change when the rule is edited (declarations replaced, selector text set): the rebuilds after a stylesheet change reuse them
+		if (cached !== undefined && cached.src === f.rule.__decls && cached.sel === f.rule.selectorText) { base = cached.base; }
+		else {
+			let list; try { list = f.rule.selectors; } catch { noteMissing('css: unparsable selector'); base = null; }
+			if (list) { const decls = expandRuleDecls(f.rule), sel = f.rule.selectorText; base = list.map((complex) => ({ complex, decls, spec: complex.spec, pseudoElement: complex.parts[complex.parts.length - 1].compound.pseudoElement, need: needOf(complex), sel })); }
+			baseEntries.set(f.rule, { src: f.rule.__decls, sel: f.rule.selectorText, base });
+		}
+		if (!base) { continue; }
+		for (const b of base) {
+			const complex = b.complex; const c = complex.parts[complex.parts.length - 1].compound; const e = { complex, decls: b.decls, ua: f.ua, order: f.order, spec: b.spec, pseudoElement: b.pseudoElement, need: b.need, sel: b.sel }; count++;
 			if (c.id) { push(byId, c.id, e); } else if (c.classes.length) { push(byClass, c.classes[0], e); } else if (c.tag) { push(byTag, c.tag, e); } else { universal.push(e); }
 		}
 	}

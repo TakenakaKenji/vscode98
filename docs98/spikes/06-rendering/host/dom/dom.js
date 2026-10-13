@@ -86,6 +86,8 @@ export class Node extends EventTarget {
 	isEqualNode(o) { return this.outerHTML === o.outerHTML; } isSameNode(o) { return this === o; }
 	normalize() { }
 }
+// the node-type constants are also readable on instances (`node.nodeType === node.ELEMENT_NODE`, as Monaco's mouse hit testing writes it)
+for (const k of ['ELEMENT_NODE', 'TEXT_NODE', 'COMMENT_NODE', 'DOCUMENT_NODE', 'DOCUMENT_FRAGMENT_NODE', 'DOCUMENT_POSITION_DISCONNECTED', 'DOCUMENT_POSITION_PRECEDING', 'DOCUMENT_POSITION_FOLLOWING', 'DOCUMENT_POSITION_CONTAINS', 'DOCUMENT_POSITION_CONTAINED_BY']) { Object.defineProperty(Node.prototype, k, { value: Node[k], enumerable: false }); }
 export class DOMException extends Error { constructor(msg, name = 'Error') { super(msg); this.name = name; this.code = 0; } }
 
 export class CharacterData extends Node {

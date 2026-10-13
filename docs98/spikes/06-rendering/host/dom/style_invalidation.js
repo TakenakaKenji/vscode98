@@ -47,9 +47,11 @@ function shapesMatch(shapes, el) {
 const ctxHit = (inv, key, el) => inv.ctxKeys.has(key) && shapesMatch(inv.ctxShapes.get(key), el);
 
 /** Analyses the active rules once per rule-set change: which keys occur as ancestor context, as sibling context, inside :has(), and which structural pseudo-classes are used. */
-export function analyzeIndex(index) {
-	const inv = { ctxKeys: new Set(), ctxShapes: new Map(), sibKeys: new Set(), sibKeysDeep: new Set(), sibUniversal: false, sibUniShapes: [], sibAllKeys: new Set(), adj: 0, adjChain: false, selfStateKeys: new Set(), hasRules: [], struct: { first: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, last: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, nth: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, nthLast: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, empty: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] } }, entries: 0 };
-	const all = [...index.byId.values(), ...index.byClass.values(), ...index.byTag.values(), index.universal].flat(); inv.entries = all.length; const seen = new Set();
+export function analyzeIndex(index, prev) {
+	const fresh = { ctxKeys: new Set(), ctxShapes: new Map(), sibKeys: new Set(), sibKeysDeep: new Set(), sibUniversal: false, sibUniShapes: [], sibAllKeys: new Set(), adj: 0, adjChain: false, selfStateKeys: new Set(), hasRules: [], struct: { first: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, last: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, nth: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, nthLast: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, empty: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] } }, entries: 0 };
+	const all = [...index.byId.values(), ...index.byClass.values(), ...index.byTag.values(), index.universal].flat();
+	// the analysis only ever grows (a key or shape that was context once stays context), so a rule-set change scans just the rules not seen before; it starts over when most of what it remembers is gone
+	const inv = prev && prev.__seen && prev.__seen.size <= 2 * all.length + 2000 ? prev : Object.defineProperty(fresh, '__seen', { value: new Set() }); inv.entries = all.length; const seen = inv.__seen;
 	const scanCompoundPseudos = (c, left, eff, forced, shape) => {
 		for (const p of c.pseudos) {
 			const cats = STRUCT_CAT[p.name]; if (cats) { for (const cat of cats) { inv.struct[cat].any = true; if (left || forced) { inv.struct[cat].left = true; inv.struct[cat].shapes.push(shape); } if (eff) { inv.struct[cat].sib = Math.max(inv.struct[cat].sib, eff); inv.struct[cat].sibShapes.push(shape); } } }

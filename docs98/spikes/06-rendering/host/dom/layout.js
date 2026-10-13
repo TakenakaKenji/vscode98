@@ -23,7 +23,7 @@ export function resolveStyles(doc, env, log) {
 	if (!doc.__styleReady) { full = 'first pass'; } else if (log === undefined) { full = 'no mutation log'; } else if (doc.__incremental === false) { full = 'incremental style disabled'; }
 	let planInv = null;
 	if (!index || doc.__indexRulesVersion !== doc.__rulesVersion || envKey !== doc.__indexEnvKey || (log && logTouchesSheets(log))) {
-		const old = index; index = buildRuleIndex(doc, env); index.inv = analyzeIndex(index); planInv = old && old.inv ? mergeInv(old.inv, index.inv) : index.inv; doc.__ruleIndex = index; doc.__indexRulesVersion = doc.__rulesVersion;
+		const old = index; index = buildRuleIndex(doc, env); index.inv = analyzeIndex(index, old && old.inv); planInv = old && old.inv && old.inv !== index.inv ? mergeInv(old.inv, index.inv) : index.inv; doc.__ruleIndex = index; doc.__indexRulesVersion = doc.__rulesVersion;
 		if (!full) { if (envKey !== doc.__indexEnvKey) { full = 'environment changed'; } else { delta = old ? diffIndex(old, index) : null; if (!delta) { full = 'rule set changed too much'; } } }
 		doc.__indexEnvKey = envKey;
 	}

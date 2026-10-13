@@ -87,7 +87,7 @@ const procLike = { platform: nodeProcess.platform, arch: 'x64', env: { ...nodePr
 installPreload(env.window, ipc, { argv: createOpts?.options?.webPreferences?.additionalArguments || [], process: procLike });
 env.window.queryLocalFonts = async () => [];
 env.window.postMessage = (data, origin, transfer) => { const ev = Object.assign(new env.window.Event('message'), { data, origin: '', source: env.window, ports: transfer || [] }); setTimeout(() => env.window.dispatchEvent(ev), 0); };
-const errors = []; const note = (k, e) => { errors.push([k, (e && (e.stack || e.message)) || String(e)]); };
+const errors = []; let liveNote = null; const note = (k, e) => { const m = (e && (e.stack || e.message)) || String(e); errors.push([k, m]); if (liveNote) { liveNote(k, m); } };
 env.window.addEventListener('error', (ev) => note('window.onerror', ev.error || ev.message));
 globalThis.__rejection = (promise, reason, handled) => { if (handled) { return; } const ev = new globalThis.Event('unhandledrejection', { cancelable: true }); ev.promise = promise; ev.reason = reason; globalThis.dispatchEvent(ev); if (!ev.defaultPrevented) { note('unhandledRejection', reason); } };
 const consoleLog = []; for (const k of ['log', 'info', 'warn', 'error', 'debug', 'trace']) { console[k] = (...a) => { consoleLog.push([k, a.map(x => (x && x.stack) || String(x)).join(' ')]); }; }
@@ -102,6 +102,7 @@ if (opt('window', '0') === '1') {                      // a real window (Win32/G
 	const { openWindow } = await import('../../11-windows-host/host/window_host98.mjs');
 	winHost = openWindow(ctx, { width: W, height: H, title: 'vscode98', exact: opt('backend') === 'native-exact', onClose: () => { try { child.kill(); } catch { /* gone */ } } });
 	log('[harness] window opened');
+	{ const seen = new Map(); liveNote = (k, m) => { const key = k + m.split('\n')[0].slice(0, 120); const n = (seen.get(key) || 0) + 1; seen.set(key, n); if (n <= 2) { log('[error] ' + k + ': ' + m.split('\n').slice(0, 6).join(' | ').slice(0, 600)); } }; }   // errors of the renderer (window events, paints, rejections) as they happen
 	// progress and memory every --status-every seconds (default 15), and a BMP of the window (open it with Paint) at the times given by --shot-at (default 60,150,300)
 	const t0w = performance.now(); const shots = opt('shot-at', '60,150,300').split(',').map(Number).filter(Boolean); const every = Number(opt('status-every', 15));
 	const bmp = (name, px, w, h) => { const rowb = (w * 3 + 3) & ~3, size = 54 + rowb * h, b = new Uint8Array(size), dv = new DataView(b.buffer); b[0] = 66; b[1] = 77; dv.setUint32(2, size, true); dv.setUint32(10, 54, true); dv.setUint32(14, 40, true); dv.setInt32(18, w, true); dv.setInt32(22, h, true); dv.setUint16(26, 1, true); dv.setUint16(28, 24, true); dv.setUint32(34, rowb * h, true);
@@ -110,7 +111,8 @@ if (opt('window', '0') === '1') {                      // a real window (Win32/G
 	const status = () => {
 		const t = (performance.now() - t0w) / 1000; const els = doc.getElementsByTagName('*').length; const ps = doc.__passStats || []; let tree = '';
 		try { const sp = globalThis.__spikeProc; if (sp && sp.processTree) { const pt = sp.processTree(nodeProcess.pid ?? sp.getpid()); tree = pt.map(x => `${x.name.replace(/\.exe$/i, '')}:${x.mb.toFixed(0)}`).join(' ') + ' | total ' + pt.reduce((a, x) => a + x.mb, 0).toFixed(0) + ' MB'; } } catch (e) { tree = 'mem? ' + e.message; }
-		log(`[status] t=${t.toFixed(0)}s elements=${els} layoutPasses=${ps.length} paints=${winHost.stats().paints} ${tree}`);
+		const ed = doc.querySelector('.editor-instance .monaco-editor'); const edInfo = ed ? ` editor=${JSON.stringify([...ed.querySelectorAll('.view-line')].slice(0, 3).map(l => l.textContent))} active=${doc.activeElement ? doc.activeElement.localName + '.' + String(doc.activeElement.getAttribute('class') || '').split(' ')[0] : 'none'}` : ' editor=none';
+		log(`[status] t=${t.toFixed(0)}s elements=${els} layoutPasses=${ps.length} paints=${winHost.stats().paints}${edInfo} ${tree}`);
 		for (const s of shots) { if (t >= s && !done.has(s)) { done.add(s); const r = paintDocument(doc, W, H, new NativeBackend(W, H)); const name = nodePath.join(nodePath.dirname(opt('user-data-dir', '.')), 'results', `window-${s}s.bmp`); bmp(name, r.px, r.w, r.h); log('[status] wrote ' + name); } }
 		os.setTimeout(status, every * 1000);
 	};

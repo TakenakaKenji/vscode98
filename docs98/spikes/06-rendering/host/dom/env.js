@@ -34,7 +34,18 @@ export class Document extends Node {
 	importNode(n, deep) { return n.cloneNode(deep); } adoptNode(n) { return n; } open() { } close() { } write() { } writeln() { }
 	elementFromPoint(x, y) { return this.elementsFromPoint(x, y)[0] ?? null; }
 	elementsFromPoint(x, y) { this.__ensureLayout(); const out = []; const walk = (b) => { for (const c of [...b.children].reverse()) { if (c.kind === 'text' || !c.el) { continue; } walk(c); } if (b.el && b.v.visibility !== 'hidden' && b.v['pointer-events'] !== 'none') { const r = this.__rect(b.el); if (x >= r.left && x < r.right && y >= r.top && y < r.bottom) { out.push(b.el); } } }; if (this.__layout && this.__layout.rootBox) { walk(this.__layout.rootBox); } return out; }
-	caretRangeFromPoint() { return null; } caretPositionFromPoint() { return null; }
+	/** The caret position nearest to a point, as a collapsed Range in a text node (the editor's mouse hit-testing of text needs it): the text under the element at the point whose line contains `y`, nearest in x. */
+	caretRangeFromPoint(x, y) {
+		this.__ensureLayout(); const lay = this.__layout; const el = lay && this.elementFromPoint(x, y); if (!el) { return null; }
+		let best = null, bestD = Infinity;
+		const scan = (n) => { for (const c of n.__children) { if (c.nodeType === 3) { for (const f of lay.fragsByText.get(c) || []) { if (y < f.ay || y >= f.ay + f.asc + f.desc) { continue; } const w = this.__measure(f, f.text); const d = x < f.ax ? f.ax - x : x > f.ax + w ? x - f.ax - w : 0; if (d < bestD) { bestD = d; best = { node: c, f }; } } } else if (c.nodeType === 1) { scan(c); } } };
+		scan(el); const r = new D.Range(this);
+		if (!best) { r.setStart(el, 0); r.setEnd(el, 0); return r; }
+		const { node, f } = best; let acc = 0, idx = 0; for (const ch of f.text) { const a = advance(f.font, ch.codePointAt(0), f.size) + f.ls; if (x < f.ax + acc + a / 2) { break; } acc += a; idx += ch.length; }
+		const off = f.text.length === f.srcEnd - f.src ? f.src + idx : f.src + Math.round(idx * (f.srcEnd - f.src) / Math.max(1, f.text.length));
+		r.setStart(node, off); r.setEnd(node, off); return r;
+	}
+	caretPositionFromPoint() { return null; }
 	__allSheets() { const out = []; const walk = (n) => { for (const c of n.__children) { if (c.nodeType !== 1) { continue; } if (c.localName === 'style' || (c.localName === 'link' && (c.getAttribute('rel') || '').toLowerCase() === 'stylesheet')) { const s = this.__ensureSheet(c); if (s) { out.push(s); } } walk(c); } }; walk(this); for (const s of this.__adopted || []) { s.__doc = this; out.push(s); } return out; }
 	__ensureSheet(el) {
 		let rec = this.__sheets.get(el); const text = el.localName === 'style' ? el.textContent : (el.__linkText ?? '');
