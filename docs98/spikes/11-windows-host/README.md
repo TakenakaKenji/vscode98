@@ -52,7 +52,7 @@
 
 1. Windows 7 SP1 32-bit, 2 GB RAM, 2 vCPUs, 1280×800, no 3D (the spec given in the conversation).
 2. Unzip `dist/vscode98-win-selftest-x86.zip` (built by `host/package_win.sh dist-dir x86`; not committed, it is a build product) anywhere and run `selftest.cmd` in `cmd.exe`. It writes `results\` (system info, one text file per test). The window test needs you to move the mouse over the window, click, scroll and type for 15 s.
-3. Send `results\` back. The desktop workbench needs the 300 MB app bundle on top (`host/build_desktop.sh` of spike 10 + `node_modules`); a second package for it comes after the self test passes.
+3. Send `results\` back. The desktop workbench is a second package (`host/package_desktop.sh`, 42 MB zipped, 166 MB unpacked: the app bundle without source maps, the 60 `node_modules` packages the app loads with their native binaries emptied, `theme-defaults` and the git extension's compiled output): unzip, run `run-desktop.cmd [width height]` (default 1000×700; the VM's screen is 1024×768) and send `results\desktop.txt`. Under Wine the package boots to the Explorer with the sample folder in a window (802 elements after 42 s, still filling).
 
 ## Gaps and findings
 
