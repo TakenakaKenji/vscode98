@@ -76,3 +76,7 @@
 ## Files
 
 `host/{build_win.sh, patch_libc.py, winhook.h, winproc.c, winwin.c, window_host98.mjs, check_imports.sh, build_path.sh, package_win.sh}`, `tests/{proc_raw.mjs, net_pipe.cjs, win_gdi.mjs}`, `package/selftest.cmd`, `results/`. Changed in other spikes: `02-node-shim/host/{globals.js, impl/{path,os,url,module,fs,events,crypto,vspath}.js, gen_shims.mjs}`, `05-child-process/host/{esm_loader,fork_main,proc_setup,build_impl}.mjs`, `05-child-process/host/impl/{child_process,fdstreams,net,fdio}.js`, `05-child-process/tests/fork_parent.cjs`, `07-native-render/host/render.c`, `10-main-shim/host/*` (hooks, stubs, harness).
+
+## Desktop run diagnostics (window mode)
+
+`--status-every N` (default 15 s) logs `[status] t= elements= layoutPasses= paints=` and the **working set of the whole process tree** (`processTree` in `winproc.c`: Toolhelp snapshot + `GetProcessMemoryInfo`, which is Windows 7 or later), and `--shot-at 60,150,300` writes `results\window-<s>s.bmp` (24-bit BMP, open it with Paint) so a run can be judged from `desktop.txt` and the bitmaps alone. Under Wine: 396 MB at 21 s (8 elements), 619 MB at 39 s (802 elements), 674 MB at 51 s (873 elements, 118 layout passes).

@@ -13,6 +13,9 @@ import { installEnvironment } from '../../06-rendering/host/dom/env.js';
 import { parseFragment, missing } from '../../06-rendering/host/dom/dom.js';
 import { unsupported } from '../../06-rendering/host/dom/layout.js';
 import { paintDocument, toPPM, unpainted } from '../../06-rendering/host/dom/paint.js';
+import { NativeBackend } from '../../07-native-render/host/native_backend.js';
+import * as spikeProc from 'spike:proc';
+globalThis.__spikeProc = spikeProc;
 import { installWebShims, resolveUrl, absolutizeCssUrls } from '../../08-workbench-boot/host/web_shims.js';
 import { summarizeRun, runScenario } from '../../08-workbench-boot/host/boot_common.js';
 import './error_stack98.js';
@@ -99,6 +102,19 @@ if (opt('window', '0') === '1') {                      // a real window (Win32/G
 	const { openWindow } = await import('../../11-windows-host/host/window_host98.mjs');
 	winHost = openWindow(ctx, { width: W, height: H, title: 'vscode98', exact: opt('backend') === 'native-exact', onClose: () => { try { child.kill(); } catch { /* gone */ } } });
 	log('[harness] window opened');
+	// progress and memory every --status-every seconds (default 15), and a BMP of the window (open it with Paint) at the times given by --shot-at (default 60,150,300)
+	const t0w = performance.now(); const shots = opt('shot-at', '60,150,300').split(',').map(Number).filter(Boolean); const every = Number(opt('status-every', 15));
+	const bmp = (name, px, w, h) => { const rowb = (w * 3 + 3) & ~3, size = 54 + rowb * h, b = new Uint8Array(size), dv = new DataView(b.buffer); b[0] = 66; b[1] = 77; dv.setUint32(2, size, true); dv.setUint32(10, 54, true); dv.setUint32(14, 40, true); dv.setInt32(18, w, true); dv.setInt32(22, h, true); dv.setUint16(26, 1, true); dv.setUint16(28, 24, true); dv.setUint32(34, rowb * h, true);
+		for (let y = 0; y < h; y++) { let o = 54 + (h - 1 - y) * rowb; for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; b[o++] = px[i + 2]; b[o++] = px[i + 1]; b[o++] = px[i]; } } const f = std.open(name, 'wb'); if (f) { f.write(b.buffer, 0, size); f.close(); } };
+	const done = new Set();
+	const status = () => {
+		const t = (performance.now() - t0w) / 1000; const els = doc.getElementsByTagName('*').length; const ps = doc.__passStats || []; let tree = '';
+		try { const sp = globalThis.__spikeProc; if (sp && sp.processTree) { const pt = sp.processTree(nodeProcess.pid ?? sp.getpid()); tree = pt.map(x => `${x.name.replace(/\.exe$/i, '')}:${x.mb.toFixed(0)}`).join(' ') + ' | total ' + pt.reduce((a, x) => a + x.mb, 0).toFixed(0) + ' MB'; } } catch (e) { tree = 'mem? ' + e.message; }
+		log(`[status] t=${t.toFixed(0)}s elements=${els} layoutPasses=${ps.length} paints=${winHost.stats().paints} ${tree}`);
+		for (const s of shots) { if (t >= s && !done.has(s)) { done.add(s); const r = paintDocument(doc, W, H, new NativeBackend(W, H)); const name = nodePath.join(nodePath.dirname(opt('user-data-dir', '.')), 'results', `window-${s}s.bmp`); bmp(name, r.px, r.w, r.h); log('[status] wrote ' + name); } }
+		os.setTimeout(status, every * 1000);
+	};
+	os.setTimeout(status, every * 1000);
 }
 await runScenario(ctx, { seconds, stableRounds: Number(opt('stable', 25)) });
 const done = performance.now();

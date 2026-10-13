@@ -16,6 +16,8 @@
 #include <windows.h>
 #include <stdio.h>
 #include <io.h>
+#include <tlhelp32.h>
+#include <psapi.h>
 #include <stdlib.h>
 #include <string.h>
 #include "quickjs.h"
@@ -408,6 +410,26 @@ static JSValue js_rename(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 	BOOL ok = MoveFileExW(wa, wb, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED); DWORD e = ok ? 0 : GetLastError(); free(wa); free(wb);
 	return JS_NewInt32(ctx, ok ? 0 : -errno_from_win(e));
 }
+/* processTree(rootPid) -> [{ pid, ppid, name, mb, peakMb }] for the process and its descendants (Toolhelp snapshot + working set from psapi): memory numbers without a task manager */
+static JSValue js_process_tree(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+	int root = argc > 0 ? arg_fd(ctx, argv[0]) : (int)GetCurrentProcessId(); JSValue arr = JS_NewArray(ctx);
+	HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0); if (snap == INVALID_HANDLE_VALUE) { return arr; }
+	PROCESSENTRY32W e; e.dwSize = sizeof e; static DWORD pids[4096], par[4096]; static wchar_t names[4096][64]; int n = 0;
+	if (Process32FirstW(snap, &e)) { do { if (n < 4096) { pids[n] = e.th32ProcessID; par[n] = e.th32ParentProcessID; wcsncpy(names[n], e.szExeFile, 63); names[n][63] = 0; n++; } } while (Process32NextW(snap, &e)); }
+	CloseHandle(snap);
+	char in[4096] = { 0 }; int out = 0; DWORD want[4096]; want[out++] = (DWORD)root;
+	for (int i = 0; i < out; i++) { for (int j = 0; j < n; j++) { if (par[j] == want[i] && pids[j] != want[i] && out < 4096) { int seen = 0; for (int k = 0; k < out; k++) { if (want[k] == pids[j]) { seen = 1; } } if (!seen) { want[out++] = pids[j]; } } } }
+	(void)in; uint32_t idx = 0;
+	for (int i = 0; i < out; i++) {
+		int j = -1; for (int k = 0; k < n; k++) { if (pids[k] == want[i]) { j = k; break; } } if (j < 0) { continue; }
+		PROCESS_MEMORY_COUNTERS pmc; memset(&pmc, 0, sizeof pmc); HANDLE h = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, want[i]); if (h) { GetProcessMemoryInfo(h, &pmc, sizeof pmc); CloseHandle(h); }
+		JSValue o = JS_NewObject(ctx); char *nm = narrow(names[j]);
+		JS_SetPropertyStr(ctx, o, "pid", JS_NewInt32(ctx, (int)pids[j])); JS_SetPropertyStr(ctx, o, "ppid", JS_NewInt32(ctx, (int)par[j])); JS_SetPropertyStr(ctx, o, "name", JS_NewString(ctx, nm)); free(nm);
+		JS_SetPropertyStr(ctx, o, "mb", JS_NewFloat64(ctx, pmc.WorkingSetSize / 1048576.0)); JS_SetPropertyStr(ctx, o, "peakMb", JS_NewFloat64(ctx, pmc.PeakWorkingSetSize / 1048576.0));
+		JS_SetPropertyUint32(ctx, arr, idx++, o);
+	}
+	return arr;
+}
 static JSValue js_getpid(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { return JS_NewInt32(ctx, (int)GetCurrentProcessId()); }
 
 /* spawnSync's engine: pollSync({ pid, inFd, input, outFd, errFd, timeoutMs, maxBuffer }) -> { status, signal, out, err, timedOut, overflow }. Closes the three fds. */
@@ -577,7 +599,7 @@ static JSValue js_utf8_encode(JSContext *ctx, JSValueConst this_val, int argc, J
 static const JSCFunctionListEntry funcs[] = {
 	JS_CFUNC_DEF("pipe", 1, js_pipe), JS_CFUNC_DEF("socketpair", 0, js_socketpair), JS_CFUNC_DEF("read", 4, js_read), JS_CFUNC_DEF("write", 4, js_write), JS_CFUNC_DEF("close", 1, js_close),
 	JS_CFUNC_DEF("setReadHandler", 2, js_set_read_handler), JS_CFUNC_DEF("setWriteHandler", 2, js_set_write_handler), JS_CFUNC_DEF("spawn", 1, js_spawn), JS_CFUNC_DEF("watchExit", 2, js_watch_exit),
-	JS_CFUNC_DEF("kill", 2, js_kill), JS_CFUNC_DEF("exePath", 0, js_exe_path), JS_CFUNC_DEF("rename", 2, js_rename), JS_CFUNC_DEF("getpid", 0, js_getpid), JS_CFUNC_DEF("pollSync", 1, js_poll_sync), JS_CFUNC_DEF("errname", 1, js_errname),
+	JS_CFUNC_DEF("kill", 2, js_kill), JS_CFUNC_DEF("exePath", 0, js_exe_path), JS_CFUNC_DEF("rename", 2, js_rename), JS_CFUNC_DEF("getpid", 0, js_getpid), JS_CFUNC_DEF("processTree", 1, js_process_tree), JS_CFUNC_DEF("pollSync", 1, js_poll_sync), JS_CFUNC_DEF("errname", 1, js_errname),
 	JS_CFUNC_DEF("setNonblock", 2, js_noop_ok), JS_CFUNC_DEF("setCloexec", 2, js_noop_ok), JS_CFUNC_DEF("ignoreSigpipe", 0, js_noop0), JS_CFUNC_DEF("shutdown", 2, js_shutdown),
 	JS_CFUNC_DEF("listen", 2, js_nosys), JS_CFUNC_DEF("listenUnix", 1, js_listen_unix), JS_CFUNC_DEF("accept", 1, js_accept), JS_CFUNC_DEF("connect", 2, js_nosys), JS_CFUNC_DEF("connectUnix", 1, js_connect_unix),
 	JS_CFUNC_DEF("soError", 1, js_noop_ok), JS_CFUNC_DEF("sockPort", 1, js_noop_ok),
