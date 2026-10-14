@@ -20,7 +20,11 @@ export class Event {
 export class UIEvent extends Event { constructor(t, i = {}) { super(t, i); this.detail = i.detail ?? 0; this.view = i.view ?? null; } }
 export class MouseEvent extends UIEvent { constructor(t, i = {}) { super(t, i); Object.assign(this, { screenX: 0, screenY: 0, clientX: 0, clientY: 0, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, button: 0, buttons: 0, relatedTarget: null, pageX: i.clientX ?? 0, pageY: i.clientY ?? 0, offsetX: 0, offsetY: 0 }, i); } }
 export class PointerEvent extends MouseEvent { constructor(t, i = {}) { super(t, i); this.pointerId = i.pointerId ?? 1; this.pointerType = i.pointerType ?? 'mouse'; } }
-export class WheelEvent extends MouseEvent { constructor(t, i = {}) { super(t, i); Object.assign(this, { deltaX: 0, deltaY: 0, deltaZ: 0, deltaMode: 0, wheelDelta: 0, wheelDeltaX: 0, wheelDeltaY: 0 }, i); } }
+export class WheelEvent extends MouseEvent {
+	static DOM_DELTA_PIXEL = 0; static DOM_DELTA_LINE = 1; static DOM_DELTA_PAGE = 2;
+	constructor(t, i = {}) { super(t, i); Object.assign(this, { deltaX: 0, deltaY: 0, deltaZ: 0, deltaMode: 0, wheelDelta: 0, wheelDeltaX: 0, wheelDeltaY: 0 }, i); if (i.wheelDeltaY === undefined) { this.wheelDeltaY = -this.deltaY * 1.2; } if (i.wheelDeltaX === undefined) { this.wheelDeltaX = -this.deltaX * 1.2; } if (i.wheelDelta === undefined) { this.wheelDelta = this.wheelDeltaY || this.wheelDeltaX; } }   // a 100 px notch is 120 in the legacy wheelDelta fields, which Monaco's StandardWheelEvent reads first
+	get DOM_DELTA_PIXEL() { return 0; } get DOM_DELTA_LINE() { return 1; } get DOM_DELTA_PAGE() { return 2; }
+}
 export class KeyboardEvent extends UIEvent { constructor(t, i = {}) { super(t, i); Object.assign(this, { key: '', code: '', keyCode: 0, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, repeat: false, location: 0, isComposing: false }, i); } getModifierState() { return false; } }
 export class FocusEvent extends UIEvent { constructor(t, i = {}) { super(t, i); this.relatedTarget = i.relatedTarget ?? null; } }
 export class CustomEvent extends Event { constructor(t, i = {}) { super(t, i); this.detail = i.detail ?? null; } }
