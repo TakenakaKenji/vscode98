@@ -1,0 +1,23 @@
+// iframe windows: scripts, postMessage with a transferred MessagePort, document.open/write/close into a nested frame, load events.
+import * as std from 'qjs:std';
+import '../../../02-node-shim/host/globals.js';
+import * as opentype from '/home/user/vscode98/node_modules/opentype.js/dist/opentype.mjs';
+import '../dom/intl_shim.js';
+import { installEnvironment } from '../dom/env.js';
+const readBytes = (f) => { const h = std.open(f, 'rb'); if (!h) { throw new Error('ENOENT ' + f); } h.seek(0, std.SEEK_END); const n = h.tell(); h.seek(0, std.SEEK_SET); const ab = new ArrayBuffer(n); h.read(ab, 0, n); h.close(); return ab; };
+globalThis.__readFileBytes = readBytes;
+const env = installEnvironment({ width: 800, height: 600, opentype, readUrl: (u) => readBytes(decodeURIComponent(new URL(u).pathname)) }); const doc = env.document;
+env.window.location.href = 'file:///tmp/claude-0/ft/main.html'; env.window.location.pathname = '/tmp/claude-0/ft/main.html';
+const log = (...a) => console.log(...a); const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const msgs = []; window.addEventListener('message', (e) => { msgs.push(e); log('message ' + JSON.stringify(e.data) + ' origin=' + e.origin + ' ports=' + e.ports.length + ' sourceIsFrame=' + (e.source === iframe.contentWindow)); if (e.data.channel === 'ready') { e.ports[0].onmessage = (m) => log('port got ' + JSON.stringify(m.data)); e.ports[0].postMessage({ ping: 1 }); } });
+const iframe = doc.createElement('iframe'); iframe.setAttribute('src', 'file:///tmp/claude-0/ft/outer.html?id=7'); doc.body.appendChild(iframe);
+log('contentWindow ' + typeof iframe.contentWindow + ' doc ' + typeof iframe.contentDocument);
+await wait(300); doc.__ensureLayout();
+const od = iframe.contentDocument; log('outer text: ' + (od.getElementById('d') && od.getElementById('d').textContent));
+const inner = od.getElementById('inner'); log('inner frame doc text: ' + (inner && inner.contentDocument.body.textContent));
+log('inner pathname ' + inner.contentWindow.location.pathname + ' origin ' + inner.contentWindow.origin);
+const lay = doc.__layout; log('iframe box ' + JSON.stringify(lay && lay.boxOf.get(iframe) && [lay.boxOf.get(iframe).w, lay.boxOf.get(iframe).h]) + ' frame viewport ' + iframe.contentWindow.innerWidth + 'x' + iframe.contentWindow.innerHeight);
+import { paintDocument, toPPM } from '../dom/paint.js';
+iframe.setAttribute('style', 'width:400px;height:200px;border:2px solid #888'); doc.body.setAttribute('style', 'background:#eee'); await wait(100); doc.__ensureLayout();
+const r = paintDocument(doc, 800, 600); const ppm = toPPM(r.px, 800, 600); const fh = std.open('/tmp/claude-0/ft/frames.ppm', 'wb'); fh.write(ppm.buffer, 0, ppm.length); fh.close();
+const hit = doc.__deepHit(40, 20); log('deep hit ' + hit.el.localName + '#' + hit.el.id + ' doc=' + (hit.doc === doc ? 'main' : 'frame') + ' at ' + hit.x + ',' + hit.y + ' text=' + (hit.el.textContent || '').slice(0, 20));

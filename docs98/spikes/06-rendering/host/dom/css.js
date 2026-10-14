@@ -200,7 +200,7 @@ init('overflow-x overflow-y', 'visible'); init('user-select -webkit-user-select'
 def('top right bottom left width height margin-top margin-right margin-bottom margin-left flex-basis row-gap column-gap', 0, 'auto', 'len'); for (const n of ['row-gap', 'column-gap']) { T[n].init = 'normal'; } for (const n of ['margin-top', 'margin-right', 'margin-bottom', 'margin-left']) { T[n].init = 0; } T['flex-basis'].init = 'auto';
 def('min-width min-height padding-top padding-right padding-bottom padding-left border-top-width border-right-width border-bottom-width border-left-width outline-width border-top-left-radius border-top-right-radius border-bottom-right-radius border-bottom-left-radius outline-offset', 0, 0, 'len');
 for (const n of ['border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width', 'outline-width']) { T[n].init = 3; }
-def('max-width max-height', 0, 'none', 'len'); def('letter-spacing word-spacing', 1, 'normal', 'len'); def('text-indent', 1, 0, 'len'); def('line-height', 1, 'normal', 'len'); def('font-size', 1, 16, 'len'); def('font-weight', 1, 400, 'num'); def('font-family', 1, 'serif', 'str');
+def('anchor-name position-anchor', 0, 'none', 'str'); def('max-width max-height', 0, 'none', 'len'); def('letter-spacing word-spacing', 1, 'normal', 'len'); def('text-indent', 1, 0, 'len'); def('line-height', 1, 'normal', 'len'); def('font-size', 1, 16, 'len'); def('font-weight', 1, 400, 'num'); def('font-family', 1, 'serif', 'str');
 def('opacity flex-grow', 0, 1, 'num'); T['flex-grow'].init = 0; def('flex-shrink', 0, 1, 'num'); def('z-index', 0, 'auto', 'int'); def('order', 0, 0, 'int');
 def('color', 1, [0, 0, 0, 1], 'color'); def('background-color border-top-color border-right-color border-bottom-color border-left-color outline-color text-decoration-color', 0, 'currentcolor', 'color'); T['background-color'].init = [0, 0, 0, 0];
 def('content', 0, 'normal', 'str');
@@ -422,14 +422,17 @@ export function computeStyle(el, parentCS, index, env, pseudo, candsIn) {
 	const color0 = declared.get('color'); let color = parentVals ? parentVals.color : T.color.init; if (color0 !== undefined && !/^(inherit|unset)$/i.test(color0)) { const c = /^initial$/i.test(color0) ? T.color.init : parseColor(color0, color); if (c) { color = c; } }
 	for (const k of NONINH) { out[k] = INIT[k]; }
 	for (const k of INH) { out[k] = parentVals ? parentVals[k] : INIT[k]; }
+	let anchored;
 	for (const [k, d] of declared) {
 		const p = T[k]; if (!p || k === 'font-size' || k === 'color') { continue; }
+		if (d.charCodeAt(0) === 97 && /^anchor(-size)?\(/.test(d)) { (anchored ??= {})[k] = d; const px = el.__anchorPx && el.__anchorPx[k]; out[k] = px !== undefined ? px : INIT[k]; continue; }   // CSS anchor positioning: anchor() / anchor-size() are resolved after layout from the anchor's box (env.js resolveAnchors) and arrive here as pixels
 		if (/^initial$/i.test(d)) { out[k] = INIT[k]; continue; }
 		if (/^inherit$/i.test(d) || (p.inh && /^unset$/i.test(d))) { out[k] = parentVals ? parentVals[k] : INIT[k]; continue; }
 		if (/^(unset|revert|revert-layer)$/i.test(d)) { out[k] = INIT[k]; continue; }
 		out[k] = parseValueCached(p, k, d, ctx, color) ?? (p.inh && parentVals ? parentVals[k] : INIT[k]);
 	}
 	out['font-size'] = fontSize; out.color = color;
+	if (anchored || (out['anchor-name'] && out['anchor-name'] !== 'none')) { const ad = el.ownerDocument; if (ad) { if (anchored) { Object.defineProperty(out, '__anchored', { value: anchored, enumerable: false }); (ad.__anchoredEls ??= new Set()).add(el); } if (out['anchor-name'] !== 'none') { (ad.__anchorEls ??= new Set()).add(el); } ad.__hasAnchors = true; } }
 	// border widths are 0 when the style is none/hidden
 	for (const s of SIDES) { const st = out[`border-${s}-style`]; if (st === 'none' || st === 'hidden') { out[`border-${s}-width`] = 0; } else if (out[`border-${s}-width`] && typeof out[`border-${s}-width`] === 'string') { out[`border-${s}-width`] = { thin: 1, medium: 3, thick: 5 }[out[`border-${s}-width`]] ?? 3; } if (out[`border-${s}-color`] === 'currentcolor') { out[`border-${s}-color`] = color; } }
 	if (out['outline-color'] === 'currentcolor') { out['outline-color'] = color; } if (out['text-decoration-color'] === 'currentcolor') { out['text-decoration-color'] = color; }

@@ -80,7 +80,7 @@ export class Node extends EventTarget {
 	contains(o) { for (let n = o; n; n = n.parentNode) { if (n === this) { return true; } } return false; }
 	getRootNode() { let n = this; while (n.parentNode) { n = n.parentNode; } return n; }
 	__parentForEvents() { return this.parentNode ?? (this.nodeType === 9 ? this.defaultView : null); }
-	__invalidate(kind, what, arg, extra) { const d = this.nodeType === 9 ? this : this.ownerDocument; if (d) { d.__dirty = true; d.__styleDirty = d.__styleDirty || kind === 'style'; const log = (d.__dirtyLog ??= []); if (log.length < 200000) { log.push([kind, what, this, arg, extra]); } else { d.__logOverflow = true; } } }   // the log (cleared by every layout pass) says what made the pass necessary
+	__invalidate(kind, what, arg, extra) { const d = this.nodeType === 9 ? this : this.ownerDocument; if (d) { d.__dirty = true; if (d.__parentDoc) { d.__parentDoc.__paintGen = (d.__parentDoc.__paintGen | 0) + 1; } d.__styleDirty = d.__styleDirty || kind === 'style'; const log = (d.__dirtyLog ??= []); if (log.length < 200000) { log.push([kind, what, this, arg, extra]); } else { d.__logOverflow = true; } } }   // the log (cleared by every layout pass) says what made the pass necessary
 	insertBefore(node, ref) {
 		if (node.nodeType === 11) { for (const c of [...node.__children]) { this.insertBefore(c, ref); } return node; }
 		if (ref && ref.parentNode !== this) { throw new DOMException('The node before which the new node is to be inserted is not a child of this node.', 'NotFoundError'); }
@@ -141,11 +141,11 @@ const ParentNodeMixin = {
 function mixin(cls, src) { for (const k of Object.getOwnPropertyNames(src)) { Object.defineProperty(cls.prototype, k, Object.getOwnPropertyDescriptor(src, k)); } }
 
 // ---- attributes, classList, style ------------------------------------------------------------------------------------------------------------
-class DOMTokenList {
-	constructor(el) { this.__el = el; }
-	__list() { return (this.__el.getAttribute('class') || '').split(/\s+/).filter(Boolean); }
-	__set(l) { this.__el.setAttribute('class', l.join(' ')); }
-	get length() { return this.__list().length; } get value() { return this.__el.getAttribute('class') || ''; } set value(v) { this.__el.setAttribute('class', v); }
+export class DOMTokenList {
+	constructor(el, attr = 'class') { this.__el = el; this.__attr = attr; }
+	__list() { return (this.__el.getAttribute(this.__attr) || '').split(/\s+/).filter(Boolean); }
+	__set(l) { this.__el.setAttribute(this.__attr, l.join(' ')); }
+	get length() { return this.__list().length; } get value() { return this.__el.getAttribute(this.__attr) || ''; } set value(v) { this.__el.setAttribute(this.__attr, v); }
 	item(i) { return this.__list()[i] ?? null; } contains(t) { return this.__list().includes(t); }
 	add(...ts) { const l = this.__list(); let ch = false; for (const t of ts) { if (!l.includes(t)) { l.push(t); ch = true; } } if (ch) { this.__set(l); } }
 	remove(...ts) { const l = this.__list(); const n = l.filter(x => !ts.includes(x)); if (n.length !== l.length) { this.__set(n); } }
@@ -187,6 +187,13 @@ const STYLE_PROXY = {
 };
 
 // ---- Element ----------------------------------------------------------------------------------------------------------------------------------
+/** focus: the element becomes the active element of its document (and an iframe's document focuses the iframe element in the embedding document) */
+function focusElement(el) {
+	const self = el; const d = el.ownerDocument; if (!d) { return; }
+	if (d.__activeElement !== self) { const d = self.ownerDocument; const prev = d.__activeElement; d.__activeElement = self; if (prev) { prev.__invalidate('style', 'state', 'focus'); if (prev.__tc) { controlBlurred(prev); } } self.__invalidate('style', 'state', 'focus'); if (self.__tc) { controlFocused(self); } if (prev) { prev.dispatchEvent(new FocusEvent('blur', { relatedTarget: self })); prev.dispatchEvent(new FocusEvent('focusout', { relatedTarget: self, bubbles: true })); } self.dispatchEvent(new FocusEvent('focus', { relatedTarget: prev })); self.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: prev })); }
+	const pd = d.__parentDoc; if (pd) { const fe = d.__env.frameElement; if (fe && fe.isConnected) { focusElement(fe); } }
+}
+const rootDocOf = (d) => { while (d && d.__parentDoc) { d = d.__parentDoc; } return d; };
 export class Element extends Node {
 	constructor(localName = Element.__pending, ns = 'http://www.w3.org/1999/xhtml') { super(); this.localName = localName; this.namespaceURI = ns; this.__attrs = new Map(); this.__style = null; this.__classList = null; }
 	get nodeType() { return 1; } get nodeName() { return this.nodeType === 1 ? this.tagName : ({ 3: '#text', 8: '#comment', 9: '#document', 11: '#document-fragment' })[this.nodeType] ?? ''; }
@@ -206,6 +213,7 @@ export class Element extends Node {
 		if (n === 'style' && !this.__syncingStyleAttr) { this.__syncingStyleAttr = true; try { this.style.cssText = v; } finally { this.__syncingStyleAttr = false; } }
 		this.__invalidate(n === 'class' || n === 'id' || n === 'style' || n.startsWith('data-') || n.startsWith('aria-') || n === 'type' || n === 'disabled' || n === 'hidden' ? 'style' : 'layout', 'attr', n, old);
 		this.__queueMutation({ type: 'attributes', target: this, attributeName: n, oldValue: old ?? null });
+		if (this.__attrHook) { this.__attrHook(n, v, old); }
 	}
 	setAttributeNS(ns, n, v) { this.setAttribute(n, v); }
 	removeAttribute(n) { n = n.toLowerCase(); if (n === 'class') { this.__cls = null; } const oldV = this.__attrs.get(n); if (this.__attrs.delete(n)) { if (n === 'style' && !this.__syncingStyleAttr) { this.style.cssText = ''; } this.__invalidate('style', 'attr', n, oldV); this.__queueMutation({ type: 'attributes', target: this, attributeName: n, oldValue: null }); } }
@@ -232,10 +240,10 @@ export class Element extends Node {
 	cloneNode(deep) { if (this.nodeType !== 1) { return cloneNonElement(this, deep); } const e = this.ownerDocument.__createElementNS(this.namespaceURI, this.localName); for (const [k, v] of this.__attrs) { e.setAttribute(k, v); } if (deep) { for (const c of this.__children) { e.appendChild(c.cloneNode(true)); } } return e; }
 	get shadowRoot() { return null; } attachShadow() { noteMissing('Element.attachShadow'); throw new DOMException('Shadow DOM not supported', 'NotSupportedError'); }
 	// focus
-	focus() { const d = this.ownerDocument; if (!d || d.__activeElement === this) { return; } const prev = d.__activeElement; d.__activeElement = this; if (prev) { prev.__invalidate('style', 'state', 'focus'); if (prev.__tc) { controlBlurred(prev); } } this.__invalidate('style', 'state', 'focus'); if (this.__tc) { controlFocused(this); } if (prev) { prev.dispatchEvent(new FocusEvent('blur', { relatedTarget: this })); prev.dispatchEvent(new FocusEvent('focusout', { relatedTarget: this, bubbles: true })); } this.dispatchEvent(new FocusEvent('focus', { relatedTarget: prev })); this.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: prev })); }
+	focus() { focusElement(this); }
 	blur() { const d = this.ownerDocument; if (d && d.__activeElement === this) { d.__activeElement = null; this.__invalidate('style', 'state', 'focus'); if (this.__tc) { controlBlurred(this); } this.dispatchEvent(new FocusEvent('blur')); this.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); } }
 	click() { this.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); }
-	scrollIntoView() { } setPointerCapture(id) { const d = this.ownerDocument; if (d && this.isConnected !== false) { d.__capture = { el: this, id }; } } releasePointerCapture(id) { const d = this.ownerDocument; if (d && d.__capture && d.__capture.el === this) { d.__capture = null; this.dispatchEvent(new d.defaultView.PointerEvent('lostpointercapture', { bubbles: true, pointerId: id ?? 1, pointerType: 'mouse' })); } } hasPointerCapture() { const d = this.ownerDocument; return !!(d && d.__capture && d.__capture.el === this); } requestPointerLock() { }
+	scrollIntoView() { } setPointerCapture(id) { const d = rootDocOf(this.ownerDocument); if (d && this.isConnected !== false) { d.__capture = { el: this, id }; } } releasePointerCapture(id) { const d = rootDocOf(this.ownerDocument); if (d && d.__capture && d.__capture.el === this) { d.__capture = null; this.dispatchEvent(new d.defaultView.PointerEvent('lostpointercapture', { bubbles: true, pointerId: id ?? 1, pointerType: 'mouse' })); } } hasPointerCapture() { const d = rootDocOf(this.ownerDocument); return !!(d && d.__capture && d.__capture.el === this); } requestPointerLock() { }
 	animate() { return { cancel() { }, finished: Promise.resolve(), onfinish: null }; } getAnimations() { return []; }
 	// geometry: provided by layout (Document.__layout)
 	getBoundingClientRect() { return this.ownerDocument.__rect(this); }

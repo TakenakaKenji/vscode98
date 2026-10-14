@@ -7,6 +7,7 @@ import * as os from 'qjs:os';
 import Module from 'node:module';
 import cp from 'node:child_process';
 import nodePath from 'node:path';
+import { createHash } from '../../02-node-shim/host/impl/crypto.js';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import '../../06-rendering/host/dom/intl_shim.js';
 import * as opentype from '../../../../node_modules/opentype.js/dist/opentype.mjs';
@@ -32,6 +33,8 @@ const here = nodePath.dirname(fileURLToPath(import.meta.url));
 const fileOf = (u) => fileURLToPath('file://' + u.replace(/^vscode-file:\/\/vscode-app/, '').replace(/[?#].*$/, ''));   // vscode-file://vscode-app/<file URL path>, also /C:/dir on Windows
 const readBytes = (f) => { const h = std.open(f, 'rb'); if (!h) { throw new Error('ENOENT ' + f); } h.seek(0, std.SEEK_END); const n = h.tell(); h.seek(0, std.SEEK_SET); const ab = new ArrayBuffer(n); h.read(ab, 0, n); h.close(); return ab; };
 globalThis.__readFileBytes = readBytes;
+// Web Crypto digest (webviews derive the origin of their iframe from a SHA-256)
+globalThis.crypto.subtle = { digest: async (alg, data) => { const name = String(alg && alg.name || alg).toLowerCase().replace('-', ''); const bytes = ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : new Uint8Array(data); const out = createHash(name).update(bytes).digest(); const u = new Uint8Array(out.length); u.set(out); return u.buffer; } };
 const rss = () => { const m = /VmRSS:\s+(\d+)/.exec(std.loadFile('/proc/self/status') || ''); const h = /VmHWM:\s+(\d+)/.exec(std.loadFile('/proc/self/status') || ''); return { rss: m ? Math.round(+m[1] / 1024) : 0, peak: h ? Math.round(+h[1] / 1024) : 0 }; };
 const log = (m) => { std.out.puts(m + '\n'); std.out.flush(); };
 globalThis.__log98 = log;   // live logging for probes placed in the workbench bundle (console output is only summarised at the end)
@@ -85,6 +88,16 @@ const pageFile = fileOf(load.url);
 const BASE = 'vscode-file://vscode-app' + pathToFileURL(appRoot).pathname;
 { const fd = opt('font-dir', nodePath.join(nodePath.dirname(appRoot), 'fonts')); if (os.stat(fd)[1] === 0) { globalThis.__fontRoot = fd.replace(/\\/g, '/'); log('[harness] fonts: ' + globalThis.__fontRoot); } else { log('[harness] no font directory at ' + fd + ': the system font paths of the Linux host are used'); } }
 const env = installEnvironment({ width: W, height: H, opentype, readUrl: (u) => readBytes(fileOf(u)) }); const doc = env.document;
+// resources of iframes (webviews): vscode-webview://<id>/<file> is the webview shell of the workbench, https://file+.vscode-resource.vscode-cdn.net/<path> a local file of an extension or the workspace (what a service worker would fetch through the host), data: URLs are decoded
+{ const pre = nodePath.join(appRoot, 'out', 'vs', 'workbench', 'contrib', 'webview', 'browser', 'pre'); const plain = env.fetchResource;
+  env.fetchResource = (u) => {
+	u = String(u); let m;
+	if ((m = /^vscode-webview:\/\/[^/]*(\/[^?#]*)/.exec(u))) { return readBytes(nodePath.join(pre, decodeURIComponent(m[1]))); }
+	if ((m = /^https?:\/\/file(?:%2B|\+)[^/]*\.vscode-resource\.vscode-cdn\.net(\/[^?#]*)/i.exec(u))) { let p = decodeURIComponent(m[1]); if (/^\/[A-Za-z]:/.test(p)) { p = p.slice(1); } return readBytes(p); }
+	if ((m = /^data:([^,]*),(.*)$/s.exec(u))) { const bytes = /;base64/.test(m[1]) ? Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0)) : new TextEncoder().encode(decodeURIComponent(m[2])); return bytes.buffer; }
+	return plain(u);
+  };
+  env.fetchDocument = env.fetchResource; }
 let layoutTiming = null; if (opt('layout', 'js') === 'native') { const m = await import('../../07-native-render/host/native_layout.js'); env.layoutEngine = m.engine; layoutTiming = m.timing; }
 installWebShims(env, { baseUrl: BASE, readFile: (p) => readBytes(nodePath.join(appRoot, 'out', p)) });
 Object.assign(env.window.location, { href: load.url });

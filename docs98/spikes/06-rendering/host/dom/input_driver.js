@@ -3,6 +3,7 @@
 // The window host feeds it from WM_* messages; scenarios and tests feed it directly, so a test exercises exactly the path a user does.
 import { createDocSelection } from './docselect.js';
 import { createDnd } from './dnd.js';
+import { originOf } from './frames.js';
 import { isTextControl, copyCut, controlKeydown, controlTextInput, controlMouseDown, controlMouseMove, controlMouseUp, dragging, controlWheel, focusNext, clickDefault } from './textcontrol.js';
 
 // Windows virtual-key code -> [DOM key, DOM code]; letters, digits and OEM punctuation are handled below
@@ -34,16 +35,22 @@ export function createInputDriver(ctx, hooks = {}) {
 	const docSel = createDocSelection(doc, env);
 	let charSuppressed = false, hover = null, downTarget = null, lastClick = { t: -1e9, x: 0, y: 0, n: 0 };
 	const at = (x, y) => doc.elementFromPoint(x, y) || doc.body;
+	const gcs = (e) => (e.ownerDocument.defaultView || env.window).getComputedStyle(e);
+	/** the innermost element at a window point, through iframes: { el, doc, x, y } with the point in the coordinates of that element's document */
+	const deep = (x, y) => (doc.__deepHit ? doc.__deepHit(x, y) : { el: at(x, y), doc, x, y });
+	const localIn = (d, x, y) => { if (d === doc) { return [x, y]; } const [ox, oy] = originOf(d); return [x - ox, y - oy]; };
 	/** the target of a move/up: the element that captured the pointer (setPointerCapture) or the element under it */
-	const target = (x, y) => { const c = doc.__capture; if (c) { if (c.el.isConnected !== false && doc.contains(c.el)) { return c.el; } doc.__capture = null; } return at(x, y); };
+	const target = (x, y) => { const c = doc.__capture; if (c) { if (c.el.isConnected !== false) { const d = c.el.ownerDocument; const [lx, ly] = localIn(d, x, y); return { el: c.el, doc: d, x: lx, y: ly }; } doc.__capture = null; } return deep(x, y); };
+	/** where keys go: the focused element, through iframes whose documents hold the focus */
+	const focusTarget = () => { let d = doc, el = d.activeElement || d.body; while (el && el.localName === 'iframe' && el.__frame) { d = el.__frame.doc; el = d.activeElement || d.body; } return { el, doc: d }; };
 	let dnd = null;
 	const releaseCapture = () => { const c = doc.__capture; if (c) { doc.__capture = null; dispatch(c.el, new env.window.PointerEvent('lostpointercapture', { bubbles: true, pointerId: c.id ?? 1, pointerType: 'mouse' })); } };
 	const dispatch = (el, ev) => { try { return el.dispatchEvent(ev); } catch (e) { ctx.note?.('window event ' + ev.type, e); return true; } };
 	const pdispatch = (el, ev) => (ctx.opt?.('no-pointer', '0') === '1' ? true : dispatch(el, ev));   // --no-pointer 1: legacy mouse events only (A/B switch)
 	const guard = (what, f) => { try { return f(); } catch (e) { ctx.note?.(what, e); return false; } };
 	dnd = createDnd(ctx, { at, dispatch });
-	const setCursor = (el) => { try { const c = env.window.getComputedStyle(el).cursor; hooks.setCursor?.(c && c !== 'auto' ? c : (editable(el) ? 'text' : 'default')); } catch { /* keep */ } };
-	const focusFor = (el) => { for (let e = el; e; e = e.parentElement) { if (editable(e) || e.hasAttribute?.('tabindex') || isButtonish(e)) { e.focus?.(); return; } } doc.activeElement?.blur?.(); };
+	const setCursor = (el) => { try { const c = gcs(el).cursor; hooks.setCursor?.(c && c !== 'auto' ? c : (editable(el) ? 'text' : 'default')); } catch { /* keep */ } };
+	const focusFor = (el) => { for (let e = el; e; e = e.parentElement) { if (editable(e) || e.hasAttribute?.('tabindex') || isButtonish(e)) { e.focus?.(); return; } } const d = el.ownerDocument; d.activeElement?.blur?.(); if (d !== doc && el.ownerDocument.__env.frameElement) { el.ownerDocument.__env.frameElement.focus?.(); } };
 	const clickCount = (x, y, base) => { const now = performance.now(); const near = now - lastClick.t < 500 && Math.abs(lastClick.x - x) < 5 && Math.abs(lastClick.y - y) < 5; lastClick = { t: now, x, y, n: near ? Math.min(3, lastClick.n + 1) : (base || 1) }; return lastClick.n; };
 	/** the :hover state and the (non-bubbling) enter/leave events of the elements whose hover status changed between two pointer targets */
 	const chainOf = (el) => { const c = []; for (let e = el; e; e = e.parentElement) { c.push(e); } return c; };
@@ -54,52 +61,53 @@ export function createInputDriver(ctx, hooks = {}) {
 	};
 	/** :active while a button is down */
 	const setActive = (el, on) => { for (let e = el; e; e = e.parentElement) { if (!!e.__active !== on) { e.__active = on; e.__invalidate?.('style', 'state', 'active'); } } };
-	const press = (el, a, b, c, d, detail, mods) => {
-		const base = { clientX: a, clientY: b, screenX: a, screenY: b, ctrlKey: !!(mods & 2), shiftKey: !!(mods & 1), altKey: !!(mods & 4), metaKey: !!(mods & 8) };
+	const press = (el, a, b, c, d, detail, mods, ra = a, rb = b) => {
+		const base = { clientX: a, clientY: b, screenX: ra, screenY: rb, ctrlKey: !!(mods & 2), shiftKey: !!(mods & 1), altKey: !!(mods & 4), metaKey: !!(mods & 8) };
 		if (c === 0) { setActive(el, true); }
 		const pointerOk = pdispatch(el, Pe('pointerdown', { ...base, button: c, buttons: d, detail })); let ok = false;
 		if (pointerOk && dispatch(el, Ev('mousedown', { ...base, button: c, buttons: d, detail }))) { focusFor(el); ok = true; }   // a pointerdown the page cancels (Monaco does, and focuses its own input area) suppresses the compatibility mousedown; the default action of a press happens only when neither was canceled
-		if (ok && c === 0) { let tc = false; for (let e = el; e; e = e.parentElement) { if (isTextControl(e)) { guard('text control mousedown', () => controlMouseDown(e, a, b, detail, !!(mods & 1))); tc = true; break; } } if (!tc) { guard('page text selection', () => docSel.start(el, a, b, detail, !!(mods & 1))); } guard('drag arm', () => dnd.arm(el, a, b)); }
+		if (ok && c === 0) { let tc = false; for (let e = el; e; e = e.parentElement) { if (isTextControl(e)) { guard('text control mousedown', () => controlMouseDown(e, a, b, detail, !!(mods & 1))); tc = true; break; } } if (!tc) { guard('page text selection', () => docSel.start(el, a, b, detail, !!(mods & 1))); } guard('drag arm', () => dnd.arm(el, ra, rb)); }
 		return base;
 	};
-	function mouse(type, a, b, c, d, mods) {
-		const base = { clientX: a, clientY: b, screenX: a, screenY: b, ctrlKey: !!(mods & 2), shiftKey: !!(mods & 1), altKey: !!(mods & 4), metaKey: !!(mods & 8) };
+	let dragDoc = doc;   // the document of the control or text a drag started in: drag moves are reported in its coordinates
+	function mouse(type, a0, b0, c, d, mods) {
+		const mk = (x, y) => ({ clientX: x, clientY: y, screenX: a0, screenY: b0, ctrlKey: !!(mods & 2), shiftKey: !!(mods & 1), altKey: !!(mods & 4), metaKey: !!(mods & 8) });
 		switch (type) {
 			case 'mousemove': {
-				if ((c & 1) && guard('drag move', () => dnd.move(a, b, mods))) { return; }
-				if (dragging() && (c & 1)) { guard('text control drag', () => controlMouseMove(a, b)); } else if (docSel.active && (c & 1)) { guard('page text drag', () => docSel.move(a, b)); }
-				const el = target(a, b); if (el !== hover) { const prev = hover; if (prev) { pdispatch(prev, Pe('pointerout', { ...base, relatedTarget: el })); dispatch(prev, Ev('mouseout', { ...base, relatedTarget: el })); } pdispatch(el, Pe('pointerover', { ...base, relatedTarget: prev })); dispatch(el, Ev('mouseover', { ...base, relatedTarget: prev })); hover = el; enterLeave(prev, el, base); setCursor(el); }
+				if ((c & 1) && guard('drag move', () => dnd.move(a0, b0, mods))) { return; }
+				if (dragging() && (c & 1)) { const [x, y] = localIn(dragDoc, a0, b0); guard('text control drag', () => controlMouseMove(x, y)); } else if (docSel.active && (c & 1)) { const [x, y] = localIn(docSel.doc || doc, a0, b0); guard('page text drag', () => docSel.move(x, y)); }
+				const t = target(a0, b0), el = t.el, base = mk(t.x, t.y); if (el !== hover) { const prev = hover; if (prev) { pdispatch(prev, Pe('pointerout', { ...base, relatedTarget: el })); dispatch(prev, Ev('mouseout', { ...base, relatedTarget: el })); } pdispatch(el, Pe('pointerover', { ...base, relatedTarget: prev })); dispatch(el, Ev('mouseover', { ...base, relatedTarget: prev })); hover = el; enterLeave(prev, el, base); setCursor(el); }
 				pdispatch(el, Pe('pointermove', { ...base, buttons: c })); dispatch(el, Ev('mousemove', { ...base, buttons: c })); return;
 			}
-			case 'leave': if (hover) { const prev = hover; dispatch(prev, Ev('mouseout', { clientX: -1, clientY: -1 })); hover = null; enterLeave(prev, null, base); } return;
-			case 'mousedown': { const el = at(a, b); downTarget = el; const detail = c === 0 ? clickCount(a, b, 1) : 1; if (debug()) { const dsc = (e) => e ? e.localName + '.' + String(e.className || '').slice(0, 60) : 'null'; ctx.log?.('[input] mousedown at ' + a + ',' + b + ' target=' + dsc(el) + ' parent=' + dsc(el.parentElement) + ' active-before=' + dsc(doc.activeElement)); } press(el, a, b, c, d, detail, mods); return; }
+			case 'leave': if (hover) { const prev = hover; dispatch(prev, Ev('mouseout', { clientX: -1, clientY: -1 })); hover = null; enterLeave(prev, null, mk(-1, -1)); } return;
+			case 'mousedown': { const t = deep(a0, b0), el = t.el; downTarget = el; dragDoc = t.doc; const detail = c === 0 ? clickCount(a0, b0, 1) : 1; if (debug()) { const dsc = (e) => e ? e.localName + '.' + String(e.className || '').slice(0, 60) : 'null'; ctx.log?.('[input] mousedown at ' + a0 + ',' + b0 + ' target=' + dsc(el) + ' parent=' + dsc(el.parentElement) + ' active-before=' + dsc(doc.activeElement)); } press(el, t.x, t.y, c, d, detail, mods, a0, b0); return; }
 			case 'mouseup': {
-				if (guard('drop', () => dnd.up(a, b, mods))) { if (downTarget) { setActive(downTarget, false); } downTarget = null; docSel.end(); releaseCapture(); return; }
-				const el = target(a, b); controlMouseUp(); docSel.end(); if (downTarget) { setActive(downTarget, false); } pdispatch(el, Pe('pointerup', { ...base, button: c, buttons: d, detail: 1 })); dispatch(el, Ev('mouseup', { ...base, button: c, buttons: d, detail: 1 })); releaseCapture();
+				if (guard('drop', () => dnd.up(a0, b0, mods))) { if (downTarget) { setActive(downTarget, false); } downTarget = null; docSel.end(); releaseCapture(); return; }
+				const t = target(a0, b0), el = t.el, base = mk(t.x, t.y); controlMouseUp(); docSel.end(); if (downTarget) { setActive(downTarget, false); } pdispatch(el, Pe('pointerup', { ...base, button: c, buttons: d, detail: 1 })); dispatch(el, Ev('mouseup', { ...base, button: c, buttons: d, detail: 1 })); releaseCapture();
 				if (downTarget && (downTarget === el || downTarget.contains?.(el) || el.contains?.(downTarget))) { if (dispatch(el, Ev(c === 2 ? 'contextmenu' : 'click', { ...base, button: c, detail: 1 })) && c === 0) { guard('click default', () => clickDefault(el)); } } downTarget = null; return;
 			}
 			case 'dblclick': {
-				const el = at(a, b); downTarget = el; lastClick = { t: performance.now(), x: a, y: b, n: 2 }; press(el, a, b, c, d, 2, mods); controlMouseUp(); setActive(el, false); pdispatch(el, Pe('pointerup', { ...base, button: c, detail: 2 })); dispatch(el, Ev('mouseup', { ...base, button: c, detail: 2 }));
+				const t = deep(a0, b0), el = t.el, base = mk(t.x, t.y); downTarget = el; dragDoc = t.doc; lastClick = { t: performance.now(), x: a0, y: b0, n: 2 }; press(el, t.x, t.y, c, d, 2, mods, a0, b0); controlMouseUp(); setActive(el, false); pdispatch(el, Pe('pointerup', { ...base, button: c, detail: 2 })); dispatch(el, Ev('mouseup', { ...base, button: c, detail: 2 }));
 				if (dispatch(el, Ev('click', { ...base, button: c, detail: 2 }))) { guard('click default', () => clickDefault(el)); } dispatch(el, Ev('dblclick', { ...base, button: c, detail: 2 })); downTarget = null; return;
 			}
-			case 'wheel': { const el = at(a, b); const px = -c / 120 * 100; if (dispatch(el, new env.window.WheelEvent('wheel', { bubbles: true, cancelable: true, composed: true, ...base, deltaX: d ? -px : 0, deltaY: d ? 0 : px, deltaMode: 0 })) && !d) { for (let e = el; e; e = e.parentElement) { if (e.localName === 'textarea') { guard('textarea wheel', () => controlWheel(e, px)); break; } } } return; }
+			case 'wheel': { const t = deep(a0, b0), el = t.el, base = mk(t.x, t.y); const px = -c / 120 * 100; if (dispatch(el, new env.window.WheelEvent('wheel', { bubbles: true, cancelable: true, composed: true, ...base, deltaX: d ? -px : 0, deltaY: d ? 0 : px, deltaMode: 0 })) && !d) { for (let e = el; e; e = e.parentElement) { if (e.localName === 'textarea') { guard('textarea wheel', () => controlWheel(e, px)); break; } } } return; }
 		}
 	}
 	function keyboard(type, a, b, c, d, mods) {
-		const [key, code] = keyInfo(a, mods, c); const target = doc.activeElement || doc.body;
+		const [key, code] = keyInfo(a, mods, c); const ft = focusTarget(), target = ft.el, fdoc = ft.doc;
 		const ev = new env.window.KeyboardEvent(type, { bubbles: true, cancelable: true, composed: true, key, code, keyCode: a, which: a, repeat: !!d, ctrlKey: !!(mods & 2), shiftKey: !!(mods & 1), altKey: !!(mods & 4), metaKey: !!(mods & 8) });
 		const notPrevented = dispatch(target, ev); if (type === 'keydown') { charSuppressed = !notPrevented; }
 		if (debug() && type === 'keydown') { ctx.log?.('[input] key ' + key + ' code=' + code + ' mods=' + mods + ' ctrl=' + ev.ctrlKey + ' prevented=' + !notPrevented + ' target=' + (target.localName || '?')); }   // a key whose keydown was handled (cancelled) produces no character, as in browsers
 		if (!notPrevented) { return; }
 		if (type === 'keydown') {
 			if (guard('text control key', () => controlKeydown(target, ev))) { return; }
-			if (ev.ctrlKey && !ev.altKey && (key.toLowerCase() === 'c' || key === 'Insert') && doc.__selection && !doc.__selection.isCollapsed) { guard('copy page text', () => copyCut(doc, false)); return; }
-			if (key === 'Tab' && !ev.ctrlKey && !ev.altKey) { guard('tab', () => focusNext(doc, ev.shiftKey)); charSuppressed = true; return; }
+			if (ev.ctrlKey && !ev.altKey && (key.toLowerCase() === 'c' || key === 'Insert') && fdoc.__selection && !fdoc.__selection.isCollapsed) { guard('copy page text', () => copyCut(fdoc, false)); return; }
+			if (key === 'Tab' && !ev.ctrlKey && !ev.altKey) { guard('tab', () => focusNext(fdoc, ev.shiftKey)); charSuppressed = true; return; }
 			if (key === 'Enter' && isButtonish(target)) { dispatch(target, Ev('click', { detail: 0 })) && guard('click default', () => clickDefault(target)); charSuppressed = true; }
 		} else if (key === ' ' && isButtonish(target) && !ev.ctrlKey) { dispatch(target, Ev('click', { detail: 0 })) && guard('click default', () => clickDefault(target)); }
 	}
 	function char(a, mods) {                       // text input: control keys are handled through keydown (Enter, Backspace, Tab)
-		const target = doc.activeElement; const sup = charSuppressed; charSuppressed = false; if (sup || !isTextControl(target)) { return; }
+		const target = focusTarget().el; const sup = charSuppressed; charSuppressed = false; if (sup || !isTextControl(target)) { return; }
 		const enter = a === 13; if (enter ? target.localName !== 'textarea' : (a < 32 || a === 127)) { return; }
 		if ((mods & 2) && !(mods & 4)) { return; }   // Ctrl+letter is a shortcut, AltGr (Ctrl+Alt) produces text
 		guard('text input', () => controlTextInput(target, enter ? '\n' : String.fromCodePoint(a)));
