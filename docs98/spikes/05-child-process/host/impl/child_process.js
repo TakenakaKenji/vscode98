@@ -5,6 +5,7 @@ import * as std from 'qjs:std';
 import * as p from 'spike:proc';
 import * as io from './fdio.js';
 import { EventEmitter } from '__SHIMS__/events.js';
+import { Readable, Writable } from './stream.js';
 import { FdReadable, FdWritable, FdDuplex, errnoError } from './fdstreams.js';
 
 const TRACE = !!std.getenv('VSCODE98_TRACE_PROC');   // debug aid: log spawns, exits and child stderr to our stderr
@@ -114,6 +115,8 @@ export function spawn(command, args, options) {
 	if (pid < 0) {
 		for (const fd of parentEnds) { if (fd >= 0) { io.close(fd); } }
 		const err = errnoError(pid, `spawn ${file}`, { path: file, spawnargs: argList });
+		// as in Node, the stdio streams of a process that could not start exist (and are destroyed): callers attach handlers to child.stdout before the 'error' event arrives
+		for (let i = 0; i < n; i++) { if (stdio[i] !== 'pipe') { cp.stdio.push(null); continue; } const s = i === 0 ? new Writable({ write(c, e, cb) { cb(); } }) : new Readable({ read() { } }); queueMicrotask(() => s.destroy()); cp.stdio.push(s); if (i === 0) { cp.stdin = s; } else if (i === 1) { cp.stdout = s; } else if (i === 2) { cp.stderr = s; } }
 		cp.exitCode = pid; queueMicrotask(() => { cp.emit('error', err); cp._exited = true; cp._maybeClose(); });
 		return cp;
 	}
