@@ -32,8 +32,18 @@ export class Document extends Node {
 	createDocumentFragment() { const f = new DocumentFragment(); f.ownerDocument = this; return f; } createRange() { return new D.Range(this); } createEvent(t) { return new D.Event(''); }
 	createTreeWalker(root, what, filter) { const nodes = []; const walk = (n) => { for (const c of n.__children) { if ((what & 1 && c.nodeType === 1) || (what & 4 && c.nodeType === 3) || what === 0xFFFFFFFF) { nodes.push(c); } walk(c); } }; walk(root); let i = -1; return { currentNode: root, nextNode() { i++; return nodes[i] ?? null; } }; }
 	importNode(n, deep) { return n.cloneNode(deep); } adoptNode(n) { return n; } open() { } close() { } write() { } writeln() { }
-	elementFromPoint(x, y) { return this.elementsFromPoint(x, y)[0] ?? null; }
-	elementsFromPoint(x, y) { this.__ensureLayout(); const out = []; const walk = (b) => { for (const c of [...b.children].reverse()) { if (c.kind === 'text' || !c.el) { continue; } walk(c); } if (b.el && b.v.visibility !== 'hidden' && b.v['pointer-events'] !== 'none') { const r = this.__rect(b.el); if (x >= r.left && x < r.right && y >= r.top && y < r.bottom) { out.push(b.el); } } }; if (this.__layout && this.__layout.rootBox) { walk(this.__layout.rootBox); } return out; }
+	elementFromPoint(x, y) { return this.__hitTest(x, y, 1)[0] ?? null; }
+	elementsFromPoint(x, y) { return this.__hitTest(x, y, Infinity); }
+	/** the elements whose rectangle contains the point, innermost and last-painted first; stops after `limit` hits */
+	__hitTest(x, y, limit) {
+		this.__ensureLayout(); const out = [];
+		const walk = (b) => {
+			const ch = b.children; for (let i = ch.length - 1; i >= 0; i--) { const c = ch[i]; if (c.kind === 'text' || !c.el) { continue; } if (walk(c)) { return true; } }
+			if (b.el && b.v.visibility !== 'hidden' && b.v['pointer-events'] !== 'none') { const r = this.__rect(b.el); if (x >= r.left && x < r.right && y >= r.top && y < r.bottom) { out.push(b.el); if (out.length >= limit) { return true; } } }
+			return false;
+		};
+		if (this.__layout && this.__layout.rootBox) { walk(this.__layout.rootBox); } return out;
+	}
 	/** The caret position nearest to a point, as a collapsed Range in a text node (the editor's mouse hit-testing of text needs it): the text under the element at the point whose line contains `y`, nearest in x. */
 	caretRangeFromPoint(x, y) {
 		this.__ensureLayout(); const lay = this.__layout; const el = lay && this.elementFromPoint(x, y); if (!el) { return null; }
@@ -72,6 +82,10 @@ export class Document extends Node {
 	}
 	__rect(el) {
 		const box = this.__boxFor(el); if (!box || !el.isConnected) { return new DOMRect(0, 0, 0, 0); } const raw = this.__rawRect(el, box); if (!raw) { return new DOMRect(0, 0, 0, 0); }
+		{   // the common case (no transform and no scrolled ancestor on the way up) needs no corner arithmetic: same numbers as the general path below, without the temporary arrays
+			let simple = true; for (let b = box; b; b = b.parent) { if (b.matrix && b.el) { simple = false; break; } const p = b.parent; if (p && p.el && b.el && (p.el.__scrollTop || p.el.__scrollLeft)) { simple = false; break; } }
+			if (simple) { return new DOMRect(raw.x, raw.y, (raw.x + raw.w) - raw.x, (raw.y + raw.h) - raw.y); }
+		}
 		let pts = [[raw.x, raw.y], [raw.x + raw.w, raw.y], [raw.x, raw.y + raw.h], [raw.x + raw.w, raw.y + raw.h]]; let sx = 0, sy = 0;
 		for (let b = box; b; b = b.parent) {
 			const v = b.v; if (b.matrix && b.el) { const m = b.matrix; const ox = b.ax + b.w / 2, oy = b.ay + b.h / 2; pts = pts.map(([x, y]) => { const dx = x - ox, dy = y - oy; return [ox + m[0] * dx + m[2] * dy + m[4], oy + m[1] * dx + m[3] * dy + m[5]]; }); }
