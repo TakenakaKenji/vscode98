@@ -94,7 +94,7 @@ const consoleLog = []; for (const k of ['log', 'info', 'warn', 'error', 'debug',
 doc.__passStats = []; if (opt('verify', '0') === '1') { doc.__verifyStyles = true; }
 const tImport = performance.now();
 log('[harness] page scripts: ' + JSON.stringify(scripts));
-for (const s of scripts) { try { await import(s); log('[harness] imported ' + s); } catch (e) { log('[harness] import failed ' + s + ': ' + (e && e.stack || e)); note('import ' + s, e); } }
+for (const s of scripts) { try { await import(s); log('[harness] imported ' + s + ' after ' + Math.round(performance.now() - t00) + ' ms (' + Math.round(performance.now() - tImport) + ' ms for the import)'); } catch (e) { log('[harness] import failed ' + s + ': ' + (e && e.stack || e)); note('import ' + s, e); } }
 const tLoaded = performance.now(); const rssAfterImport = rss();
 const ctx = { env, doc, note, rss, layoutTiming, opt, log, W, H, consoleLog };
 let winHost = null;
@@ -118,6 +118,7 @@ if (opt('window', '0') === '1') {                      // a real window (Win32/G
 	};
 	os.setTimeout(status, every * 1000);
 }
+if (opt('progress', '0') !== '0') { const every = Number(opt('progress', 5)) * 1000, tp = performance.now(); const tick = () => { const ps = doc.__passStats || []; log(`[progress] t=${((performance.now() - tp) / 1000).toFixed(1)}s elements=${doc.getElementsByTagName('*').length} layoutPasses=${ps.length} styleMs=${ps.reduce((a, x) => a + x.styleMs, 0).toFixed(0)} layoutMs=${ps.reduce((a, x) => a + x.layoutMs, 0).toFixed(0)}`); os.setTimeout(tick, every); }; os.setTimeout(tick, every); }   // --progress <seconds>: a timeline line every N seconds (a gap shows a long synchronous stretch)
 await runScenario(ctx, { seconds, stableRounds: Number(opt('stable', 25)) });
 const done = performance.now();
 summarizeRun(ctx, { tImport, tLoaded, done, t00, errors, consoleLog, rssAfterImport, missing, unsupported });

@@ -24,4 +24,5 @@ cp /usr/share/fonts/truetype/dejavu/DejaVu*.ttf "$OUT/fonts/truetype/dejavu/"; c
 for d in fonts-inter fonts-dejavu-core fonts-liberation; do [ -f /usr/share/doc/$d/copyright ] && cp /usr/share/doc/$d/copyright "$OUT/fonts/LICENSES/$d.txt"; done
 mkdir -p "$OUT/sample" && printf 'hello vscode98\nline two\n' > "$OUT/sample/hello.txt" && printf '# sample\n' > "$OUT/sample/README.md"
 sed 's/\r$//; s/$/\r/' "$S/11-windows-host/package/run-desktop.cmd" > "$OUT/run-desktop.cmd"
+sed 's/\r$//; s/$/\r/' "$S/11-windows-host/package/run-bench.cmd" > "$OUT/run-bench.cmd"; cp "$S/11-windows-host/package/bench.js" "$OUT/bench.js"
 echo "desktop package: $OUT ($(du -sh "$OUT" | cut -f1))"

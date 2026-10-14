@@ -39,6 +39,6 @@ async function run0(ctx) {
 	globalThis.__pl = {};
 	for (const ch of 'abcdefgh'.slice(0, Number(ctx.opt('keys', 6)))) {
 		const r = await drive(() => { key(ta, 'keydown', ch); ta.value = (ta.value || '') + ch; ta.dispatchEvent(new InputEvent('input', { data: ch, inputType: 'insertText', bubbles: true })); key(ta, 'keyup', ch); });
-		log(`keys: key '${ch}': ${fmt(r)}`); if (ch === 'f') { log('keys: plan laps ' + JSON.stringify(globalThis.__pl)); } if (ch === 'e') { log('keys: last pass ' + JSON.stringify(doc.__passStats.slice(-2).map(x => ({ total: x.total, mut: x.mutations, counts: x.counts, styleMs: x.styleMs, layoutMs: x.layoutMs, ms: x.ms, style: x.style })))); }
+		log(`keys: key '${ch}': ${fmt(r)}`); if (ch === 'f') { log('keys: layout per run [pack, native, apply, boxes] ' + JSON.stringify(ctx.layoutTiming.perRun.slice(-3)) + ' layoutMs ' + JSON.stringify(doc.__passStats.slice(-3).map(x => +x.layoutMs.toFixed(1)))); } if (ch === 'e') { log('keys: last pass ' + JSON.stringify(doc.__passStats.slice(-2).map(x => ({ total: x.total, mut: x.mutations, counts: x.counts, styleMs: x.styleMs, layoutMs: x.layoutMs, ms: x.ms, style: x.style })))); }
 	}
 }
