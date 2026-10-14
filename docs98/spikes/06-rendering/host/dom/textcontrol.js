@@ -3,6 +3,7 @@
 import { resolveFont, fontMetrics, advance, kern } from './fonts.js';
 import { computeStyle, parseColor, resolveLen } from './css.js';
 import { ClipboardEvent, Event } from './dom.js';
+import { optionList } from './selectmodel.js';
 import { controlValue, replaceRange, undoRedo, fireChange, touchPaint } from './textmodel.js';
 
 const TEXT_TYPE = /^(text|search|url|tel|email|password|number|)$/;
@@ -82,6 +83,20 @@ export function paintTextControl(p, b, dx, dy) {
 		else { for (const line of g.lines) { if (line.text) { const y = lineTop(line); if (g.area && (y + g.lh < g.y0 + dy || y > g.y0 + dy + g.ch)) { continue; } p.b.glyphRun(g.font, g.size, g.ls, 0, ox, baseOf(line), color, 1, line.text); } } }
 		if (focused && e === s && !el.readOnly) { const c = caretXY(g, s); const line = g.lines[c.li]; const top = lineTop(line); p.fillRect(Math.round(ox + c.x), top, 1, lineH, color); }
 	} finally { p.popClip(); }
+}
+
+/** paints the shown option of a <select> (and the drop-down arrow unless `appearance: none`); a list box (multiple/size > 1) paints its options with the selected ones highlighted */
+export function paintSelect(p, b, dx, dy) {
+	const el = b.el; if (b.v.visibility === 'hidden') { return; } const v = b.v; const color = v.color; if (!color) { return; }
+	const font = resolveFont(v['font-family'], v['font-weight'], v['font-style']), size = v['font-size']; const met = fontMetrics(font, size); const pl = b.pl ?? 0, pt = b.pt ?? 0, pr = b.pr ?? 0, pb = b.pb ?? 0;
+	const x0 = b.ax + b.bl + pl + dx, y0 = b.ay + b.bt + pt + dy, cw = b.w - b.bl - b.br - pl - pr, ch = b.h - b.bt - b.bb - pt - pb; if (cw <= 0 || ch <= 0) { return; }
+	const opts = optionList(el); const list = el.hasAttribute('multiple') || (parseInt(el.getAttribute('size') ?? '1', 10) || 1) > 1; const appearance = String(v.appearance ?? v['-webkit-appearance'] ?? 'auto');
+	p.pushClip(x0, y0, x0 + cw, y0 + ch);
+	try {
+		if (!list) { const i = el.selectedIndex; const text = i >= 0 && opts[i] ? opts[i].label : ''; if (text) { p.b.glyphRun(font, size, 0, 0, x0, Math.round(y0 + (ch - (met.ascent + met.descent)) / 2 + met.ascent), color, 1, text); } }
+		else { const lh = met.lineHeightNormal; opts.forEach((o, k) => { const y = y0 + k * lh; if (y > y0 + ch) { return; } if (o.selected) { p.fillRect(x0, y, cw, lh, [51, 144, 255, 255]); } p.b.glyphRun(font, size, 0, 0, x0 + 2, Math.round(y + met.ascent), o.selected ? [255, 255, 255, 255] : color, 1, o.label); }); }
+	} finally { p.popClip(); }
+	if (!list && appearance !== 'none') { const ax = b.ax + b.w - b.br - 12 + dx, ay = b.ay + b.h / 2 + dy; for (let k = 0; k < 4; k++) { p.fillRect(Math.round(ax + k), Math.round(ay - 1 + k), 7 - 2 * k, 1, color); } }   // the chevron
 }
 
 // ---- clipboard (a host with a system clipboard installs globalThis.__clipboard98 = { readText(), writeText(text) })

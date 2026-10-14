@@ -4,7 +4,8 @@
 // Not painted (recorded in `unpainted`): gradients, images, canvas, box-shadow, outlines, rounded borders, text-shadow, filters, blend modes.
 import { resolveFont, advance, fontMetrics, kern } from './fonts.js';
 import { parseContent } from './layout.js';
-import { paintTextControl } from './textcontrol.js';
+import { paintTextControl, paintSelect } from './textcontrol.js';
+import { isHoisted, itemsOf, clipApplies, pathBetween } from './stacking.js';
 
 export const unpainted = new Map();
 const note = (k) => unpainted.set(k, (unpainted.get(k) || 0) + 1);
@@ -134,21 +135,12 @@ class Painter {
 		const draw = (side, rx, ry, rw, rh) => { const st = v[`border-${side}-style`]; if (st === 'none' || st === 'hidden') { return; } const col = v[`border-${side}-color`]; if (!col || col === 'currentcolor') { return; } if (st === 'dashed' || st === 'dotted' || st === 'double') { note('border-style ' + st); } this.fillRect(rx, ry, rw, rh, col, alphaMul); };
 		draw('top', x, y, w, bt); draw('bottom', x, y + h - bb, w, bb); draw('left', x, y + bt, bl, h - bt - bb); draw('right', x + w - br, y + bt, br, h - bt - bb);
 	}
-	/** a position:fixed box is positioned against the viewport: the overflow clips of its ancestors (a menu bar button, say) do not apply to it, only its own */
+	/** entry point for any box: a position:fixed box is positioned against the viewport, the overflow clips of its ancestors (a menu bar button, say) do not apply to it, only its own */
 	paintBox(b, dx, dy, alphaMul) {
-		if (b.pos === 'fixed' && b.el) {
-			const z = b.v['z-index'];
-			// a fixed box with a positive z-index (a menu, a dialog) sits in the top layer: painted after all normal content, not in its ancestors' paint order
-			if (this.topLayer && typeof z === 'number' && z > 0) { this.topLayer.push({ b, dx, dy, alphaMul, z }); return; }
-			this.resetClip(); try { this.paintBox0(b, dx, dy, alphaMul); } finally { this.popClip(); } return;
-		}
+		if (b.pos === 'fixed' && b.el) { this.resetClip(); try { this.paintBox0(b, dx, dy, alphaMul); } finally { this.popClip(); } return; }
 		this.paintBox0(b, dx, dy, alphaMul);
 	}
-	paintTopLayer() {
-		const q = this.topLayer; this.topLayer = null;
-		q.sort((a, b2) => a.z - b2.z);   // Array.prototype.sort is stable: document order breaks ties
-		for (const e of q) { this.paintBox(e.b, e.dx, e.dy, e.alphaMul); }
-	}
+	/** paints a box that is either a stacking context root (it then also paints the positioned boxes and contexts that belong to it) or an atomic positioned/in-flow box */
 	paintBox0(b, dx, dy, alphaMul) {
 		const v = b.v; if (!v) { return; }
 		// transforms: translation is exact; other matrices are approximated by their translation (recorded)
@@ -157,30 +149,34 @@ class Painter {
 		const layered = opacity < 1; if (layered) { this.b.pushLayer(); }
 		const clips = (v['overflow-x'] !== 'visible' || v['overflow-y'] !== 'visible'); const sx = b.el && b.el.__scrollLeft || 0, sy = b.el && b.el.__scrollTop || 0;
 		this.paintBackgroundAndBorders(b, dx, dy, 1);
-		if (b.el && b.el.__tc) { paintTextControl(this, b, dx, dy); }
+		if (b.el && b.el.__tc) { paintTextControl(this, b, dx, dy); } else if (b.el && b.el.__tcSelect) { paintSelect(this, b, dx, dy); }
+		const lay = this.doc.__layout; const items = lay ? itemsOf(lay, b) : null; const cdx = dx - sx, cdy = dy - sy;
+		if (items) { for (const c of items.neg) { this.paintItem(c, b, dx, dy); } }
 		if (clips) { const x0 = b.ax + dx + b.bl, y0 = b.ay + dy + b.bt; this.pushClip(x0, y0, x0 + b.w - b.bl - b.br, y0 + b.h - b.bt - b.bb); }
-		const cdx = dx - sx, cdy = dy - sy;
-		const children = b.children;
-		const positioned = [], flow = [];
-		for (const c of children) { if (c.kind === 'text') { continue; } if (c.kind === 'inline') { flow.push(c); continue; } ((c.pos !== 'static' || (c.matrix && c.el) || (typeof c.v.opacity === 'number' && c.v.opacity < 1)) ? positioned : flow).push(c); }
-		const z = (c) => (typeof c.v['z-index'] === 'number' ? c.v['z-index'] : 0); const zIdx = (c) => (typeof c.v['z-index'] === 'number' ? c.v['z-index'] : null);
-		const neg = positioned.filter(c => zIdx(c) !== null && zIdx(c) < 0).sort((a, b2) => z(a) - z(b2)), mid = positioned.filter(c => zIdx(c) === null || zIdx(c) === 0), pos = positioned.filter(c => zIdx(c) !== null && zIdx(c) > 0).sort((a, b2) => z(a) - z(b2));
-		const fixedShift = (c) => (c.pos === 'fixed' ? [dx - cdx, dy - cdy] : [0, 0]);
-		for (const c of neg) { const [fx, fy] = fixedShift(c); this.paintBox(c, cdx + fx, cdy + fy, 1); }
-		// block-level in-flow children, then inline content
-		for (const c of flow) { if (c.kind === 'inline') { continue; } this.paintBox(c, cdx, cdy, 1); }
+		// in-flow block-level children (positioned ones belong to a stacking context), then the inline content
+		for (const c of b.children) { if (c.kind === 'text' || c.kind === 'inline' || isHoisted(c)) { continue; } this.paintBox(c, cdx, cdy, 1); }
 		this.paintInline(b, cdx, cdy);
-		for (const c of mid) { const [fx, fy] = fixedShift(c); this.paintBox(c, cdx + fx, cdy + fy, 1); }
-		for (const c of pos) { const [fx, fy] = fixedShift(c); this.paintBox(c, cdx + fx, cdy + fy, 1); }
 		if (clips) { this.popClip(); }
+		if (items) { for (const c of items.zero) { this.paintItem(c, b, dx, dy); } for (const c of items.pos) { this.paintItem(c, b, dx, dy); } }
 		if (layered) { this.b.popLayer(opacity * alphaMul); }
+	}
+	/** paints one positioned box or context of the stacking context `root` (whose own offset is dx,dy): the overflow clips and scroll offsets of the boxes in between apply to it as they would in the browser */
+	paintItem(item, root, dx, dy) {
+		let n = 0; let ox = dx, oy = dy;
+		if (item.pos === 'fixed') { this.paintBox(item, 0, 0, 1); return; }
+		for (const a of pathBetween(root, item)) {
+			if (!clipApplies(a, item)) { continue; } const av = a.v; if (!av) { continue; }
+			if (av['overflow-x'] !== 'visible' || av['overflow-y'] !== 'visible') { const x0 = a.ax + ox + a.bl, y0 = a.ay + oy + a.bt; this.pushClip(x0, y0, x0 + a.w - a.bl - a.br, y0 + a.h - a.bt - a.bb); n++; }
+			ox -= a.el && a.el.__scrollLeft || 0; oy -= a.el && a.el.__scrollTop || 0;
+		}
+		try { this.paintBox(item, ox, oy, 1); } finally { while (n-- > 0) { this.popClip(); } }
 	}
 	paintInline(container, dx, dy) {
 		// inline element backgrounds/borders (per line rect), then text, then atomic inlines
 		const walk = (b) => { for (const c of b.children) { if (c.kind === 'inline' && c.__rects) { const v = c.v; if (v['background-color'] && v['background-color'][3] > 0 || c.bt || c.bb || c.bl || c.br) { c.__rects.rects.forEach((r, i) => { if (r.ax !== undefined) { const rect = { x: r.ax, y: r.ay, w: r.w, h: r.h }; this.paintBackgroundAndBorders(c, dx, dy, 1, rect); } }); } walk(c); } } };
 		walk(container);
 		for (const f of container.frags || []) { if (f.t === 'text' && f.ax !== undefined) { this.drawText(f, dx, dy, 1); } }
-		const atomic = (b) => { for (const c of b.children) { if (c.kind === 'inline-block' && !c.oof) { this.paintBox(c, dx, dy, 1); } else if (c.kind === 'inline') { atomic(c); } } }; atomic(container);
+		const atomic = (b) => { for (const c of b.children) { if (c.kind === 'inline-block' && !c.oof && !isHoisted(c)) { this.paintBox(c, dx, dy, 1); } else if (c.kind === 'inline') { atomic(c); } } }; atomic(container);
 	}
 }
 /** Paints the laid-out document through a backend (default: the JS software backend). Returns { px, w, h, stats }. */
@@ -191,7 +187,7 @@ export function paintDocument(doc, width, height, backend = new JsBackend(width,
 	const rb = lay.rootBox; let bg = rb.v['background-color']; if (!(bg && bg[3] > 0)) { const body = doc.body && lay.boxOf.get(doc.body); if (body && body.v['background-color'] && body.v['background-color'][3] > 0) { bg = body.v['background-color']; } }
 	if (bg && bg[3] > 0) { p.fillRect(0, 0, width, height, bg); }
 	const saveBg = rb.v['background-color']; rb.v['background-color'] = [0, 0, 0, 0]; const body = doc.body && lay.boxOf.get(doc.body); const saveBodyBg = body && body.v['background-color']; if (body && !(saveBg && saveBg[3] > 0)) { body.v['background-color'] = [0, 0, 0, 0]; }
-	p.topLayer = []; p.paintBox(rb, 0, 0, 1); p.paintTopLayer(); rb.v['background-color'] = saveBg; if (body && saveBodyBg) { body.v['background-color'] = saveBodyBg; }
+	p.paintBox(rb, 0, 0, 1); rb.v['background-color'] = saveBg; if (body && saveBodyBg) { body.v['background-color'] = saveBodyBg; }
 	return { px: backend.finish(), w: width, h: height, stats: p.stats };
 }
 export function toPPM(px, w, h) { const header = `P6\n${w} ${h}\n255\n`; const out = new Uint8Array(header.length + w * h * 3); for (let i = 0; i < header.length; i++) { out[i] = header.charCodeAt(i); } let o = header.length; for (let i = 0; i < w * h; i++) { const a = px[i * 4 + 3] / 255; out[o++] = Math.round(px[i * 4] * a + 255 * (1 - a)); out[o++] = Math.round(px[i * 4 + 1] * a + 255 * (1 - a)); out[o++] = Math.round(px[i * 4 + 2] * a + 255 * (1 - a)); } return out; }

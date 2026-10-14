@@ -35,6 +35,7 @@ globalThis.__readFileBytes = readBytes;
 const rss = () => { const m = /VmRSS:\s+(\d+)/.exec(std.loadFile('/proc/self/status') || ''); const h = /VmHWM:\s+(\d+)/.exec(std.loadFile('/proc/self/status') || ''); return { rss: m ? Math.round(+m[1] / 1024) : 0, peak: h ? Math.round(+h[1] / 1024) : 0 }; };
 const log = (m) => { std.out.puts(m + '\n'); std.out.flush(); };
 console.error ??= (...a) => { std.err.puts(a.map(String).join(' ') + '\n'); };
+for (const m of ['group', 'groupCollapsed', 'groupEnd', 'table', 'time', 'timeEnd', 'timeLog', 'count', 'countReset', 'dir', 'dirxml', 'assert', 'clear', 'profile', 'profileEnd', 'timeStamp']) { console[m] ??= () => { }; }   // the extension host's output is replayed with console.group()
 
 async function main() {
 const t00 = performance.now(); const mainLog = []; log('[harness] start');

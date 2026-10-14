@@ -18,7 +18,7 @@ export const textProps = {
 	get __tc() { return true; },
 	get value() { return controlValue(this); },
 	set value(v) {
-		const nv = normalize(this, v === null || v === undefined ? '' : String(v)); const old = controlValue(this); this.__value = nv;
+		const nv = normalize(this, v === null || v === undefined ? '' : String(v)); const old = controlValue(this); this.__value = nv; this.__editBase = undefined;   // a script's assignment is not a user edit: no change event for it
 		if (nv !== old) { this.__selStart = this.__selEnd = nv.length; this.__selDir = 'none'; touchPaint(this); }
 		else { this.__selStart = clamp(this.__selStart ?? 0, nv.length); this.__selEnd = clamp(this.__selEnd ?? 0, nv.length); }
 	},
@@ -53,9 +53,9 @@ export const textProps = {
 	checkValidity() { return true; }, reportValidity() { return true; }, setCustomValidity() { }, get validity() { return { valid: true }; }, get willValidate() { return true; },
 };
 
-/** focus/blur bookkeeping: the change event fires on blur (or Enter) when the value differs from the value at focus */
-export function controlFocused(el) { el.__valueAtFocus = controlValue(el); }
-export function fireChange(el) { if (el.__valueAtFocus !== undefined && el.__valueAtFocus !== controlValue(el)) { el.__valueAtFocus = controlValue(el); el.dispatchEvent(new Event_('change', { bubbles: true })); } }
+/** the change event fires on blur (or Enter) when the user edited the value since it was last committed: __editBase holds the value before the first user edit */
+export function controlFocused(el) { el.__editBase = undefined; }
+export function fireChange(el) { if (el.__editBase !== undefined) { const changed = el.__editBase !== controlValue(el); el.__editBase = undefined; if (changed) { el.dispatchEvent(new Event_('change', { bubbles: true })); } } }
 export function controlBlurred(el) { fireChange(el); }
 
 // ---- editing with undo history
@@ -68,7 +68,7 @@ function pushHistory(el, kind) {
 }
 export function undoRedo(el, redo) {
 	const h = el.__hist; if (!h) { return false; } const from = redo ? h.redo : h.undo, to = redo ? h.undo : h.redo; if (!from.length) { return false; }
-	to.push(snapshot(el)); const s = from.pop(); h.last = null; el.__value = s.v; el.__selStart = s.s; el.__selEnd = s.e; el.__selDir = 'none'; touchPaint(el);
+	el.__editBase ??= controlValue(el); to.push(snapshot(el)); const s = from.pop(); h.last = null; el.__value = s.v; el.__selStart = s.s; el.__selEnd = s.e; el.__selDir = 'none'; touchPaint(el);
 	el.dispatchEvent(new InputEvent_('input', { bubbles: true, inputType: redo ? 'historyRedo' : 'historyUndo', data: null })); return true;
 }
 
@@ -78,6 +78,6 @@ export function replaceRange(el, start, end, text, inputType = 'insertText', coa
 	const max = el.maxLength; if (max >= 0 && text) { const room = max - (v.length - (end - start)); if (room <= 0) { text = ''; } else if (text.length > room) { text = text.slice(0, room); } if (!text && start === end) { return false; } }
 	if (start === end && !text) { return false; }
 	const be = new InputEvent_('beforeinput', { bubbles: true, cancelable: true, inputType, data: text || null }); if (!el.dispatchEvent(be)) { return false; }
-	pushHistory(el, coalesce); el.__value = v.slice(0, start) + text + v.slice(end); el.__selStart = el.__selEnd = start + text.length; el.__selDir = 'none'; touchPaint(el);
+	el.__editBase ??= v; pushHistory(el, coalesce); el.__value = v.slice(0, start) + text + v.slice(end); el.__selStart = el.__selEnd = start + text.length; el.__selDir = 'none'; touchPaint(el);
 	el.dispatchEvent(new InputEvent_('input', { bubbles: true, inputType, data: text || null })); return true;
 }

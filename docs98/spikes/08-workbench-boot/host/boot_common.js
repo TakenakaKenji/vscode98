@@ -11,7 +11,7 @@ export function summarizeRun(ctx, { tImport, tLoaded, done, t00, errors, console
 	const { doc, log, opt, layoutTiming } = ctx; const r = ctx.rss();
 	log(`import ${Math.round(tLoaded - tImport)} ms (RSS ${rssAfterImport.rss} MB after), total until stable ${Math.round(done - t00)} ms, elements ${doc.getElementsByTagName('*').length}, layouts ${doc.__layoutCount} (${Math.round(doc.__layoutMs)} ms incl. style${layoutTiming ? `; native engine pack ${layoutTiming.pack.toFixed(0)} + C ${layoutTiming.native.toFixed(0)} + apply ${layoutTiming.apply.toFixed(0)} ms` : ''}), RSS ${r.rss} MB (peak ${r.peak} MB)`);
 	log('missing: ' + JSON.stringify([...missing].sort((a, b) => b[1] - a[1]).slice(0, 25))); log('unsupported: ' + JSON.stringify([...unsupported]));
-	const cl = new Map(); for (const [k, m] of consoleLog) { const key = k + ': ' + m.split('\n')[0].slice(0, 220); cl.set(key, (cl.get(key) || 0) + 1); }
+	const cl = new Map(); for (const [k, m] of consoleLog) { const key = k + ': ' + (opt('console-full', '0') === '1' ? m : m.split('\n')[0].slice(0, 220)); cl.set(key, (cl.get(key) || 0) + 1); }
 	log(`console: ${consoleLog.length} messages, ${cl.size} distinct`); for (const [k, n] of [...cl].filter(([k]) => opt('all', '0') === '1' || /^(error|warn)/.test(k)).slice(0, Number(opt('console', 12)))) { log(`  x${n} ${k}`); }
 	summarizePasses(doc, log);
 	const seen = new Map(); for (const [k, m] of errors) { const key = k + ': ' + m.split('\n')[0].slice(0, 200); if (!seen.has(key)) { seen.set(key, [0, m]); } seen.get(key)[0]++; }

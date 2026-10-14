@@ -2,6 +2,8 @@
 // getComputedStyle, rAF and timers, observers, storage, navigator and the other globals a page like Monaco expects. `installEnvironment(opts)` makes globalThis the window.
 import { execCommand, supportedCommands } from './textcontrol.js';
 import * as D from './dom.js';
+import { NodeFilter, NodeIterator, TreeWalker } from './dom_extra.js';
+import { isHoisted, itemsOf } from './stacking.js';
 import { CSSStyleSheet, serializeValue, parseColor, PROPS, resolveLen } from './css.js';
 import { Layout } from './layout.js';
 import { resolveFont, fontMetrics, advance, registerFontFace, setOpentype } from './fonts.js';
@@ -31,30 +33,35 @@ export class Document extends Node {
 	__createElementNS(ns, name) { const CE = this.__customs && this.__customs.get(name); if (CE) { Element.__pending = name; try { const e = new CE(); e.ownerDocument = this; return e; } finally { Element.__pending = undefined; } } const C = ns === SVG_NS ? SVGElement : (tagClasses[name] ?? (/^[a-z][a-z0-9]*$/.test(name) && !['font', 'center', 'marquee'].includes(name) && KNOWN_TAGS.has(name) ? HTMLElement : HTMLUnknownElement)); const e = new C(name, ns); e.ownerDocument = this; return e; }
 	createTextNode(d) { const t = new Text(d); t.ownerDocument = this; return t; } createComment(d) { const t = new Comment(d); t.ownerDocument = this; return t; }
 	createDocumentFragment() { const f = new DocumentFragment(); f.ownerDocument = this; return f; } createRange() { return new D.Range(this); } createEvent(t) { return new D.Event(''); }
-	createTreeWalker(root, what, filter) { const nodes = []; const walk = (n) => { for (const c of n.__children) { if ((what & 1 && c.nodeType === 1) || (what & 4 && c.nodeType === 3) || what === 0xFFFFFFFF) { nodes.push(c); } walk(c); } }; walk(root); let i = -1; return { currentNode: root, nextNode() { i++; return nodes[i] ?? null; } }; }
+	createTreeWalker(root, what, filter) { return new TreeWalker(root, what, filter); } createNodeIterator(root, what, filter) { return new NodeIterator(this, root, what, filter); }
+	get implementation() { const env = this.__env; return { createHTMLDocument(title) { const d = new Document(env); d.title = title ?? ''; return d; }, createDocument(ns, qname) { const d = new Document(env); for (const c of [...d.__children]) { d.__removeChild(c, false); } if (qname) { d.appendChild(d.__createElementNS(ns, qname)); } return d; }, hasFeature() { return true; } }; }
 	importNode(n, deep) { return n.cloneNode(deep); } adoptNode(n) { return n; } open() { } close() { } write() { } writeln() { }
 	elementFromPoint(x, y) { return this.__hitTest(x, y, 1)[0] ?? null; }
 	elementsFromPoint(x, y) { return this.__hitTest(x, y, Infinity); }
 	/** the elements whose rectangle contains the point, innermost and last-painted first; stops after `limit` hits */
 	__hitTest(x, y, limit) {
-		this.__ensureLayout(); const out = [];
-		const top = this.__topLayerBoxes(), topSet = top.set;
-		const walk = (b, isRoot) => {
-			const ch = b.children; for (let i = ch.length - 1; i >= 0; i--) { const c = ch[i]; if (c.kind === 'text' || !c.el || topSet.has(c)) { continue; } if (walk(c, false)) { return true; } }
-			if (b.el && b.v.visibility !== 'hidden' && b.v['pointer-events'] !== 'none') { const r = this.__rect(b.el); if (x >= r.left && x < r.right && y >= r.top && y < r.bottom) { out.push(b.el); if (out.length >= limit) { return true; } } }
+		this.__ensureLayout(); const out = []; const lay = this.__layout; if (!lay || !lay.rootBox) { return out; }
+		const hit = (b) => { if (!b.el || b.v.visibility === 'hidden' || b.v['pointer-events'] === 'none') { return false; } const r = this.__rect(b.el); if (x >= r.left && x < r.right && y >= r.top && y < r.bottom && !clippedOut(b)) { out.push(b.el); return out.length >= limit; } return false; };
+		/** reverse paint order (front to back): positive z-index contexts, z-index 0/auto positioned boxes, in-flow content, negative z-index contexts; then the box itself */
+		const walk = (b) => {
+			const items = itemsOf(lay, b);
+			for (let i = items.pos.length - 1; i >= 0; i--) { if (walk(items.pos[i])) { return true; } }
+			for (let i = items.zero.length - 1; i >= 0; i--) { if (walk(items.zero[i])) { return true; } }
+			const ch = b.children; for (let i = ch.length - 1; i >= 0; i--) { const c = ch[i]; if (c.kind === 'text' || !c.el || isHoisted(c)) { continue; } if (walk(c)) { return true; } }
+			for (let i = items.neg.length - 1; i >= 0; i--) { if (walk(items.neg[i])) { return true; } }
+			return hit(b);
+		};
+		/** an element scrolled or laid out beyond the overflow clip of an ancestor is invisible there and must not be hit (an absolute box is clipped only by its containing block and what is above it) */
+		const clippedOut = (b) => {
+			if (b.pos === 'fixed') { return false; } let passedCB = b.pos !== 'absolute';
+			for (let a = b.parent; a; a = a.parent) {
+				if (!a.el || !a.v) { continue; } if (!passedCB) { if (a.pos === 'static' && !a.matrix) { continue; } passedCB = true; }
+				if (a.v['overflow-x'] !== 'visible' || a.v['overflow-y'] !== 'visible') { const r = this.__rect(a.el); if (x < r.left + a.bl || x >= r.right - a.br || y < r.top + a.bt || y >= r.bottom - a.bb) { return true; } }
+				if (a.pos === 'fixed') { break; }   // nothing above a fixed box clips it or what is inside it
+			}
 			return false;
 		};
-		for (let i = top.list.length - 1; i >= 0; i--) { if (walk(top.list[i], false)) { return out; } }
-		if (this.__layout && this.__layout.rootBox) { walk(this.__layout.rootBox, true); } return out;
-	}
-	/** the position:fixed boxes with a positive z-index (menus, dialogs), in paint order: the painter draws them above everything else, so hit testing must find them first (cached until the next layout pass) */
-	__topLayerBoxes() {
-		if (this.__topCache && this.__topCacheFor === this.__layout) { return this.__topCache; }
-		const list = []; const lay = this.__layout;
-		const collect = (b) => { for (const c of b.children) { if (c.kind === 'text' || !c.el) { continue; } const z = c.v['z-index']; if (c.pos === 'fixed' && typeof z === 'number' && z > 0) { list.push(c); } collect(c); } };
-		if (lay && lay.rootBox) { collect(lay.rootBox); }
-		const idx = new Map(list.map((b, i) => [b, i])); list.sort((a, b) => (a.v['z-index'] - b.v['z-index']) || (idx.get(a) - idx.get(b)));
-		this.__topCacheFor = lay; return (this.__topCache = { list, set: new Set(list) });
+		walk(lay.rootBox); return out;
 	}
 	/** The caret position nearest to a point, as a collapsed Range in a text node (the editor's mouse hit-testing of text needs it): the text under the element at the point whose line contains `y`, nearest in x. */
 	caretRangeFromPoint(x, y) {
@@ -90,7 +97,7 @@ export class Document extends Node {
 		const t0 = performance.now(); const dirty = this.__dirtyLog || []; this.__dirtyLog = []; let lay = this.__layout, reused = false;
 		if (lay && !this.__noStyleOnly) { const ts = performance.now(); const r = Layout.styleOnly(this, env, lay, dirty); if (r === true) { reused = true; lay.styleMs = performance.now() - ts; lay.layoutMs = 0; lay.styleInfo = this.__styleInfo; if (this.__verifyStyleOnly) { this.__checkStyleOnly(lay); } } else { lay = null; this.__stylesResolved = r === null; this.__preStyleMs = r === null ? performance.now() - ts : 0; } } else { lay = null; }
 		if (!reused) { lay = new Layout(this, env); lay.dirtyLog = dirty; lay.skipStyle = this.__stylesResolved === true; lay.preStyleMs = this.__preStyleMs || 0; this.__stylesResolved = false; this.__preStyleMs = 0; lay.run(); }
-		if (this.__passStats) { this.__passStats.push(summarizeDirty(dirty, this, lay, t0)); } this.__layout = lay; this.__topCache = null; this.__dirty = false; this.__styleDirty = false; this.__layoutCount++; this.__layoutMs += performance.now() - t0; if (!reused) { this.__applyTransforms(lay); } else { this.__styleOnlyPasses = (this.__styleOnlyPasses || 0) + 1; }
+		if (this.__passStats) { this.__passStats.push(summarizeDirty(dirty, this, lay, t0)); } this.__layout = lay; if (lay) { lay.__ctxItems = null; } this.__dirty = false; this.__styleDirty = false; this.__layoutCount++; this.__layoutMs += performance.now() - t0; if (!reused) { this.__applyTransforms(lay); } else { this.__styleOnlyPasses = (this.__styleOnlyPasses || 0) + 1; }
 		if (this.__scrollClampPending) { this.__scrollClampPending = false; }
 	}
 	__applyTransforms(lay) {   // 2D affine per box from `transform` (translate / scale / matrix / rotate approximated)
@@ -202,9 +209,10 @@ export function installEnvironment(opts = {}) {
 	defineGlobal('scrollTo', () => { }); defineGlobal('scroll', () => { }); defineGlobal('scrollBy', () => { }); defineGlobal('focus', () => { }); defineGlobal('blur', () => { }); defineGlobal('print', () => { }); defineGlobal('open', () => null); defineGlobal('close', () => { }); defineGlobal('stop', () => { });
 	defineGlobal('getSelection', () => doc.getSelection()); defineGlobal('postMessage', () => { }); defineGlobal('reportError', (e) => console.error(e));
 	defineGlobal('CSS', { escape: (s) => String(s).replace(/[^\w-]/g, c => '\\' + c), supports: () => true, registerProperty() { } });
-	for (const [k, v] of Object.entries({ Node, Element, HTMLElement, SVGElement, Text, Comment, DocumentFragment, Document, EventTarget, Event: D.Event, UIEvent: D.UIEvent, MouseEvent: D.MouseEvent, PointerEvent: D.PointerEvent, WheelEvent: D.WheelEvent, KeyboardEvent: D.KeyboardEvent, FocusEvent: D.FocusEvent, CustomEvent: D.CustomEvent, InputEvent: D.InputEvent, CompositionEvent: D.CompositionEvent, ClipboardEvent: D.ClipboardEvent, DragEvent: D.DragEvent, TouchEvent: D.TouchEvent, ErrorEvent: D.ErrorEvent, MessageEvent: D.MessageEvent, Range: D.Range, Selection: D.Selection, DOMException: D.DOMException, MutationObserver: D.MutationObserver, ResizeObserver, IntersectionObserver, DOMRect, DOMRectReadOnly: DOMRect, CSSStyleSheet, CSSStyleDeclaration: D.CSSStyleDeclaration, Storage, HTMLDivElement: D.HTMLDivElement, HTMLSpanElement: D.HTMLSpanElement, HTMLBodyElement: D.HTMLBodyElement, HTMLAnchorElement: D.HTMLAnchorElement, HTMLButtonElement: D.HTMLButtonElement, HTMLLabelElement: D.HTMLLabelElement, HTMLImageElement: D.HTMLImageElement, HTMLLinkElement: D.HTMLLinkElement, HTMLScriptElement: D.HTMLScriptElement, HTMLIFrameElement: D.HTMLIFrameElement, HTMLInputElement: D.HTMLInputElement, HTMLTextAreaElement: D.HTMLTextAreaElement, HTMLStyleElement: D.HTMLStyleElement, HTMLCanvasElement: D.HTMLCanvasElement, HTMLTemplateElement: D.HTMLTemplateElement, HTMLUListElement: D.HTMLUListElement, HTMLLIElement: D.HTMLLIElement, HTMLSelectElement: D.HTMLSelectElement, HTMLTableElement: D.HTMLTableElement, HTMLUnknownElement: D.HTMLUnknownElement, HTMLHeadElement: D.HTMLHeadElement, HTMLHtmlElement: D.HTMLHtmlElement, HTMLParagraphElement: D.HTMLParagraphElement, HTMLPreElement: D.HTMLPreElement, HTMLBRElement: D.HTMLBRElement })) { defineGlobal(k, v); }
+	for (const [k, v] of Object.entries({ Node, Element, HTMLElement, SVGElement, Text, Comment, DocumentFragment, Document, EventTarget, Event: D.Event, UIEvent: D.UIEvent, MouseEvent: D.MouseEvent, PointerEvent: D.PointerEvent, WheelEvent: D.WheelEvent, KeyboardEvent: D.KeyboardEvent, FocusEvent: D.FocusEvent, CustomEvent: D.CustomEvent, InputEvent: D.InputEvent, CompositionEvent: D.CompositionEvent, ClipboardEvent: D.ClipboardEvent, DragEvent: D.DragEvent, TouchEvent: D.TouchEvent, ErrorEvent: D.ErrorEvent, MessageEvent: D.MessageEvent, Range: D.Range, Selection: D.Selection, DOMException: D.DOMException, MutationObserver: D.MutationObserver, ResizeObserver, IntersectionObserver, DOMRect, DOMRectReadOnly: DOMRect, CSSStyleSheet, CSSStyleDeclaration: D.CSSStyleDeclaration, Storage, HTMLDivElement: D.HTMLDivElement, HTMLSpanElement: D.HTMLSpanElement, HTMLBodyElement: D.HTMLBodyElement, HTMLAnchorElement: D.HTMLAnchorElement, HTMLButtonElement: D.HTMLButtonElement, HTMLLabelElement: D.HTMLLabelElement, HTMLImageElement: D.HTMLImageElement, HTMLLinkElement: D.HTMLLinkElement, HTMLScriptElement: D.HTMLScriptElement, HTMLIFrameElement: D.HTMLIFrameElement, HTMLInputElement: D.HTMLInputElement, HTMLTextAreaElement: D.HTMLTextAreaElement, HTMLStyleElement: D.HTMLStyleElement, HTMLCanvasElement: D.HTMLCanvasElement, HTMLTemplateElement: D.HTMLTemplateElement, HTMLUListElement: D.HTMLUListElement, HTMLLIElement: D.HTMLLIElement, HTMLSelectElement: D.HTMLSelectElement, HTMLTableElement: D.HTMLTableElement, HTMLUnknownElement: D.HTMLUnknownElement, HTMLHeadElement: D.HTMLHeadElement, HTMLHtmlElement: D.HTMLHtmlElement, HTMLParagraphElement: D.HTMLParagraphElement, HTMLPreElement: D.HTMLPreElement, HTMLBRElement: D.HTMLBRElement, HTMLFormElement: D.HTMLFormElement, HTMLOptionElement: D.HTMLOptionElement, HTMLOptGroupElement: D.HTMLOptGroupElement, NamedNodeMap: D.NamedNodeMap, NodeFilter, NodeIterator, TreeWalker })) { defineGlobal(k, v); }
+	defineGlobal('Option', function Option(text, value, defaultSelected, selected) { const o = doc.createElement('option'); if (text !== undefined) { o.textContent = String(text); } if (value !== undefined) { o.setAttribute('value', String(value)); } if (defaultSelected) { o.setAttribute('selected', ''); } if (selected !== undefined) { o.__selected = !!selected; } return o; });
 	defineGlobal('customElements', { define(name, ctor) { (doc.__customs ??= new Map()).set(name, ctor); doc.__hasCustom = true; }, get(name) { return doc.__customs && doc.__customs.get(name); }, whenDefined() { return Promise.resolve(); }, upgrade() { } });
-	defineGlobal('XMLSerializer', class { serializeToString(n) { return D.serialize(n); } }); defineGlobal('DOMParser', class { parseFromString(s) { const d = new Document(env); d.documentElement.__children.length = 0; d.body.innerHTML = s; return d; } });
+	defineGlobal('XMLSerializer', class { serializeToString(n) { return D.serialize(n); } }); defineGlobal('DOMParser', class { parseFromString(s, type) { const d = new Document(env); if (/xml|svg/.test(String(type))) { for (const c of [...d.__children]) { d.__removeChild(c, false); } const frag = D.parseFragment(d, String(s), null); const root = [...frag.__children].find(c => c.nodeType === 1); if (root) { frag.__removeChild(root, false); d.appendChild(root); } return d; } d.body.innerHTML = String(s); return d; } });
 	defineGlobal('FileReader', class extends EventTarget { readAsText() { } readAsDataURL() { } }); defineGlobal('HTMLMediaElement', class { }); defineGlobal('CanvasRenderingContext2D', Canvas2D); defineGlobal('Image', class { constructor() { return doc.createElement('img'); } }); defineGlobal('Option', class { });
 	if (typeof g.MessageChannel === 'undefined') { defineGlobal('MessageChannel', class { constructor() { const mk = () => Object.assign(new EventTarget(), { postMessage(d) { const o = this.other; setTimeout(() => o.dispatchEvent(new D.MessageEvent('message', { data: d })), 0); }, start() { }, close() { }, onmessage: null }); this.port1 = mk(); this.port2 = mk(); this.port1.other = this.port2; this.port2.other = this.port1; for (const p of [this.port1, this.port2]) { p.addEventListener('message', (e) => { if (typeof p.onmessage === 'function') { p.onmessage(e); } }); } } }); }
 	// the hooks the harness uses

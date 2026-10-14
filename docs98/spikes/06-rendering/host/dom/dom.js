@@ -1,6 +1,8 @@
 // A small DOM for the rendering spike: Node / Element / Text / Document / events / attributes / classList / inline style / innerHTML / Range / Selection stubs.
 // Pure JavaScript (ES2020, no Node or browser APIs) so it runs on QuickJS-ng and, for development, on Node. Layout, style resolution and painting live in other files and
 // hook in through `Document.prototype.__layout` (a function installed by env.js). Anything the editor touches that is missing is recorded in `globalThis.__missing`.
+import { notifyRemoval } from './dom_extra.js';
+import { selectProps, optionProps } from './selectmodel.js';
 import { textProps, setEventCtors, controlFocused, controlBlurred } from './textmodel.js';
 import { parseSelector, matches, closestMatch } from './selectors.js';
 
@@ -55,6 +57,9 @@ function reportError(e) { if (globalThis.console) { console.error('[event listen
 let nextId = 1;
 export class Node extends EventTarget {
 	constructor() { super(); this.parentNode = null; this.__children = []; this.ownerDocument = null; this.__id = nextId++; }
+	// `parentNode` is a plain own data property (fast: selector matching and layout read it constantly); the accessor on the prototype only exists so that code which looks it up there first (DOMPurify's lookupGetter on Element.prototype) finds a getter
+	get parentNode() { const own = Object.getOwnPropertyDescriptor(this, 'parentNode'); return own ? own.value : null; } set parentNode(v) { Object.defineProperty(this, 'parentNode', { value: v, writable: true, configurable: true, enumerable: true }); }
+	get nodeName() { return ({ 1: this.tagName, 3: '#text', 8: '#comment', 9: '#document', 11: '#document-fragment' })[this.nodeType] ?? ''; }
 	static ELEMENT_NODE = 1; static TEXT_NODE = 3; static COMMENT_NODE = 8; static DOCUMENT_NODE = 9; static DOCUMENT_FRAGMENT_NODE = 11;
 	static DOCUMENT_POSITION_DISCONNECTED = 1; static DOCUMENT_POSITION_PRECEDING = 2; static DOCUMENT_POSITION_FOLLOWING = 4; static DOCUMENT_POSITION_CONTAINS = 8; static DOCUMENT_POSITION_CONTAINED_BY = 16;
 	get childNodes() { return this.__children; }
@@ -78,7 +83,7 @@ export class Node extends EventTarget {
 		this.__invalidate('style', 'ins', node, i); this.__queueMutation({ type: 'childList', target: this, addedNodes: [node], removedNodes: [] }); node.__connectedChanged && node.__connectedChanged(this.isConnected); return node;
 	}
 	appendChild(node) { return this.insertBefore(node, null); }
-	__removeChild(node, moving) { const i = this.__children.indexOf(node); if (i < 0) { throw new DOMException('The node to be removed is not a child of this node.', 'NotFoundError'); } this.__children.splice(i, 1); node.parentNode = null; this.__invalidate('style', 'rem', node, i); { const d = this.nodeType === 9 ? this : this.ownerDocument; const ae = d && d.__activeElement; if (ae && node.contains && node.contains(ae)) { d.__activeElement = null; this.__invalidate('style', 'state', 'focus'); } } /* removing the focused element moves focus to the body: :focus and :focus-within change */ if (!moving) { this.__queueMutation({ type: 'childList', target: this, addedNodes: [], removedNodes: [node] }); } node.__connectedChanged && node.__connectedChanged(false); return node; }
+	__removeChild(node, moving) { const i = this.__children.indexOf(node); if (i < 0) { throw new DOMException('The node to be removed is not a child of this node.', 'NotFoundError'); } notifyRemoval(this.nodeType === 9 ? this : this.ownerDocument, node); this.__children.splice(i, 1); node.parentNode = null; this.__invalidate('style', 'rem', node, i); { const d = this.nodeType === 9 ? this : this.ownerDocument; const ae = d && d.__activeElement; if (ae && node.contains && node.contains(ae)) { d.__activeElement = null; this.__invalidate('style', 'state', 'focus'); } } /* removing the focused element moves focus to the body: :focus and :focus-within change */ if (!moving) { this.__queueMutation({ type: 'childList', target: this, addedNodes: [], removedNodes: [node] }); } node.__connectedChanged && node.__connectedChanged(false); return node; }
 	removeChild(node) { return this.__removeChild(node, false); }
 	replaceChild(n, old) { this.insertBefore(n, old); return this.removeChild(old); }
 	remove() { if (this.parentNode) { this.parentNode.removeChild(this); } }
@@ -106,6 +111,8 @@ export class Text extends CharacterData {
 	splitText(o) { const t = new Text(this.__data.slice(o)); t.ownerDocument = this.ownerDocument; this.data = this.__data.slice(0, o); if (this.parentNode) { this.parentNode.insertBefore(t, this.nextSibling); } return t; }
 	cloneNode() { const t = new Text(this.__data); t.ownerDocument = this.ownerDocument; return t; }
 }
+/** Element.prototype.cloneNode applied to another kind of node (DOMPurify does that through its prototype lookups) */
+function cloneNonElement(n, deep) { if (n.nodeType === 3) { const t = new Text(n.__data); t.ownerDocument = n.ownerDocument; return t; } if (n.nodeType === 8) { const t = new Comment(n.__data); t.ownerDocument = n.ownerDocument; return t; } if (n.nodeType === 11) { const f = new DocumentFragment(); f.ownerDocument = n.ownerDocument; if (deep) { for (const c of n.__children) { f.appendChild(c.cloneNode(true)); } } return f; } throw new Error('cloneNode: unsupported node type ' + n.nodeType); }
 export class Comment extends CharacterData { constructor(d = '') { super(d); } get nodeType() { return 8; } get nodeName() { return '#comment'; } cloneNode() { const t = new Comment(this.__data); t.ownerDocument = this.ownerDocument; return t; } }
 
 // ---- parent-node mixin helpers ----------------------------------------------------------------------------------------------------------------
@@ -175,7 +182,7 @@ const STYLE_PROXY = {
 // ---- Element ----------------------------------------------------------------------------------------------------------------------------------
 export class Element extends Node {
 	constructor(localName = Element.__pending, ns = 'http://www.w3.org/1999/xhtml') { super(); this.localName = localName; this.namespaceURI = ns; this.__attrs = new Map(); this.__style = null; this.__classList = null; }
-	get nodeType() { return 1; } get nodeName() { return this.tagName; }
+	get nodeType() { return 1; } get nodeName() { return this.nodeType === 1 ? this.tagName : ({ 3: '#text', 8: '#comment', 9: '#document', 11: '#document-fragment' })[this.nodeType] ?? ''; }
 	__connectedChanged(connected) { const d = this.ownerDocument; if (!d || !d.__hasCustom) { return; } const walk = (n) => { if (n.nodeType !== 1) { return; } const was = n.__wasConnected === true; if (connected !== was) { n.__wasConnected = connected; const cb = connected ? n.connectedCallback : n.disconnectedCallback; if (typeof cb === 'function') { try { cb.call(n); } catch (e) { reportError(e); } } } for (const c of n.__children) { walk(c); } }; walk(this); }
 	get tagName() { return this.namespaceURI === 'http://www.w3.org/1999/xhtml' ? this.localName.toUpperCase() : this.localName; }
 	get id() { return this.getAttribute('id') || ''; } set id(v) { this.setAttribute('id', v); }
@@ -183,7 +190,7 @@ export class Element extends Node {
 	get classList() { return this.__classList ??= new DOMTokenList(this); }
 	get style() { return this.__style ??= new CSSStyleDeclaration(this); }
 	set style(v) { this.style.cssText = String(v); }
-	get attributes() { const el = this; const list = [...this.__attrs].map(([name, value]) => ({ name, value, localName: name, ownerElement: el })); list.getNamedItem = (n) => list.find(a => a.name === n) ?? null; return list; }
+	get attributes() { const el = this; const list = NamedNodeMap.from([...this.__attrs].map(([name, value]) => ({ name, value, localName: name, ownerElement: el }))); return list; }
 	classes() { return this.__cls ??= (this.__attrs.get('class') || '').split(/\s+/).filter(Boolean); }
 	getAttribute(n) { n = n.toLowerCase(); return this.__attrs.has(n) ? this.__attrs.get(n) : null; }
 	getAttributeNS(ns, n) { return this.getAttribute(n); }
@@ -215,7 +222,7 @@ export class Element extends Node {
 	replaceWith(...a) { this.before(...a); this.remove(); }
 	matches(sel) { return matches(this, parseSelector(sel)); } webkitMatchesSelector(s) { return this.matches(s); }
 	closest(sel) { return closestMatch(this, parseSelector(sel)); }
-	cloneNode(deep) { const e = this.ownerDocument.__createElementNS(this.namespaceURI, this.localName); for (const [k, v] of this.__attrs) { e.setAttribute(k, v); } if (deep) { for (const c of this.__children) { e.appendChild(c.cloneNode(true)); } } return e; }
+	cloneNode(deep) { if (this.nodeType !== 1) { return cloneNonElement(this, deep); } const e = this.ownerDocument.__createElementNS(this.namespaceURI, this.localName); for (const [k, v] of this.__attrs) { e.setAttribute(k, v); } if (deep) { for (const c of this.__children) { e.appendChild(c.cloneNode(true)); } } return e; }
 	get shadowRoot() { return null; } attachShadow() { noteMissing('Element.attachShadow'); throw new DOMException('Shadow DOM not supported', 'NotSupportedError'); }
 	// focus
 	focus() { const d = this.ownerDocument; if (!d || d.__activeElement === this) { return; } const prev = d.__activeElement; d.__activeElement = this; if (prev) { prev.__invalidate('style', 'state', 'focus'); if (prev.__tc) { controlBlurred(prev); } } this.__invalidate('style', 'state', 'focus'); if (this.__tc) { controlFocused(this); } if (prev) { prev.dispatchEvent(new FocusEvent('blur', { relatedTarget: this })); prev.dispatchEvent(new FocusEvent('focusout', { relatedTarget: this, bubbles: true })); } this.dispatchEvent(new FocusEvent('focus', { relatedTarget: prev })); this.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: prev })); }
@@ -248,10 +255,12 @@ const mk = (name, tags, extra) => { const C = ({ [name]: class extends HTMLEleme
 export const HTMLDivElement = mk('HTMLDivElement', ['div']), HTMLSpanElement = mk('HTMLSpanElement', ['span']), HTMLBodyElement = mk('HTMLBodyElement', ['body']), HTMLHeadElement = mk('HTMLHeadElement', ['head']), HTMLHtmlElement = mk('HTMLHtmlElement', ['html']),
 	HTMLAnchorElement = mk('HTMLAnchorElement', ['a']), HTMLButtonElement = mk('HTMLButtonElement', ['button']), HTMLLabelElement = mk('HTMLLabelElement', ['label']), HTMLImageElement = mk('HTMLImageElement', ['img']), HTMLLinkElement = mk('HTMLLinkElement', ['link']),
 	HTMLScriptElement = mk('HTMLScriptElement', ['script']), HTMLTableElement = mk('HTMLTableElement', ['table']), HTMLIFrameElement = mk('HTMLIFrameElement', ['iframe']), HTMLUListElement = mk('HTMLUListElement', ['ul']), HTMLLIElement = mk('HTMLLIElement', ['li']),
-	HTMLParagraphElement = mk('HTMLParagraphElement', ['p']), HTMLPreElement = mk('HTMLPreElement', ['pre']), HTMLBRElement = mk('HTMLBRElement', ['br']), HTMLSelectElement = mk('HTMLSelectElement', ['select']), HTMLOptionElement = mk('HTMLOptionElement', ['option']);
+	HTMLParagraphElement = mk('HTMLParagraphElement', ['p']), HTMLPreElement = mk('HTMLPreElement', ['pre']), HTMLBRElement = mk('HTMLBRElement', ['br']), HTMLSelectElement = mk('HTMLSelectElement', ['select'], selectProps), HTMLOptionElement = mk('HTMLOptionElement', ['option'], optionProps), HTMLOptGroupElement = mk('HTMLOptGroupElement', ['optgroup']);
 const withText = (extra) => Object.defineProperties({}, { ...Object.getOwnPropertyDescriptors(textProps), ...Object.getOwnPropertyDescriptors(extra) });
 export const HTMLInputElement = mk('HTMLInputElement', ['input'], withText({ get checked() { return this.__checked !== undefined ? this.__checked : this.hasAttribute('checked'); }, set checked(v) { this.__checked = !!v; this.ownerDocument && (this.ownerDocument.__paintGen = (this.ownerDocument.__paintGen | 0) + 1); } }));
 export const HTMLTextAreaElement = mk('HTMLTextAreaElement', ['textarea'], withText({}));
+export const HTMLFormElement = mk('HTMLFormElement', ['form'], { submit() { }, reset() { }, requestSubmit() { }, checkValidity() { return true; }, reportValidity() { return true; }, get elements() { return [...this.querySelectorAll('input, select, textarea, button')]; } });
+export class NamedNodeMap extends Array { getNamedItem(n) { return this.find(a => a.name === n) ?? null; } item(i) { return this[i] ?? null; } }
 export const HTMLStyleElement = mk('HTMLStyleElement', ['style'], { get sheet() { return this.__sheet ?? (this.isConnected ? (this.ownerDocument.__ensureSheet(this)) : null); } });
 export const HTMLCanvasElement = mk('HTMLCanvasElement', ['canvas'], {
 	get width() { return +(this.getAttribute('width') ?? 300); }, set width(v) { this.setAttribute('width', v); this.__ctx = null; }, get height() { return +(this.getAttribute('height') ?? 150); }, set height(v) { this.setAttribute('height', v); this.__ctx = null; },

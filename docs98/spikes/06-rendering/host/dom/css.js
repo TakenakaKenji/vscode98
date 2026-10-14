@@ -213,7 +213,7 @@ html,body,div,section,article,nav,aside,header,footer,main,ul,ol,li,p,pre,form,f
 head,script,style,link,meta,title,base,template,noscript,area,datalist,param,source,track { display:none }
 li { display:list-item } table { display:table } tr { display:table-row } td,th { display:table-cell } thead { display:table-header-group } tbody { display:table-row-group }
 img,canvas,video,svg,input,button,select,textarea,iframe { display:inline-block } input,textarea,button,select { font: 13.333px Arial; } textarea { white-space: pre-wrap; }
-html { color:#000; background-color: transparent } body { margin:8px } pre { white-space:pre; font-family: monospace } b,strong { font-weight:bold } i,em { font-style:italic } a { color:#0000ee; text-decoration: underline }
+html { color:#000; background-color: transparent } body { margin:8px } pre { white-space:pre; font-family: monospace } b,strong { font-weight:bold } i,em { font-style:italic } a:link { color:#0000ee; text-decoration: underline; cursor: pointer }
 h1 { font-size:2em; margin:0.67em 0; font-weight:bold } h2 { font-size:1.5em; margin:0.83em 0; font-weight:bold } h3 { font-size:1.17em; margin:1em 0; font-weight:bold } p,ul,ol { margin:1em 0 } ul,ol { padding-left:40px } li { list-style-type: disc }
 code,kbd,samp,tt { font-family: monospace } small { font-size: 0.83em } sub { vertical-align: sub; font-size: .83em } sup { vertical-align: super; font-size: .83em } [hidden] { display:none }
 `;

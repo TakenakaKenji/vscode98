@@ -5,6 +5,7 @@ import { buildRuleIndex, computeStyle, matchedDeclarations, matchedDeclarationsA
 import { analyzeIndex, diffIndex, deltaOfUpdate, mergeInv, planRestyle, logTouchesSheets, inheritedChanged, deepEqual } from './style_invalidation.js';
 import { resolveFont, fontMetrics, advance, kern } from './fonts.js';
 import { noteMissing } from './dom.js';
+import { optionList } from './selectmodel.js';
 import { setMatchMemo } from './selectors.js';
 
 export const unsupported = new Map();
@@ -247,7 +248,7 @@ export class Layout {
 		if (n === 'canvas') { w = attr('width') ?? 300; h = attr('height') ?? 150; } else if (n === 'img' || n === 'video' || n === 'svg' || n === 'iframe') { w = attr('width') ?? (n === 'iframe' ? 300 : 0); h = attr('height') ?? (n === 'iframe' ? 150 : 0); }
 		else if (n === 'input') { const t = (el.getAttribute('type') || 'text').toLowerCase(); if (t === 'checkbox' || t === 'radio') { w = h = 13; } else { w = 153; h = Math.round(fontMetrics(this.fontOf(box), v['font-size']).lineHeightNormal) + 6; } }
 		else if (n === 'textarea') { const cols = attr('cols') ?? 20, rows = attr('rows') ?? 2; const font = this.fontOf(box); w = cols * advance(font, 48, v['font-size']) + 8; h = rows * fontMetrics(font, v['font-size']).lineHeightNormal + 6; }
-		else if (n === 'select') { w = 100; h = 21; }
+		else if (n === 'select') { const font = this.fontOf(box), fs = v['font-size']; const opts = optionList(el); let mw = 0; for (const o of opts) { mw = Math.max(mw, this.measure(font, o.text, fs, 0, v)); } const lh = Math.round(fontMetrics(font, fs).lineHeightNormal); const rows = el.hasAttribute('multiple') ? Math.max(1, parseInt(el.getAttribute('size') ?? '4', 10) || 4) : parseInt(el.getAttribute('size') ?? '1', 10) || 1; w = Math.round(mw) + 28; h = rows > 1 ? rows * lh + 4 : lh + 6; }
 		box.__rs = { w, h }; return box.__rs;
 	}
 	gapOf(box, prop, base) { const g = box.v[prop]; const l = resolveLen(g, base); return l === null ? 0 : l; }
