@@ -45,7 +45,7 @@ Module.registerHooks({ resolve(specifier, context, nextResolve) { if (specifier.
 // ---- user settings for a headless run: no trust prompt (the git extension is limited in untrusted workspaces), no welcome page, no telemetry or update checks
 { const dir = nodePath.join(userDataDir, 'User'); const mk = (d) => { if (os.stat(d)[1] !== 0) { mk(nodePath.dirname(d)); os.mkdir(d, 0o777); } }; mk(dir);
 	if (opt('seed-settings', '1') === '1') {   // product defaults: added when missing from settings.json, never overriding what the user set
-		const defaults = { 'security.workspace.trust.enabled': false, 'workbench.startupEditor': 'none', 'telemetry.telemetryLevel': 'off', 'update.mode': 'none', 'extensions.autoUpdate': false, 'extensions.autoCheckUpdates': false, 'chat.disableAIFeatures': true, 'workbench.secondarySideBar.defaultVisibility': 'hidden', 'window.commandCenter': false, 'workbench.layoutControl.enabled': false, 'breadcrumbs.enabled': false, 'editor.minimap.enabled': false, 'workbench.tips.enabled': false, 'workbench.enableExperiments': false, 'update.showReleaseNotes': false, 'window.dialogStyle': 'custom', 'files.simpleDialog.enable': true, 'terminal.integrated.gpuAcceleration': 'off', ...JSON.parse(opt('seed-extra', '{}')) };
+		const defaults = { 'security.workspace.trust.enabled': false, 'workbench.startupEditor': 'none', 'telemetry.telemetryLevel': 'off', 'update.mode': 'none', 'extensions.autoUpdate': false, 'extensions.autoCheckUpdates': false, 'chat.disableAIFeatures': true, 'workbench.secondarySideBar.defaultVisibility': 'hidden', 'window.commandCenter': false, 'workbench.layoutControl.enabled': false, 'breadcrumbs.enabled': false, 'editor.minimap.enabled': false, 'workbench.tips.enabled': false, 'workbench.enableExperiments': false, 'update.showReleaseNotes': false, 'window.dialogStyle': 'custom', 'files.simpleDialog.enable': true, 'terminal.integrated.gpuAcceleration': 'off', 'terminal.integrated.defaultProfile.windows': 'Command Prompt', 'terminal.integrated.shellIntegration.enabled': false, ...JSON.parse(opt('seed-extra', '{}')) };
 		let cur = {}; const txt = std.loadFile(dir + '/settings.json'); if (txt) { try { cur = JSON.parse(txt); } catch { cur = null; } }
 		if (cur) { let changed = !txt; for (const [k, v] of Object.entries(defaults)) { if (!(k in cur)) { cur[k] = v; changed = true; } } if (changed) { const f = std.open(dir + '/settings.json', 'w'); f.puts(JSON.stringify(cur, null, 2)); f.close(); } }
 	}
@@ -64,6 +64,8 @@ const ipc = {
 	once: (ch, fn) => { const w = (...a) => { ipc.off(ch, w); fn(...a); }; ipc.on(ch, w); },
 	off: (ch, fn) => { const l = listeners.get(ch); if (l) { const i = l.indexOf(fn); if (i >= 0) { l.splice(i, 1); } } },
 };
+// the first terminal starts the pty host, a whole process (on a slow machine more than the 5 s the workbench allows for creating a terminal process): start it in the background once the workbench has had time to settle
+if (Number(opt('pty-prewarm-ms', 20000)) > 0) { os.setTimeout(() => { try { ipc.send('vscode:createPtyHostMessageChannel', 'prewarm-' + Date.now()); } catch (e) { log('pty prewarm failed: ' + e); } }, Number(opt('pty-prewarm-ms', 20000))); }
 const ports = new PortTable((m) => child.send(encode({ ...m, wc: wcId })));
 let onWindowLoad; const loadRequested = new Promise((r) => { onWindowLoad = r; }); let createOpts;
 child.on('message', (m0) => {
