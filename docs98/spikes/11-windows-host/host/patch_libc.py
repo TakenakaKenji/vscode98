@@ -16,6 +16,47 @@ src = sub("        ret = WaitForMultipleObjects(count, handles, FALSE, timeout);
           "        ret = has_windows ? MsgWaitForMultipleObjects(count, handles, FALSE, timeout, QS_ALLINPUT) : WaitForMultipleObjects(count, handles, FALSE, timeout);\n        if (has_windows && ret == WAIT_OBJECT_0 + (DWORD)count) { js_win_waiter.pump(ctx); goto done; }\n", "static int js_os_poll_internal")
 src = sub("        if (ret < (DWORD)count) {\n",
           "        if (ret < (DWORD)count && js_win_waiter.dispatch) {\n            int r = js_win_waiter.dispatch(ctx, handles[ret]);\n            if (r < 0) return -1;\n            if (r > 0) goto done;\n        }\n        if (ret < (DWORD)count) {\n", "static int js_os_poll_internal")
+# js_load_file reads in 8 KB pieces and reallocates (len + n + 1) after every one: linear growth, so a 15 MB bundle means 1,900 reallocations, and where realloc has to move large blocks (the Windows
+# heap) that is quadratic copying (seconds under Wine, much worse on a VM). Read a file of known size with one allocation; unknown sizes (pipes, devices) grow geometrically.
+lf = src.index("uint8_t *js_load_file(JSContext *ctx, size_t *pbuf_len, const char *filename)\n{")
+le = src.index("\n}\n", lf) + 3
+src = src[:lf] + """uint8_t *js_load_file(JSContext *ctx, size_t *pbuf_len, const char *filename)
+{
+    FILE *f;
+    size_t n, len = 0, cap = 0;
+    uint8_t *p, *buf = NULL;
+    long size = -1;
+
+    f = fopen(filename, "rb");
+    if (!f)
+        return NULL;
+    if (fseek(f, 0, SEEK_END) == 0) {
+        size = ftell(f);
+        if (fseek(f, 0, SEEK_SET) != 0)
+            size = -1;
+    }
+    cap = size >= 0 ? (size_t)size + 1 : 65536;
+    for (;;) {
+        if (len + 1 >= cap)
+            cap *= 2;
+        p = ctx ? js_realloc(ctx, buf, cap) : realloc(buf, cap);
+        if (!p) {
+            if (ctx) js_free(ctx, buf); else free(buf);
+            fclose(f);
+            return NULL;
+        }
+        buf = p;
+        n = fread(buf + len, 1, cap - len - 1, f);
+        len += n;
+        if (n == 0 || (size >= 0 && len >= (size_t)size))
+            break;
+    }
+    fclose(f);
+    buf[len] = '\\0';
+    *pbuf_len = len;
+    return buf;
+}
+""" + src[le:]
 # the header and the table definition go right after the first #include of the file
 k = src.index('#include "quickjs-libc.h"')
 k = src.index("\n", k) + 1

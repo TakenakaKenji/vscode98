@@ -30,7 +30,7 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 	const Ev = (name, o) => new env.window.MouseEvent(name, { bubbles: true, cancelable: true, composed: true, view: env.window, ...o });
 	// Monaco's mouse handling (editor text, selection) listens to Pointer Events, not mouse events: every mouse action is sent as the pointer event first, then as the legacy mouse event, as browsers do
 	const Pe = (name, o) => new env.window.PointerEvent(name, { bubbles: true, cancelable: true, composed: true, view: env.window, pointerId: 1, pointerType: 'mouse', isPrimary: true, ...o });
-	let paintedPasses = -1, backend = null, hover = null, downTarget = null, lastPaint = 0, forced = true, paints = 0, paintMs = 0;
+	let charSuppressed = false, paintedPasses = -1, backend = null, hover = null, downTarget = null, lastPaint = 0, forced = true, paints = 0, paintMs = 0;
 	const at = (x, y) => doc.elementFromPoint(x, y) || doc.body;
 	const dispatch = (el, ev) => { try { return el.dispatchEvent(ev); } catch (e) { ctx.note?.('window event ' + ev.type, e); return true; } };
 	const pdispatch = (el, ev) => (ctx.opt?.('no-pointer', '0') === '1' ? true : dispatch(el, ev));   // --no-pointer 1: legacy mouse events only (A/B switch)
@@ -62,13 +62,15 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 			case 'keydown': case 'keyup': {
 				const [key, code] = keyInfo(a, mods, c); const target = doc.activeElement || doc.body;
 				const ev = new env.window.KeyboardEvent(type, { bubbles: true, cancelable: true, composed: true, key, code, keyCode: a, which: a, repeat: !!d, ctrlKey: !!(mods & 2), shiftKey: !!(mods & 1), altKey: !!(mods & 4), metaKey: !!(mods & 8) });
-				dispatch(target, ev); break;
+				const notPrevented = dispatch(target, ev); if (type === 'keydown') { charSuppressed = !notPrevented; } break;   // a key whose keydown was handled (cancelled) produces no character, as in browsers
 			}
 			case 'char': {                       // text input: control keys are handled through keydown (Enter, Backspace, Tab)
-				const target = doc.activeElement; if (!editable(target) || a < 32 || a === 127) { break; } const ch = String.fromCodePoint(a);
+				const target = doc.activeElement; const sup = charSuppressed; charSuppressed = false; if (sup || !editable(target)) { break; }
+				// Enter is the one control character that is text: a <textarea> (Monaco's input area) gets a line break, a single-line <input> only the key events
+				const enter = a === 13; if (enter ? target.localName !== 'textarea' : (a < 32 || a === 127)) { break; } const ch = enter ? '\n' : String.fromCodePoint(a);
 				const ctrlAlt = (mods & 2) && !(mods & 4); if (ctrlAlt) { break; }
 				target.value = (target.value || '') + ch;       // like the spike 10 scenarios: Monaco's input area diffs the textarea value on 'input'
-				dispatch(target, new env.window.InputEvent('input', { bubbles: true, data: ch, inputType: 'insertText' })); break;
+				dispatch(target, new env.window.InputEvent('input', { bubbles: true, data: enter ? null : ch, inputType: enter ? 'insertLineBreak' : 'insertText' })); break;
 			}
 			case 'resize': W = a; H = b; log?.(`[window] resize ${a}x${b}`); env.resize?.(a, b); repaint(); break;
 			case 'focus': { if (a) { env.window.dispatchEvent(new env.window.Event('focus')); } else { env.window.dispatchEvent(new env.window.Event('blur')); } break; }

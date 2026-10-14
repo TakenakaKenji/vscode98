@@ -14,6 +14,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <mmsystem.h>
 #include <stdio.h>
 #include <io.h>
 #include <tlhelp32.h>
@@ -608,6 +609,9 @@ static int proc_init(JSContext *ctx, JSModuleDef *m) { return JS_SetModuleExport
 void spike_init_esm(JSContext *ctx);
 void spike_init(JSContext *ctx) {
 	spike_init_esm(ctx); g_ctx = ctx; ready_ev = CreateEvent(NULL, TRUE, FALSE, NULL);
+	/* Windows' default timer resolution is 15.6 ms: QuickJS clamps setTimeout(0) to 1 ms and waits with WaitForMultipleObjects/Sleep, so every chained zero-delay timer (the workbench and the Node
+	   shims use thousands, setImmediate included) would cost a full tick. Ask for 1 ms for the life of the process; QJS98_TIMER_RES=0 turns it off (for comparisons). */
+	{ const char *tr = getenv("QJS98_TIMER_RES"); if (!tr || tr[0] != '0') { timeBeginPeriod(1); } }
 	js_win_waiter.collect = win_collect; js_win_waiter.dispatch = win_dispatch; js_win_waiter.active = win_active;
 	JSValue g = JS_GetGlobalObject(ctx);
 	JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 1));
