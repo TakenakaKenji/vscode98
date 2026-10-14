@@ -5,11 +5,12 @@ import { splitDecls, CSSStyleDeclaration, noteMissing } from './dom.js';
 
 // ---- parsing ----------------------------------------------------------------------------------------------------------------------------------
 export function stripComments(t) { return t.indexOf('/*') < 0 ? t : t.replace(/\/\*[\s\S]*?\*\//g, ''); }
-function readBlock(t, i) { /* t[i] === '{' → index after matching '}' */ let d = 0, q = ''; for (; i < t.length; i++) { const c = t[i]; if (q) { if (c === '\\') { i++; } else if (c === q) { q = ''; } continue; } if (c === '"' || c === "'") { q = c; } else if (c === '{') { d++; } else if (c === '}') { d--; if (d === 0) { return i + 1; } } } return t.length; }
-function readPrelude(t, i) { let d = 0, q = ''; for (; i < t.length; i++) { const c = t[i]; if (q) { if (c === '\\') { i++; } else if (c === q) { q = ''; } continue; } if (c === '"' || c === "'") { q = c; } else if (c === '(' ) { d++; } else if (c === ')') { d--; } else if (d === 0 && (c === '{' || c === ';')) { return i; } } return t.length; }
-export function parseDeclarations(text) {
+function readBlock(t, i) { /* t[i] === '{' → index after matching '}' */ let d = 0, q = 0; const n = t.length; for (; i < n; i++) { const c = t.charCodeAt(i); if (q !== 0) { if (c === 92) { i++; } else if (c === q) { q = 0; } continue; } if (c === 34 || c === 39) { q = c; } else if (c === 123) { d++; } else if (c === 125) { d--; if (d === 0) { return i + 1; } } } return n; }
+function readPrelude(t, i) { let d = 0, q = 0; const n = t.length; for (; i < n; i++) { const c = t.charCodeAt(i); if (q !== 0) { if (c === 92) { i++; } else if (c === q) { q = 0; } continue; } if (c === 34 || c === 39) { q = c; } else if (c === 40) { d++; } else if (c === 41) { d--; } else if (d === 0 && (c === 123 || c === 59)) { return i; } } return n; }
+export function parseDeclarations(text) { const __t0 = performance.now(); try { return parseDeclarations0(text); } finally {  } }
+function parseDeclarations0(text) {
 	const out = [];
-	for (const d of splitDecls(stripComments(text))) { const m = /^([^:]+):([\s\S]*)$/.exec(d); if (!m) { continue; } let n = m[1].trim(), v = m[2].trim(), imp = false; if (/!\s*important\s*$/i.test(v)) { v = v.replace(/!\s*important\s*$/i, '').trim(); imp = true; } if (!n.startsWith('--')) { n = n.toLowerCase(); } if (v !== '') { out.push({ name: n, value: v, important: imp }); } }
+	for (const d of splitDecls(stripComments(text))) { const colon = d.indexOf(':'); if (colon <= 0) { continue; } let n = d.slice(0, colon).trim(), v = d.slice(colon + 1).trim(), imp = false; if (/!\s*important\s*$/i.test(v)) { v = v.replace(/!\s*important\s*$/i, '').trim(); imp = true; } if (!n.startsWith('--')) { n = n.toLowerCase(); } if (v !== '') { out.push({ name: n, value: v, important: imp }); } }
 	return out;
 }
 export class CSSStyleRule {
@@ -22,7 +23,7 @@ export class CSSGroupRule { constructor(type, cond, rules, sheet) { this.type = 
 export function parseRules(text, sheet, depth = 0) {
 	text = stripComments(text); const rules = []; let i = 0; const n = text.length;
 	while (i < n) {
-		while (i < n && /\s/.test(text[i])) { i++; } if (i >= n) { break; }
+		while (i < n) { const c = text.charCodeAt(i); if (c === 32 || c === 10 || c === 9 || c === 13 || c === 12 || (c > 127 || c === 11) && /\s/.test(text[i])) { i++; } else { break; } } if (i >= n) { break; }
 		if (text[i] === '@') {
 			const end = readPrelude(text, i); const head = text.slice(i, end).trim(); const name = /^@([\w-]+)/.exec(head)[1].toLowerCase(); const prelude = head.slice(name.length + 1).trim();
 			if (text[end] === '{') {

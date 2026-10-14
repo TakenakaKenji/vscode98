@@ -153,7 +153,15 @@ export class CSSStyleDeclaration {
 	[Symbol.iterator]() { return this.__map.keys(); }
 	__changed() { const o = this.__owner; if (o) { if (!o.__syncingStyleAttr) { o.__syncingStyleAttr = true; try { o.__attrs.set('style', this.cssText); } finally { o.__syncingStyleAttr = false; } } o.__invalidate('style', 'attr', 'style'); } }
 }
-export function splitDecls(t) { const out = []; let depth = 0, cur = '', q = ''; for (let i = 0; i < t.length; i++) { const c = t[i]; if (q) { cur += c; if (c === '\\') { cur += t[i + 1] ?? ''; i++; } else if (c === q) { q = ''; } continue; } if (c === '"' || c === "'") { q = c; cur += c; continue; } if (c === '(') { depth++; } else if (c === ')') { depth--; } if (c === ';' && depth === 0) { if (cur.trim()) { out.push(cur.trim()); } cur = ''; } else { cur += c; } } if (cur.trim()) { out.push(cur.trim()); } return out; }
+export function splitDecls(t) {   // splits at the top-level ';' (not inside parentheses or quotes); pieces are trimmed, empty ones dropped
+	const out = []; const n = t.length; let depth = 0, q = 0, start = 0;
+	for (let i = 0; i < n; i++) {
+		const c = t.charCodeAt(i);
+		if (q !== 0) { if (c === 92) { i++; } else if (c === q) { q = 0; } continue; }
+		if (c === 34 || c === 39) { q = c; } else if (c === 40) { depth++; } else if (c === 41) { depth--; } else if (c === 59 && depth === 0) { const piece = t.slice(start, i).trim(); if (piece) { out.push(piece); } start = i + 1; }
+	}
+	const last = t.slice(start).trim(); if (last) { out.push(last); } return out;
+}
 /** Chromium re-serialises values it parsed: numbers keep 6 significant digits (%g style), strings use double quotes. Needed so inline style attributes compare equal. */
 function fmtNum(x) { if (!Number.isFinite(x) || x === 0) { return String(x); } const exp = Math.floor(Math.log10(Math.abs(x))); if (exp < -4 || exp >= 6) { let m = x.toExponential(5); m = m.replace(/\.?0+e/, 'e'); return m.replace(/e([+-])(\d)$/, 'e$10$2'); } return String(Number(x.toPrecision(6))); }
 export function normalizeValue(v) { return v.replace(/'((?:[^'\\]|\\.)*)'/g, (m, s) => s.includes('"') ? m : '"' + s + '"').replace(/(^|[^\w.#-])(-?\d*\.?\d+(?:e[+-]?\d+)?)(?=[a-z%]*\b|$)/gi, (m, pre, num) => { const x = parseFloat(num); return pre + (num.replace(/^[-+]?0*\.?0*$/, '') === '' ? num : (String(x).length > 6 || /e/i.test(num) ? fmtNum(x) : num)); }); }

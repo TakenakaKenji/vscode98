@@ -7,8 +7,17 @@ export function parseSelector(text) {
 }
 class Lexer { constructor(s) { this.s = s; this.i = 0; } peek() { return this.s[this.i]; } eof() { return this.i >= this.s.length; } }
 const isIdent = (c) => c !== undefined && /[\w\-\u0080-￿\\]/.test(c);
-function ident(L) { let o = ''; while (!L.eof()) { const c = L.peek(); if (c === '\\') { L.i++; if (/[0-9a-f]/i.test(L.peek())) { let h = ''; while (h.length < 6 && /[0-9a-f]/i.test(L.peek() ?? '')) { h += L.s[L.i++]; } if (L.peek() === ' ') { L.i++; } o += String.fromCodePoint(parseInt(h, 16)); } else { o += L.s[L.i++]; } } else if (isIdent(c)) { o += c; L.i++; } else { break; } } return o; }
-function ws(L) { let n = 0; while (!L.eof() && /\s/.test(L.peek())) { L.i++; n++; } return n; }
+const IDENT_RUN = /[\w\-\u0080-\uffff]+/y;   // an identifier without escapes, in one match
+function ident(L) {
+	let o = ''; const str = L.s;
+	for (;;) {
+		IDENT_RUN.lastIndex = L.i; const m = IDENT_RUN.exec(str); if (m !== null) { o += m[0]; L.i += m[0].length; }
+		if (L.i >= str.length || str[L.i] !== '\\') { break; }
+		L.i++; if (/[0-9a-f]/i.test(L.peek())) { let h = ''; while (h.length < 6 && /[0-9a-f]/i.test(L.peek() ?? '')) { h += L.s[L.i++]; } if (L.peek() === ' ') { L.i++; } o += String.fromCodePoint(parseInt(h, 16)); } else { o += L.s[L.i++]; }
+	}
+	return o;
+}
+function ws(L) { const str = L.s, n0 = L.i; let i = n0; for (; i < str.length; i++) { const c = str.charCodeAt(i); if (c !== 32 && c !== 9 && c !== 10 && c !== 13 && c !== 12 && (c < 0xa0 ? c !== 0x0b : !/\s/.test(str[i]))) { break; } } L.i = i; return i - n0; }
 function parseList(L, forgiving) {
 	const list = []; ws(L);
 	for (;;) { list.push(parseComplex(L)); ws(L); if (L.peek() === ',') { L.i++; ws(L); continue; } break; }
