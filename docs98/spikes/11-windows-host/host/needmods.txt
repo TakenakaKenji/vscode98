@@ -62,4 +62,5 @@ vscode-jsonrpc
 vscode-regexpp
 yallist
 yauzl
-yazl@xterm/xterm
+yazl
+@xterm/xterm

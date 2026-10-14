@@ -15,10 +15,11 @@ mkdir -p "$A/node_modules"
 while read -r p; do [ -n "$p" ] || continue; copytree "$ROOT/node_modules/$p" "$A/node_modules/$p" --exclude='*.md' --exclude='*.map' --exclude='test' --exclude='tests' --exclude='docs' --exclude='.github' --exclude='*.d.ts'; done < "${NEEDMODS:-$S/11-windows-host/host/needmods.txt}"
 RGDIR=$(bash "$S/11-windows-host/host/fetch_rg.sh"); mkdir -p "$A/node_modules/@vscode/ripgrep/bin" "$A/node_modules/@vscode/ripgrep/lib"   # the Search view runs rg.exe (the linux binary of the node module is useless here)
 cp "$ROOT/node_modules/@vscode/ripgrep/package.json" "$A/node_modules/@vscode/ripgrep/"; cp "$ROOT/node_modules/@vscode/ripgrep/lib/index.js" "$A/node_modules/@vscode/ripgrep/lib/"; cp "$RGDIR/rg.exe" "$A/node_modules/@vscode/ripgrep/bin/rg.exe"; cp "$RGDIR/LICENSE-MIT" "$RGDIR/UNLICENSE" "$A/node_modules/@vscode/ripgrep/bin/"
+# the bundles import @vscode/ripgrep-universal, which picks bin/<platform>-<arch>/rg.exe by process.arch: ia32 for the x86 host (the same 32-bit rg.exe also serves an x64 host)
+RU="$A/node_modules/@vscode/ripgrep-universal"; mkdir -p "$RU/lib" "$RU/bin/win32-ia32" "$RU/bin/win32-x64"; cp "$ROOT/node_modules/@vscode/ripgrep-universal/package.json" "$RU/"; cp "$ROOT/node_modules/@vscode/ripgrep-universal/lib/index.js" "$RU/lib/"; cp "$RGDIR/rg.exe" "$RU/bin/win32-ia32/rg.exe"; cp "$RGDIR/rg.exe" "$RU/bin/win32-x64/rg.exe"; cp "$RGDIR/LICENSE-MIT" "$RGDIR/UNLICENSE" "$RU/"
 find "$A/node_modules" -name '*.node' -exec truncate -s 0 {} \;              # the native addons are stand-ins (native_addons98.js); the files only have to exist for module resolution
 rm -rf "$A/node_modules/@vscode/tree-sitter-wasm"                              # 21 MB of parsers the first run does not need
-mkdir -p "$A/extensions"; cp -r extensions/theme-defaults "$A/extensions/"
-mkdir -p "$A/extensions/git"; for f in package.json package.nls.json; do cp "extensions/git/$f" "$A/extensions/git/"; done; cp -r extensions/git/out extensions/git/resources "$A/extensions/git/" 2>/dev/null || true
+node "$S/11-windows-host/host/package_extensions.mjs" "$ROOT" "$A/extensions" | tail -1   # the built-in extensions: manifests, grammars, themes, compiled code and the production dependencies (not the 100 to 300 MB dev trees)
 # fonts: the renderer's font table names /usr/share/fonts/...; ship the files it uses next to the app (fonts/<same subpath>) and point --font-dir at them
 mkdir -p "$OUT/fonts/opentype/inter" "$OUT/fonts/truetype/dejavu" "$OUT/fonts/truetype/liberation" "$OUT/fonts/LICENSES"
 for f in /usr/share/fonts/opentype/inter/Inter-*.otf; do cp "$f" "$OUT/fonts/opentype/inter/"; done

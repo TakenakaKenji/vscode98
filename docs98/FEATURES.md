@@ -18,14 +18,16 @@ Status: ✅ works in a scenario (and Wine where noted), 🟡 partly, ❌ broken,
 | Settings editor | Search, text/number/dropdown/checkbox settings | ✅ | `scenario_settings` |
 | Source control | Changes list, stage, commit message, commit (real `git`) | ✅ | `scenario_misc` |
 | Terminal | Integrated terminal (cmd.exe on Windows, bash on Linux), typing, output | 🟡 | `scenario_tour`; Win7: no ConPTY, echo/line editing is local; Ctrl+C not verified |
-| Notifications | Toasts, buttons | ⬜ | |
-| Drag and drop | Tabs, explorer items, panels | ⬜ | |
-| Scrollbars | Drag the thumb, click the track | ⬜ | |
-| Window | Resize, maximize, minimize, zoom (Ctrl +/-) | ⬜ | |
-| Text selection | In non-editable text (hover, markdown, output panels) | ⬜ | |
-| Extensions view | List installed, details page, Marketplace | ⬜ | no network gallery configured; details page needs webviews |
+| Notifications | Banner close button | ✅ | `scenario_ui --only banner`; toast buttons not tested |
+| Drag and drop | Tab reorder, explorer item onto a folder (with the confirm dialog) | ✅ | `scenario_ui`; HTML5 DnD synthesized from the mouse (`dnd.js`), no drag image; dropping files from the OS is not supported |
+| Scrollbars | Drag the thumb, click the track | ✅ | `scenario_ui` (needs pointer capture and `offsetY`) |
+| Window | Resize / maximize (relayout), zoom (Ctrl +/-) | ✅ | `scenario_ui`; Wine/VM check pending (v11); zoom paints scaled, layout in CSS px |
+| Text selection | Drag, double click (word), triple click (block), Ctrl+C in non-editable text | ✅ | `scenario_ui`; respects `user-select`; Ctrl+A in non-editable text not done |
+| Extensions view | List built-in extensions, search box, details editor (Details/Features/Changelog tabs) | ✅ | `scenario_ui`; the Marketplace is not configured; README tab needs webviews |
 | Webviews | Markdown preview, extension details, release notes | ❌ | needs `<iframe>` + `vscode-webview:` + service worker; not implemented |
-| Outline / Timeline | Views | ⬜ | |
+| Outline | Symbols of the open file | ✅ | `scenario_ui` |
+| Split editor | Ctrl+\\ | ✅ | `scenario_ui`, `scenario_tour` |
+| Timeline | View | ⬜ | |
 | Debugging | Run and Debug | ⬜ | |
 | Settings TOC | Count badge overlaps labels ("Diff E[0]ditor") | 🟡 | cosmetic |
 | `<select>` | Native select popup | 🟡 | the workbench uses its own SelectBox; the native popup is not implemented |
