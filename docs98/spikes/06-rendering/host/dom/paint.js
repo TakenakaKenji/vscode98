@@ -6,6 +6,7 @@ import { resolveFont, advance, fontMetrics, kern } from './fonts.js';
 import { parseContent } from './layout.js';
 import { paintTextControl, paintSelect } from './textcontrol.js';
 import { isHoisted, itemsOf, clipApplies, pathBetween } from './stacking.js';
+import { textNodesOf } from './dom.js';
 
 export const unpainted = new Map();
 const note = (k) => unpainted.set(k, (unpainted.get(k) || 0) + 1);
@@ -107,6 +108,7 @@ export class JsBackend {
 	pushLayer() { this.layers.push(this.S); this.S = new Surface(this.S.w, this.S.h); }
 	popLayer(alpha) { const sub = this.S; this.S = this.layers.pop(); for (let i = 0; i < sub.px.length; i += 4) { if (sub.px[i + 3]) { blend(this.S.px, i, sub.px[i], sub.px[i + 1], sub.px[i + 2], sub.px[i + 3] / 255 * alpha); } } }
 }
+const SELECTION_BG = [51, 144, 255, 0.45];
 class Painter {
 	constructor(doc, backend) { this.doc = doc; this.b = backend; }
 	get stats() { return this.b.stats; }
@@ -115,8 +117,15 @@ class Painter {
 	pushClip(x0, y0, x1, y1) { this.b.pushClip(x0, y0, x1, y1); }
 	popClip() { this.b.popClip(); }
 	resetClip() { this.b.resetClip(); }
+	/** text node -> [from, to) covered by the document selection (computed once per frame; empty when the selection is collapsed) */
+	selectedText() {
+		if (this.__sel) { return this.__sel; } const sel = this.doc.__selection; this.__sel = new Map();
+		if (sel && sel.__an && !sel.isCollapsed) { const r = sel.getRangeAt(0); for (const [n, from, to] of textNodesOf(r.startContainer, r.startOffset, r.endContainer, r.endOffset)) { this.__sel.set(n, [from, to]); } }
+		return this.__sel;
+	}
 	drawText(frag, dx, dy, alphaMul) {
 		const v = frag.v, color = v.color; if (!color || color[3] <= 0 || v.visibility === 'hidden') { return; }
+		if (frag.node) { const m = this.selectedText(); const sr = m.size && m.get(frag.node); if (sr) { const a = Math.max(sr[0], frag.src), b = Math.min(sr[1], frag.srcEnd); if (a < b) { const n = frag.srcEnd - frag.src; const cut = (o) => (frag.text.length === n ? o - frag.src : Math.round((o - frag.src) * frag.text.length / Math.max(1, n))); const wpre = this.doc.__measure(frag, frag.text.slice(0, cut(a))), wmid = this.doc.__measure(frag, frag.text.slice(cut(a), cut(b))); this.fillRect(frag.ax + dx + wpre, frag.ay + dy, wmid, frag.asc + frag.desc, SELECTION_BG, alphaMul); } } }
 		const font = frag.font, size = frag.size, ls = frag.ls; const x = frag.ax + dx; const by = Math.round(frag.abaseline + dy);
 		const wsp = typeof v['word-spacing'] === 'number' ? v['word-spacing'] : 0;
 		this.b.glyphRun(font, size, ls, wsp, x, by, color, alphaMul, frag.text);

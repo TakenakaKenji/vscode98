@@ -113,6 +113,7 @@ export function copyCut(doc, cut) {
 	const target = doc.activeElement || doc.body; const dt = dataTransfer(); const ev = new ClipboardEvent(cut ? 'cut' : 'copy', { bubbles: true, cancelable: true, composed: true, clipboardData: dt }); let wrote = false;
 	if (target.dispatchEvent(ev)) { if (isTextControl(target) && selectedText(target)) { dt.setData('text/plain', selectedText(target)); if (cut) { replaceRange(target, target.selectionStart, target.selectionEnd, '', 'deleteByCut'); } wrote = true; } }
 	else { wrote = dt.types.length > 0; }
+	if (!wrote && !cut && !isTextControl(target) && doc.__selection && !doc.__selection.isCollapsed && target.dispatchEvent !== undefined && dt.types.length === 0 && !ev.defaultPrevented) { dt.setData('text/plain', doc.__selection.toString()); wrote = true; }
 	if (wrote) { clipboard().writeText(dt.getData('text/plain')); } return true;
 }
 export function paste(doc, textOverride) {

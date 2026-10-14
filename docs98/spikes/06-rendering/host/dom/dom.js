@@ -18,7 +18,10 @@ export class Event {
 	static NONE = 0; static CAPTURING_PHASE = 1; static AT_TARGET = 2; static BUBBLING_PHASE = 3;
 }
 export class UIEvent extends Event { constructor(t, i = {}) { super(t, i); this.detail = i.detail ?? 0; this.view = i.view ?? null; } }
-export class MouseEvent extends UIEvent { constructor(t, i = {}) { super(t, i); Object.assign(this, { screenX: 0, screenY: 0, clientX: 0, clientY: 0, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, button: 0, buttons: 0, relatedTarget: null, pageX: i.clientX ?? 0, pageY: i.clientY ?? 0, offsetX: 0, offsetY: 0 }, i); } }
+export class MouseEvent extends UIEvent { constructor(t, i = {}) { super(t, i); Object.assign(this, { screenX: 0, screenY: 0, clientX: 0, clientY: 0, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, button: 0, buttons: 0, relatedTarget: null, pageX: i.clientX ?? 0, pageY: i.clientY ?? 0 }, i); if (i.offsetX !== undefined) { this.__ox = i.offsetX; } if (i.offsetY !== undefined) { this.__oy = i.offsetY; } }
+	/** position relative to the padding edge of the target (ignores borders and transforms) */
+	get offsetX() { if (this.__ox !== undefined) { return this.__ox; } const t = this.target; return t && t.getBoundingClientRect ? this.clientX - t.getBoundingClientRect().left : this.clientX; }
+	get offsetY() { if (this.__oy !== undefined) { return this.__oy; } const t = this.target; return t && t.getBoundingClientRect ? this.clientY - t.getBoundingClientRect().top : this.clientY; } }
 export class PointerEvent extends MouseEvent { constructor(t, i = {}) { super(t, i); this.pointerId = i.pointerId ?? 1; this.pointerType = i.pointerType ?? 'mouse'; } }
 export class WheelEvent extends MouseEvent {
 	static DOM_DELTA_PIXEL = 0; static DOM_DELTA_LINE = 1; static DOM_DELTA_PAGE = 2;
@@ -232,7 +235,7 @@ export class Element extends Node {
 	focus() { const d = this.ownerDocument; if (!d || d.__activeElement === this) { return; } const prev = d.__activeElement; d.__activeElement = this; if (prev) { prev.__invalidate('style', 'state', 'focus'); if (prev.__tc) { controlBlurred(prev); } } this.__invalidate('style', 'state', 'focus'); if (this.__tc) { controlFocused(this); } if (prev) { prev.dispatchEvent(new FocusEvent('blur', { relatedTarget: this })); prev.dispatchEvent(new FocusEvent('focusout', { relatedTarget: this, bubbles: true })); } this.dispatchEvent(new FocusEvent('focus', { relatedTarget: prev })); this.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: prev })); }
 	blur() { const d = this.ownerDocument; if (d && d.__activeElement === this) { d.__activeElement = null; this.__invalidate('style', 'state', 'focus'); if (this.__tc) { controlBlurred(this); } this.dispatchEvent(new FocusEvent('blur')); this.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); } }
 	click() { this.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); }
-	scrollIntoView() { } setPointerCapture() { } releasePointerCapture() { } hasPointerCapture() { return false; } requestPointerLock() { }
+	scrollIntoView() { } setPointerCapture(id) { const d = this.ownerDocument; if (d && this.isConnected !== false) { d.__capture = { el: this, id }; } } releasePointerCapture(id) { const d = this.ownerDocument; if (d && d.__capture && d.__capture.el === this) { d.__capture = null; this.dispatchEvent(new d.defaultView.PointerEvent('lostpointercapture', { bubbles: true, pointerId: id ?? 1, pointerType: 'mouse' })); } } hasPointerCapture() { const d = this.ownerDocument; return !!(d && d.__capture && d.__capture.el === this); } requestPointerLock() { }
 	animate() { return { cancel() { }, finished: Promise.resolve(), onfinish: null }; } getAnimations() { return []; }
 	// geometry: provided by layout (Document.__layout)
 	getBoundingClientRect() { return this.ownerDocument.__rect(this); }
@@ -310,24 +313,58 @@ export function parseFragment(doc, html, context) {
 	return frag;
 }
 
-// ---- Range / Selection (just enough for the editor's measuring and focus handling) -----------------------------------------------------------
+// ---- Range / Selection --------------------------------------------------------------------------------------------------------------------
+const childIndex = (n) => n.parentNode.__children.indexOf(n);
+const pathOf = (n) => { const p = []; for (let c = n; c.parentNode; c = c.parentNode) { p.push(childIndex(c)); } return p.reverse(); };
+const nodeLength = (n) => (n.nodeType === 3 || n.nodeType === 8 ? n.length : n.__children ? n.__children.length : 0);
+/** -1, 0 or 1: where the boundary point (n1, o1) lies relative to (n2, o2) in tree order */
+export function comparePoints(n1, o1, n2, o2) {
+	if (n1 === n2) { return o1 < o2 ? -1 : o1 > o2 ? 1 : 0; }
+	if (n1.contains && n1.nodeType !== 3 && n1.contains(n2)) { let c = n2; while (c.parentNode !== n1) { c = c.parentNode; } return childIndex(c) < o1 ? 1 : -1; }
+	if (n2.contains && n2.nodeType !== 3 && n2.contains(n1)) { return -comparePoints(n2, o2, n1, o1); }
+	const a = pathOf(n1), b = pathOf(n2); for (let i = 0; i < Math.min(a.length, b.length); i++) { if (a[i] !== b[i]) { return a[i] < b[i] ? -1 : 1; } } return 0;
+}
+/** the text nodes of a range in tree order, each with the [from, to) offsets that the range covers */
+export function textNodesOf(sc, so, ec, eo) {
+	const out = []; let root = sc.nodeType === 3 ? sc.parentNode : sc; while (root && !(root.nodeType === 9 || (root.contains && root.contains(ec)))) { root = root.parentNode; } if (!root) { return out; }
+	const walk = (n) => { for (const c of n.__children || []) { if (c.nodeType === 3) { const from = c === sc ? so : (comparePoints(c, 0, sc, so) >= 0 ? 0 : -1); const to = c === ec ? eo : (comparePoints(c, c.length, ec, eo) <= 0 ? c.length : -1); if (from >= 0 && to >= 0 && to > from) { out.push([c, from, to]); } else if (c === sc && c === ec && to > from) { out.push([c, so, eo]); } } else if (c.nodeType === 1 && c.localName !== 'script' && c.localName !== 'style') { if (comparePoints(c, nodeLength(c), sc, so) < 0 || comparePoints(c, 0, ec, eo) > 0) { continue; } walk(c); } } };
+	walk(root); return out;
+}
 export class Range {
-	constructor(doc) { this.__doc = doc; this.startContainer = this.endContainer = doc; this.startOffset = this.endOffset = 0; this.collapsed = true; }
-	setStart(n, o) { this.startContainer = n; this.startOffset = o; this.__upd(); } setEnd(n, o) { this.endContainer = n; this.endOffset = o; this.__upd(); }
-	setStartBefore(n) { this.setStart(n.parentNode, n.parentNode.__children.indexOf(n)); } setEndAfter(n) { this.setEnd(n.parentNode, n.parentNode.__children.indexOf(n) + 1); }
-	selectNode(n) { this.setStartBefore(n); this.setEndAfter(n); } selectNodeContents(n) { this.setStart(n, 0); this.setEnd(n, n.nodeType === 3 ? n.length : n.__children.length); }
+	constructor(doc) { this.__doc = doc; this.startContainer = this.endContainer = this.commonAncestorContainer = doc; this.startOffset = this.endOffset = 0; this.collapsed = true; }
+	setStart(n, o) { this.startContainer = n; this.startOffset = o; if (comparePoints(n, o, this.endContainer, this.endOffset) > 0) { this.endContainer = n; this.endOffset = o; } this.__upd(); }
+	setEnd(n, o) { this.endContainer = n; this.endOffset = o; if (comparePoints(n, o, this.startContainer, this.startOffset) < 0) { this.startContainer = n; this.startOffset = o; } this.__upd(); }
+	setStartBefore(n) { this.setStart(n.parentNode, childIndex(n)); } setStartAfter(n) { this.setStart(n.parentNode, childIndex(n) + 1); } setEndBefore(n) { this.setEnd(n.parentNode, childIndex(n)); } setEndAfter(n) { this.setEnd(n.parentNode, childIndex(n) + 1); }
+	selectNode(n) { this.startContainer = this.endContainer = n.parentNode; this.startOffset = childIndex(n); this.endOffset = this.startOffset + 1; this.__upd(); } selectNodeContents(n) { this.startContainer = this.endContainer = n; this.startOffset = 0; this.endOffset = nodeLength(n); this.__upd(); }
 	collapse(toStart) { if (toStart) { this.endContainer = this.startContainer; this.endOffset = this.startOffset; } else { this.startContainer = this.endContainer; this.startOffset = this.endOffset; } this.__upd(); }
-	__upd() { this.collapsed = this.startContainer === this.endContainer && this.startOffset === this.endOffset; this.commonAncestorContainer = this.startContainer; }
+	__upd() { this.collapsed = this.startContainer === this.endContainer && this.startOffset === this.endOffset; let c = this.startContainer; while (c && c.nodeType !== 9 && !(c.contains && c.contains(this.endContainer))) { c = c.parentNode; } this.commonAncestorContainer = c || this.startContainer; }
 	getBoundingClientRect() { return this.__doc.__rangeRects(this).total; } getClientRects() { return this.__doc.__rangeRects(this).rects; }
 	cloneRange() { const r = new Range(this.__doc); r.startContainer = this.startContainer; r.startOffset = this.startOffset; r.endContainer = this.endContainer; r.endOffset = this.endOffset; r.__upd(); return r; }
-	detach() { } toString() { return ''; } deleteContents() { } insertNode(n) { noteMissing('Range.insertNode'); } cloneContents() { return new DocumentFragment(); } createContextualFragment(h) { return parseFragment(this.__doc, h, null); }
-	static START_TO_START = 0;
+	comparePoint(n, o) { if (comparePoints(n, o, this.startContainer, this.startOffset) < 0) { return -1; } if (comparePoints(n, o, this.endContainer, this.endOffset) > 0) { return 1; } return 0; } isPointInRange(n, o) { return this.comparePoint(n, o) === 0; }
+	intersectsNode(n) { const p = n.parentNode; if (!p) { return true; } const i = childIndex(n); return comparePoints(p, i, this.endContainer, this.endOffset) < 0 && comparePoints(p, i + 1, this.startContainer, this.startOffset) > 0; }
+	compareBoundaryPoints(how, other) { const [an, ao] = how === 0 || how === 3 ? [this.startContainer, this.startOffset] : [this.endContainer, this.endOffset]; const [bn, bo] = how === 0 || how === 2 ? [other.startContainer, other.startOffset] : [other.endContainer, other.endOffset]; return comparePoints(an, ao, bn, bo); }
+	detach() { } deleteContents() { } insertNode(n) { noteMissing('Range.insertNode'); } cloneContents() { return new DocumentFragment(); } createContextualFragment(h) { return parseFragment(this.__doc, h, null); }
+	/** the text the range covers, with a line break between blocks as the browser's selection text has */
+	toString() { return rangeText(this.__doc, textNodesOf(this.startContainer, this.startOffset, this.endContainer, this.endOffset)); }
+	static START_TO_START = 0; static START_TO_END = 1; static END_TO_END = 2; static END_TO_START = 3;
 }
+const blockOf = (doc, t) => { for (let e = t.parentElement; e; e = e.parentElement) { let d = ''; try { d = doc.defaultView.getComputedStyle(e).display; } catch { d = ''; } if (d && !/^inline($|-(?!block))/.test(d) && d !== 'contents') { return e; } } return null; };
+function rangeText(doc, parts) { let out = '', prev = null; for (const [t, from, to] of parts) { const b = blockOf(doc, t); if (prev !== null && b !== prev && out && !out.endsWith('\n')) { out += '\n'; } prev = b; out += t.data.slice(from, to); } return out; }
 export class Selection {
-	constructor(doc) { this.__doc = doc; this.rangeCount = 0; this.__ranges = []; this.anchorNode = this.focusNode = null; this.anchorOffset = this.focusOffset = 0; this.isCollapsed = true; this.type = 'None'; }
-	getRangeAt(i) { return this.__ranges[i]; } addRange(r) { this.__ranges = [r]; this.rangeCount = 1; this.anchorNode = r.startContainer; this.focusNode = r.endContainer; this.anchorOffset = r.startOffset; this.focusOffset = r.endOffset; this.isCollapsed = r.collapsed; this.type = r.collapsed ? 'Caret' : 'Range'; }
-	removeAllRanges() { this.__ranges = []; this.rangeCount = 0; this.anchorNode = this.focusNode = null; this.type = 'None'; } empty() { this.removeAllRanges(); } removeRange() { this.removeAllRanges(); }
-	collapse(n, o = 0) { const r = new Range(this.__doc); r.setStart(n, o); r.setEnd(n, o); this.addRange(r); } setBaseAndExtent(an, ao, fn, fo) { const r = new Range(this.__doc); r.setStart(an, ao); r.setEnd(fn, fo); this.addRange(r); } selectAllChildren(n) { const r = new Range(this.__doc); r.selectNodeContents(n); this.addRange(r); } toString() { return ''; } containsNode() { return false; }
+	constructor(doc) { this.__doc = doc; this.__an = null; this.__ao = 0; this.__fn = null; this.__fo = 0; this.__ver = 0; }
+	get rangeCount() { return this.__an ? 1 : 0; } get anchorNode() { return this.__an; } get anchorOffset() { return this.__ao; } get focusNode() { return this.__fn; } get focusOffset() { return this.__fo; }
+	get isCollapsed() { return !this.__an || (this.__an === this.__fn && this.__ao === this.__fo); } get type() { return !this.__an ? 'None' : this.isCollapsed ? 'Caret' : 'Range'; }
+	get direction() { return this.isCollapsed ? 'none' : comparePoints(this.__an, this.__ao, this.__fn, this.__fo) <= 0 ? 'forward' : 'backward'; }
+	__set(an, ao, fn, fo) { const same = an === this.__an && ao === this.__ao && fn === this.__fn && fo === this.__fo; this.__an = an; this.__ao = ao; this.__fn = fn; this.__fo = fo; if (!same) { this.__ver++; const d = this.__doc; d.__paintGen = (d.__paintGen | 0) + 1; if (!this.__pending) { this.__pending = true; Promise.resolve().then(() => { this.__pending = false; d.dispatchEvent(new Event('selectionchange')); }); } } }
+	getRangeAt(i) { if (!this.__an || i) { throw new DOMException('no range', 'IndexSizeError'); } const r = new Range(this.__doc); const fwd = comparePoints(this.__an, this.__ao, this.__fn, this.__fo) <= 0; r.startContainer = fwd ? this.__an : this.__fn; r.startOffset = fwd ? this.__ao : this.__fo; r.endContainer = fwd ? this.__fn : this.__an; r.endOffset = fwd ? this.__fo : this.__ao; r.__upd(); return r; }
+	addRange(r) { this.__set(r.startContainer, r.startOffset, r.endContainer, r.endOffset); }
+	removeAllRanges() { this.__set(null, 0, null, 0); } empty() { this.removeAllRanges(); } removeRange() { this.removeAllRanges(); }
+	collapse(n, o = 0) { if (!n) { this.removeAllRanges(); } else { this.__set(n, o, n, o); } } setPosition(n, o = 0) { this.collapse(n, o); }
+	collapseToStart() { if (this.__an) { const r = this.getRangeAt(0); this.__set(r.startContainer, r.startOffset, r.startContainer, r.startOffset); } } collapseToEnd() { if (this.__an) { const r = this.getRangeAt(0); this.__set(r.endContainer, r.endOffset, r.endContainer, r.endOffset); } }
+	extend(n, o = 0) { if (!this.__an) { return; } this.__set(this.__an, this.__ao, n, o); } setBaseAndExtent(an, ao, fn, fo) { this.__set(an, ao, fn, fo); }
+	selectAllChildren(n) { this.__set(n, 0, n, nodeLength(n)); } containsNode(n, partial = false) { if (!this.__an) { return false; } const r = this.getRangeAt(0); if (partial) { return r.intersectsNode(n); } const p = n.parentNode; if (!p) { return false; } const i = childIndex(n); return comparePoints(p, i, r.startContainer, r.startOffset) >= 0 && comparePoints(p, i + 1, r.endContainer, r.endOffset) <= 0; }
+	modify() { } deleteFromDocument() { }
+	toString() { return this.__an ? this.getRangeAt(0).toString() : ''; }
 }
 
 export class MutationObserver {
