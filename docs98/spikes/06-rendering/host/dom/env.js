@@ -1,5 +1,6 @@
 // Browser environment on top of dom.js / css.js / layout.js: Document, window globals, geometry queries (getBoundingClientRect, offset*, client*, scroll*, Range rects),
 // getComputedStyle, rAF and timers, observers, storage, navigator and the other globals a page like Monaco expects. `installEnvironment(opts)` makes globalThis the window.
+import { execCommand, supportedCommands } from './textcontrol.js';
 import * as D from './dom.js';
 import { CSSStyleSheet, serializeValue, parseColor, PROPS, resolveLen } from './css.js';
 import { Layout } from './layout.js';
@@ -25,7 +26,7 @@ export class Document extends Node {
 	get location() { return this.__env.window.location; } get URL() { return this.__env.window.location.href; } get baseURI() { return this.URL; } get referrer() { return ''; } get domain() { return ''; }
 	get scrollingElement() { return this.documentElement; } get styleSheets() { return this.__allSheets(); } get adoptedStyleSheets() { return this.__adopted ??= []; } set adoptedStyleSheets(v) { this.__adopted = v; this.__styleDirty = true; this.__dirty = true; this.__rulesVersion = (this.__rulesVersion || 0) + 1; }
 	get textContent() { return null; } get fullscreenElement() { return null; } get pointerLockElement() { return null; } get currentScript() { return null; } get all() { return this.getElementsByTagName('*'); }
-	hasFocus() { return this.__hasFocus; } execCommand() { return false; } queryCommandSupported() { return false; } getSelection() { return this.__selection; } exitFullscreen() { return Promise.resolve(); } exitPointerLock() { }
+	hasFocus() { return this.__hasFocus; } execCommand(cmd, ui, value) { return execCommand(this, cmd, value); } queryCommandSupported(cmd) { return supportedCommands.has(String(cmd).toLowerCase()); } queryCommandEnabled(cmd) { return supportedCommands.has(String(cmd).toLowerCase()); } getSelection() { return this.__selection; } exitFullscreen() { return Promise.resolve(); } exitPointerLock() { }
 	createElement(name) { return this.__createElementNS(XHTML, String(name).toLowerCase()); } createElementNS(ns, name) { return this.__createElementNS(ns ?? XHTML, ns === XHTML || !ns ? String(name).toLowerCase() : name); }
 	__createElementNS(ns, name) { const CE = this.__customs && this.__customs.get(name); if (CE) { Element.__pending = name; try { const e = new CE(); e.ownerDocument = this; return e; } finally { Element.__pending = undefined; } } const C = ns === SVG_NS ? SVGElement : (tagClasses[name] ?? (/^[a-z][a-z0-9]*$/.test(name) && !['font', 'center', 'marquee'].includes(name) && KNOWN_TAGS.has(name) ? HTMLElement : HTMLUnknownElement)); const e = new C(name, ns); e.ownerDocument = this; return e; }
 	createTextNode(d) { const t = new Text(d); t.ownerDocument = this; return t; } createComment(d) { const t = new Comment(d); t.ownerDocument = this; return t; }

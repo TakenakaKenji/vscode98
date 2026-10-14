@@ -9,7 +9,7 @@
  *   create(width, height, title) -> id           top-level window with a client area of exactly width x height
  *   setHandler(fn)                               fn(windowId, type, a, b, c, d, mods); mods: 1 shift, 2 ctrl, 4 alt, 8 win, 16 caps lock
  *   present(id, rgba:ArrayBuffer|TypedArray, w, h, x, y, rw, rh)   copy the rectangle (x,y,rw,rh) of an RGBA w*h image into the window and show it
- *   setTitle(id, s) / setCursor(id, name) / size(id) -> [w,h] / destroy(id) / screenSize() -> [w,h] / clipboardGet() / clipboardSet(s)
+ *   setTitle(id, s) / setCursor(id, name) / size(id) -> [w,h] / destroy(id) / screenSize() -> [w,h] / clipboardGet() / clipboardSet(s) / trash(path)
  * events: 'mousemove'(x,y,buttons) 'mousedown'(x,y,button,buttons) 'mouseup'(...) 'dblclick'(x,y,button) 'wheel'(x,y,delta,horizontal) 'keydown'(vk,scan,extended,repeat) 'keyup'(vk,scan,extended)
  *         'char'(codepoint) 'resize'(w,h) 'focus'(1|0) 'close' 'paint' 'leave' */
 #ifndef WIN32_LEAN_AND_MEAN
@@ -17,6 +17,7 @@
 #endif
 #include <windows.h>
 #include <windowsx.h>
+#include <shellapi.h>
 #include <stdlib.h>
 #include <string.h>
 #include "quickjs.h"
@@ -129,13 +130,21 @@ static JSValue js_clipboard_set(JSContext *ctx, JSValueConst this_val, int argc,
 	HGLOBAL g = GlobalAlloc(GMEM_MOVEABLE, n); if (g) { memcpy(GlobalLock(g), w, n); GlobalUnlock(g); if (OpenClipboard(NULL)) { EmptyClipboard(); SetClipboardData(CF_UNICODETEXT, g); CloseClipboard(); } else { GlobalFree(g); } } free(w); return JS_UNDEFINED;
 }
 
+/* trash(path) -> true when the file or folder went to the recycle bin (Explorer's own delete: FOF_ALLOWUNDO) */
+static JSValue js_trash(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
+	const char *s = JS_ToCString(ctx, argv[0]); if (!s) { return JS_EXCEPTION; } wchar_t *w = wide(s); JS_FreeCString(ctx, s); size_t n = wcslen(w);
+	wchar_t *buf = calloc(n + 2, sizeof(wchar_t)); for (size_t i = 0; i < n; i++) { buf[i] = w[i] == L'/' ? L'\\' : w[i]; } free(w);   /* SHFileOperation wants backslashes and a double-NUL-terminated list */
+	SHFILEOPSTRUCTW op; memset(&op, 0, sizeof op); op.wFunc = FO_DELETE; op.pFrom = buf; op.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
+	int r = SHFileOperationW(&op); free(buf); return JS_NewBool(ctx, r == 0 && !op.fAnyOperationsAborted);
+}
+
 /* event loop hooks (winhook.h) */
 static int win_wants_messages(void) { for (int i = 0; i < MAXWIN; i++) { if (wins[i]) { return 1; } } return 0; }
 static void win_pump(JSContext *ctx) { MSG m; g_ctx = ctx; while (PeekMessageW(&m, NULL, 0, 0, PM_REMOVE)) { if (m.message == WM_QUIT) { continue; } TranslateMessage(&m); DispatchMessageW(&m); } }
 
 static const JSCFunctionListEntry funcs[] = {
 	JS_CFUNC_DEF("create", 3, js_create), JS_CFUNC_DEF("setHandler", 1, js_set_handler), JS_CFUNC_DEF("present", 8, js_present), JS_CFUNC_DEF("setTitle", 2, js_set_title), JS_CFUNC_DEF("setCursor", 2, js_set_cursor),
-	JS_CFUNC_DEF("size", 1, js_size), JS_CFUNC_DEF("destroy", 1, js_destroy), JS_CFUNC_DEF("screenSize", 0, js_screen_size), JS_CFUNC_DEF("clipboardGet", 0, js_clipboard_get), JS_CFUNC_DEF("clipboardSet", 1, js_clipboard_set),
+	JS_CFUNC_DEF("size", 1, js_size), JS_CFUNC_DEF("destroy", 1, js_destroy), JS_CFUNC_DEF("screenSize", 0, js_screen_size), JS_CFUNC_DEF("clipboardGet", 0, js_clipboard_get), JS_CFUNC_DEF("clipboardSet", 1, js_clipboard_set), JS_CFUNC_DEF("trash", 1, js_trash),
 };
 static int win_init(JSContext *ctx, JSModuleDef *m) { return JS_SetModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); }
 void spike_init_win(JSContext *ctx) {

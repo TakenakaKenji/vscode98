@@ -1,6 +1,7 @@
 // A small DOM for the rendering spike: Node / Element / Text / Document / events / attributes / classList / inline style / innerHTML / Range / Selection stubs.
 // Pure JavaScript (ES2020, no Node or browser APIs) so it runs on QuickJS-ng and, for development, on Node. Layout, style resolution and painting live in other files and
 // hook in through `Document.prototype.__layout` (a function installed by env.js). Anything the editor touches that is missing is recorded in `globalThis.__missing`.
+import { textProps, setEventCtors, controlFocused, controlBlurred } from './textmodel.js';
 import { parseSelector, matches, closestMatch } from './selectors.js';
 
 export const missing = (globalThis.__missing ??= new Map());
@@ -217,8 +218,8 @@ export class Element extends Node {
 	cloneNode(deep) { const e = this.ownerDocument.__createElementNS(this.namespaceURI, this.localName); for (const [k, v] of this.__attrs) { e.setAttribute(k, v); } if (deep) { for (const c of this.__children) { e.appendChild(c.cloneNode(true)); } } return e; }
 	get shadowRoot() { return null; } attachShadow() { noteMissing('Element.attachShadow'); throw new DOMException('Shadow DOM not supported', 'NotSupportedError'); }
 	// focus
-	focus() { const d = this.ownerDocument; if (!d || d.__activeElement === this) { return; } const prev = d.__activeElement; d.__activeElement = this; if (prev) { prev.__invalidate('style', 'state', 'focus'); } this.__invalidate('style', 'state', 'focus'); if (prev) { prev.dispatchEvent(new FocusEvent('blur', { relatedTarget: this })); prev.dispatchEvent(new FocusEvent('focusout', { relatedTarget: this, bubbles: true })); } this.dispatchEvent(new FocusEvent('focus', { relatedTarget: prev })); this.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: prev })); }
-	blur() { const d = this.ownerDocument; if (d && d.__activeElement === this) { d.__activeElement = null; this.__invalidate('style', 'state', 'focus'); this.dispatchEvent(new FocusEvent('blur')); this.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); } }
+	focus() { const d = this.ownerDocument; if (!d || d.__activeElement === this) { return; } const prev = d.__activeElement; d.__activeElement = this; if (prev) { prev.__invalidate('style', 'state', 'focus'); if (prev.__tc) { controlBlurred(prev); } } this.__invalidate('style', 'state', 'focus'); if (this.__tc) { controlFocused(this); } if (prev) { prev.dispatchEvent(new FocusEvent('blur', { relatedTarget: this })); prev.dispatchEvent(new FocusEvent('focusout', { relatedTarget: this, bubbles: true })); } this.dispatchEvent(new FocusEvent('focus', { relatedTarget: prev })); this.dispatchEvent(new FocusEvent('focusin', { bubbles: true, relatedTarget: prev })); }
+	blur() { const d = this.ownerDocument; if (d && d.__activeElement === this) { d.__activeElement = null; this.__invalidate('style', 'state', 'focus'); if (this.__tc) { controlBlurred(this); } this.dispatchEvent(new FocusEvent('blur')); this.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); } }
 	click() { this.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); }
 	scrollIntoView() { } setPointerCapture() { } releasePointerCapture() { } hasPointerCapture() { return false; } requestPointerLock() { }
 	animate() { return { cancel() { }, finished: Promise.resolve(), onfinish: null }; } getAnimations() { return []; }
@@ -248,12 +249,9 @@ export const HTMLDivElement = mk('HTMLDivElement', ['div']), HTMLSpanElement = m
 	HTMLAnchorElement = mk('HTMLAnchorElement', ['a']), HTMLButtonElement = mk('HTMLButtonElement', ['button']), HTMLLabelElement = mk('HTMLLabelElement', ['label']), HTMLImageElement = mk('HTMLImageElement', ['img']), HTMLLinkElement = mk('HTMLLinkElement', ['link']),
 	HTMLScriptElement = mk('HTMLScriptElement', ['script']), HTMLTableElement = mk('HTMLTableElement', ['table']), HTMLIFrameElement = mk('HTMLIFrameElement', ['iframe']), HTMLUListElement = mk('HTMLUListElement', ['ul']), HTMLLIElement = mk('HTMLLIElement', ['li']),
 	HTMLParagraphElement = mk('HTMLParagraphElement', ['p']), HTMLPreElement = mk('HTMLPreElement', ['pre']), HTMLBRElement = mk('HTMLBRElement', ['br']), HTMLSelectElement = mk('HTMLSelectElement', ['select']), HTMLOptionElement = mk('HTMLOptionElement', ['option']);
-export const HTMLInputElement = mk('HTMLInputElement', ['input'], { get value() { return this.__value ?? this.getAttribute('value') ?? ''; }, set value(v) { this.__value = String(v); }, get checked() { return this.hasAttribute('checked'); }, set checked(v) { v ? this.setAttribute('checked', '') : this.removeAttribute('checked'); }, select() { }, setSelectionRange() { }, setRangeText() { } });
-export const HTMLTextAreaElement = mk('HTMLTextAreaElement', ['textarea'], {
-	get value() { return this.__value ?? this.textContent; }, set value(v) { this.__value = String(v); this.__selStart = this.__selEnd = this.__value.length; },
-	get selectionStart() { return this.__selStart ?? 0; }, set selectionStart(v) { this.__selStart = v; }, get selectionEnd() { return this.__selEnd ?? 0; }, set selectionEnd(v) { this.__selEnd = v; },
-	setSelectionRange(a, b) { this.__selStart = a; this.__selEnd = b; }, select() { this.__selStart = 0; this.__selEnd = (this.__value ?? '').length; }, setRangeText(t, s, e) { const v = this.value; s ??= this.selectionStart; e ??= this.selectionEnd; this.value = v.slice(0, s) + t + v.slice(e); this.__selStart = this.__selEnd = s + t.length; },
-});
+const withText = (extra) => Object.defineProperties({}, { ...Object.getOwnPropertyDescriptors(textProps), ...Object.getOwnPropertyDescriptors(extra) });
+export const HTMLInputElement = mk('HTMLInputElement', ['input'], withText({ get checked() { return this.__checked !== undefined ? this.__checked : this.hasAttribute('checked'); }, set checked(v) { this.__checked = !!v; this.ownerDocument && (this.ownerDocument.__paintGen = (this.ownerDocument.__paintGen | 0) + 1); } }));
+export const HTMLTextAreaElement = mk('HTMLTextAreaElement', ['textarea'], withText({}));
 export const HTMLStyleElement = mk('HTMLStyleElement', ['style'], { get sheet() { return this.__sheet ?? (this.isConnected ? (this.ownerDocument.__ensureSheet(this)) : null); } });
 export const HTMLCanvasElement = mk('HTMLCanvasElement', ['canvas'], {
 	get width() { return +(this.getAttribute('width') ?? 300); }, set width(v) { this.setAttribute('width', v); this.__ctx = null; }, get height() { return +(this.getAttribute('height') ?? 150); }, set height(v) { this.setAttribute('height', v); this.__ctx = null; },
@@ -334,3 +332,4 @@ export class MutationObserver {
 	}
 }
 export { mixin, camel, dash, toNode, ParentNodeMixin };
+setEventCtors(Event, InputEvent);

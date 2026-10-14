@@ -4,6 +4,7 @@
 // Not painted (recorded in `unpainted`): gradients, images, canvas, box-shadow, outlines, rounded borders, text-shadow, filters, blend modes.
 import { resolveFont, advance, fontMetrics, kern } from './fonts.js';
 import { parseContent } from './layout.js';
+import { paintTextControl } from './textcontrol.js';
 
 export const unpainted = new Map();
 const note = (k) => unpainted.set(k, (unpainted.get(k) || 0) + 1);
@@ -156,6 +157,7 @@ class Painter {
 		const layered = opacity < 1; if (layered) { this.b.pushLayer(); }
 		const clips = (v['overflow-x'] !== 'visible' || v['overflow-y'] !== 'visible'); const sx = b.el && b.el.__scrollLeft || 0, sy = b.el && b.el.__scrollTop || 0;
 		this.paintBackgroundAndBorders(b, dx, dy, 1);
+		if (b.el && b.el.__tc) { paintTextControl(this, b, dx, dy); }
 		if (clips) { const x0 = b.ax + dx + b.bl, y0 = b.ay + dy + b.bt; this.pushClip(x0, y0, x0 + b.w - b.bl - b.br, y0 + b.h - b.bt - b.bb); }
 		const cdx = dx - sx, cdy = dy - sy;
 		const children = b.children;

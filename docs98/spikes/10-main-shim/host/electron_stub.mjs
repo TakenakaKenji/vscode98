@@ -90,6 +90,7 @@ class WebContents extends EventEmitter {
 	getOSProcessId() { return process.pid; } getProcessId() { return 1; } getType() { return 'window'; }
 	setZoomLevel(l) { this._zoom = l; } getZoomLevel() { return this._zoom; } setZoomFactor() { } getZoomFactor() { return 1; }
 	setWindowOpenHandler() { } setBackgroundThrottling() { } setAudioMuted() { } setFrameRate() { } setVisualZoomLevelLimits() { return Promise.resolve(); }
+	paste() { log('webContents.paste'); toRenderer({ t: 'editCommand', wc: this.id, cmd: 'paste' }); } copy() { toRenderer({ t: 'editCommand', wc: this.id, cmd: 'copy' }); } cut() { toRenderer({ t: 'editCommand', wc: this.id, cmd: 'cut' }); } undo() { toRenderer({ t: 'editCommand', wc: this.id, cmd: 'undo' }); } redo() { toRenderer({ t: 'editCommand', wc: this.id, cmd: 'redo' }); } selectAll() { toRenderer({ t: 'editCommand', wc: this.id, cmd: 'selectAll' }); }
 	focus() { } close() { } openDevTools() { } closeDevTools() { } toggleDevTools() { } reload() { } reloadIgnoringCache() { } stop() { } inspectElement() { } executeJavaScript() { return Promise.resolve(); } capturePage() { return Promise.resolve(recorder('nativeImage')); }
 	destroy() { this._destroyed = true; contents.delete(this.id); this.emit('destroyed'); }
 }
@@ -186,6 +187,19 @@ class UtilityProcess extends EventEmitter {
 }
 export const utilityProcess = { fork: (modulePath, args = [], options = {}) => new UtilityProcess(modulePath, args, options) };
 
+// ---- clipboard: plain text goes to the system clipboard when this process has one (spike:win, the Windows host); everything else is kept in memory
+let winApi = null; try { winApi = await import('spike:win'); } catch { winApi = null; }
+function makeClipboard() {
+	const mem = { text: '', html: '', rtf: '', find: '', bookmark: null, buffers: new Map() };
+	const read = () => { if (winApi) { const t = winApi.clipboardGet(); if (t !== null && t !== undefined) { return String(t).replace(/\r\n/g, '\n'); } return ''; } return mem.text; };
+	const write = (t) => { mem.text = String(t ?? ''); if (winApi) { winApi.clipboardSet(mem.text.replace(/\r?\n/g, '\r\n')); } };
+	return {
+		readText: () => read(), writeText: (t) => write(t), readHTML: () => mem.html, writeHTML: (h) => { mem.html = String(h ?? ''); }, readRTF: () => mem.rtf, writeRTF: (r) => { mem.rtf = String(r ?? ''); },
+		readFindText: () => mem.find, writeFindText: (t) => { mem.find = String(t ?? ''); }, readBookmark: () => mem.bookmark ?? { title: '', url: '' }, writeBookmark: (title, url) => { mem.bookmark = { title, url }; },
+		readBuffer: (f) => mem.buffers.get(f) ?? Buffer.alloc(0), writeBuffer: (f, b) => { mem.buffers.set(f, b); }, has: (f) => (f === 'text/plain' ? read() !== '' : mem.buffers.has(f)), clear: () => { mem.text = ''; mem.html = ''; mem.buffers.clear(); if (winApi) { winApi.clipboardSet(''); } },
+		availableFormats: () => (read() !== '' ? ['text/plain'] : []), readImage: () => ({ isEmpty: () => true, toPNG: () => Buffer.alloc(0), toDataURL: () => '', getSize: () => ({ width: 0, height: 0 }) }), writeImage: () => { }, write: (d) => { if (d && d.text !== undefined) { write(d.text); } if (d && d.html !== undefined) { mem.html = d.html; } },
+	};
+}
 // ---- the rest: logging recorders until a run needs more
 export const session = { defaultSession: recorder('session.defaultSession'), fromPartition: () => recorder('session.partition') };
 export const screen = Object.assign(new EventEmitter(), { getPrimaryDisplay: () => ({ id: 1, bounds: { x: 0, y: 0, width: 1280, height: 800 }, workArea: { x: 0, y: 0, width: 1280, height: 800 }, workAreaSize: { width: 1280, height: 800 }, size: { width: 1280, height: 800 }, scaleFactor: 1, rotation: 0, accelerometerSupport: 'unknown', colorDepth: 24, internal: false, touchSupport: 'unknown', monochrome: false, label: 'display98' }), getAllDisplays() { return [this.getPrimaryDisplay()]; }, getDisplayMatching() { return this.getPrimaryDisplay(); }, getDisplayNearestPoint() { return this.getPrimaryDisplay(); }, getCursorScreenPoint: () => ({ x: 0, y: 0 }) });
@@ -193,6 +207,6 @@ export const protocol = recorder('protocol'), crashReporter = recorder('crashRep
 export const powerMonitor = Object.assign(new EventEmitter(), { getSystemIdleState: () => 'active', getSystemIdleTime: () => 0, isOnBatteryPower: () => false, onBatteryPower: false });
 export const systemPreferences = Object.assign(new EventEmitter(), { isAeroGlassEnabled: () => true, getColor: () => '000000', getAccentColor: () => '0078d7', isInvertedColorScheme: () => false, isHighContrastColorScheme: () => false, getUserDefault: () => undefined, getMediaAccessStatus: () => 'granted', canPromptTouchID: () => false });
 export const nativeTheme = Object.assign(new EventEmitter(), { shouldUseDarkColors: true, shouldUseHighContrastColors: false, shouldUseInvertedColorScheme: false, themeSource: 'dark', inForcedColorsMode: false });
-export const shell = recorder('shell'), net = recorder('net'), clipboard = recorder('clipboard'), safeStorage = recorder('safeStorage'), Notification = recorder('Notification'), powerSaveBlocker = recorder('powerSaveBlocker'), webFrameMain = recorder('webFrameMain'), MenuItem = recorder('MenuItem'), BaseWindow = recorder('BaseWindow'), WebContentsView = recorder('WebContentsView'), autoUpdater = recorder('autoUpdater'), nativeImage = recorder('nativeImage'), Tray = recorder('Tray'), JumpListCategory = recorder('JumpListCategory');
+export const shell = recorder('shell', { trashItem(p) { if (winApi && winApi.trash) { return winApi.trash(String(p)) ? Promise.resolve() : Promise.reject(new Error('Could not move to the recycle bin: ' + p)); } return Promise.reject(new Error('no trash on this platform: ' + p)); }, beep() { } }), net = recorder('net'), clipboard = makeClipboard(), safeStorage = recorder('safeStorage'), Notification = recorder('Notification'), powerSaveBlocker = recorder('powerSaveBlocker'), webFrameMain = recorder('webFrameMain'), MenuItem = recorder('MenuItem'), BaseWindow = recorder('BaseWindow'), WebContentsView = recorder('WebContentsView'), autoUpdater = recorder('autoUpdater'), nativeImage = recorder('nativeImage'), Tray = recorder('Tray'), JumpListCategory = recorder('JumpListCategory');
 export const ipcRenderer = recorder('ipcRenderer'), contextBridge = recorder('contextBridge'), webFrame = recorder('webFrame'), webUtils = recorder('webUtils');
 export default { app, BrowserWindow, ipcMain, webContents, session, screen, protocol, crashReporter, Menu, contentTracing, dialog, desktopCapturer, globalShortcut, powerMonitor, systemPreferences, nativeTheme, shell, net, clipboard, utilityProcess, safeStorage, Notification, powerSaveBlocker, webFrameMain, MenuItem, BaseWindow, WebContentsView, autoUpdater, nativeImage, Tray, MessageChannelMain, JumpListCategory };

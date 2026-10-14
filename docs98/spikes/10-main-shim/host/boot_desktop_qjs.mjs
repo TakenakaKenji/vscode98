@@ -1,6 +1,7 @@
 // QuickJS version of boot_desktop_node.mjs: renderer harness on the spike 6/7 engine (native layout + integer rasterizer), main process = VS Code's own electron-main on QuickJS too.
 //   qjs-spike7 --stack-size 0 <spike5>/fork_main.mjs <shimsDir> boot_desktop_qjs.mjs <appRoot> [--seconds 60] [--stable 25] [--layout native] [--backend native] [--ppm out.ppm]
 //                                                    [--workspace dir] [--user-data-dir d] [--extensions-dir d] [--scenario file.mjs] [--main-runtime qjs|node]
+import { execCommand } from '../../06-rendering/host/dom/textcontrol.js';
 import * as std from 'qjs:std';
 import * as os from 'qjs:os';
 import Module from 'node:module';
@@ -41,7 +42,12 @@ const t00 = performance.now(); const mainLog = []; log('[harness] start');
 Module.registerHooks({ resolve(specifier, context, nextResolve) { if (specifier.startsWith('vscode-file://vscode-app/')) { return { url: 'file://' + specifier.slice('vscode-file://vscode-app'.length).replace(/[?#].*$/, ''), shortCircuit: true }; } return nextResolve(specifier, context); } });
 // ---- user settings for a headless run: no trust prompt (the git extension is limited in untrusted workspaces), no welcome page, no telemetry or update checks
 { const dir = nodePath.join(userDataDir, 'User'); const mk = (d) => { if (os.stat(d)[1] !== 0) { mk(nodePath.dirname(d)); os.mkdir(d, 0o777); } }; mk(dir);
-	if (opt('seed-settings', '1') === '1' && !std.loadFile(dir + '/settings.json')) { const f = std.open(dir + '/settings.json', 'w'); f.puts(JSON.stringify({ 'security.workspace.trust.enabled': false, 'workbench.startupEditor': 'none', 'telemetry.telemetryLevel': 'off', 'update.mode': 'none', 'extensions.autoUpdate': false, 'extensions.autoCheckUpdates': false, 'chat.disableAIFeatures': true, 'workbench.secondarySideBar.defaultVisibility': 'hidden', 'window.commandCenter': false, 'workbench.layoutControl.enabled': false, 'breadcrumbs.enabled': false, 'editor.minimap.enabled': false, 'workbench.tips.enabled': false, 'workbench.enableExperiments': false, 'update.showReleaseNotes': false, ...JSON.parse(opt('seed-extra', '{}')) }, null, 2)); f.close(); } }
+	if (opt('seed-settings', '1') === '1') {   // product defaults: added when missing from settings.json, never overriding what the user set
+		const defaults = { 'security.workspace.trust.enabled': false, 'workbench.startupEditor': 'none', 'telemetry.telemetryLevel': 'off', 'update.mode': 'none', 'extensions.autoUpdate': false, 'extensions.autoCheckUpdates': false, 'chat.disableAIFeatures': true, 'workbench.secondarySideBar.defaultVisibility': 'hidden', 'window.commandCenter': false, 'workbench.layoutControl.enabled': false, 'breadcrumbs.enabled': false, 'editor.minimap.enabled': false, 'workbench.tips.enabled': false, 'workbench.enableExperiments': false, 'update.showReleaseNotes': false, 'window.dialogStyle': 'custom', 'files.simpleDialog.enable': true, ...JSON.parse(opt('seed-extra', '{}')) };
+		let cur = {}; const txt = std.loadFile(dir + '/settings.json'); if (txt) { try { cur = JSON.parse(txt); } catch { cur = null; } }
+		if (cur) { let changed = !txt; for (const [k, v] of Object.entries(defaults)) { if (!(k in cur)) { cur[k] = v; changed = true; } } if (changed) { const f = std.open(dir + '/settings.json', 'w'); f.puts(JSON.stringify(cur, null, 2)); f.close(); } }
+	}
+}
 // ---- main process
 const mainArgs = ['--user-data-dir', userDataDir, '--extensions-dir', extDir, '--disable-gpu', '--disable-telemetry', ...(opt('workspace') ? [opt('workspace')] : [])];
 const child = cp.fork(nodePath.join(here, 'run_main.mjs'), [appRoot, ...mainArgs], { serialization: 'json', stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...nodeProcess.env, APP98_ROOT: appRoot, ELECTRON_STUB_LOG: opt('stub-log', nodePath.join(globalThis.__builtins.os.tmpdir(), 'electron-stub.log')) } });
@@ -63,6 +69,7 @@ child.on('message', (m0) => {
 	if (m.t === 'createWindow') { createOpts = m; wcId = m.wc; }
 	else if (m.t === 'loadURL') { onWindowLoad(m); }
 	else if (m.t === 'send') { for (const fn of [...(listeners.get(m.channel) || [])]) { fn({ sender: null, ports: [] }, ...m.args); } }
+	else if (m.t === 'editCommand') { log('[harness] editCommand ' + m.cmd); try { execCommand(env.document, m.cmd); } catch (e) { log('editCommand ' + m.cmd + ' failed: ' + e); } }   // webContents.paste()/copy()/... of the main process: the focused control performs the edit
 	else if (m.t === 'postMessage') { for (const fn of [...(listeners.get(m.channel) || [])]) { fn({ sender: null, ports: m.ports.map(id => ports.make(id)) }, m.message); } }
 	else if (m.t === 'portMsg') { ports.deliver(m); }
 	else if (m.t === 'portClose') { const p = ports.ports.get(m.id); if (p) { p._closed = true; p.dispatchEvent({ type: 'close' }); } }
