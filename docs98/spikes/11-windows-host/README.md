@@ -125,4 +125,15 @@ Sandbox numbers (Linux x86-64 QuickJS, the same code as the Windows host): workb
 
 **The VM is much slower than the sandbox.** The workbench reaches about 800 UI elements after about 12 s natively, about 40 s under Wine here and about 127 s on the VM (VirtualBox, 2 GB, 2 vCPUs of a Ryzen 5 5600G, 128 MB video, VT-x, Hyper-V paravirtualization). `bench.js` / `run-bench.cmd` (ten micro-benchmarks, about 9 s here, 16 s under Wine) are in the package to tell whether that is general VM slowness or something specific.
 
+**Round 2 on the VM (package v6, the user's numbers): the VM is not slow.** `bench.js` total 7.2 s on the VM against 9.1 s native Linux and 16.5 s under Wine on the sandbox (the Ryzen is simply fast), yet the workbench took 51 s to open (about 19 s native) with the first 45 s a blocked event loop (`[status] t=45s elements=14`; the first status line should have come at 15 s). File open 1 s, typing fine after an initial delay, **Enter did nothing**.
+
+Two Windows-only costs found by reading the log against the benchmark, neither visible on Linux:
+
+1. **`js_load_file` is quadratic where `realloc` moves large blocks.** QuickJS reads a file in 8 KB pieces and reallocates `len + n + 1` after each piece; a 15 MB bundle is 1,900 reallocations, free on glibc (`mremap`) but a full copy each on the Windows heap: 15 MB `std.loadFile` took **1,775 ms under Wine against 22 ms on Linux** (37 ms after the fix), more on a real heap. Every module, CSS, JSON and NLS file goes through it. `patch_libc.py` now replaces it with a read of known size (one allocation; geometric growth for pipes).
+2. **Timer resolution.** QuickJS clamps `setTimeout(0)` to 1 ms and the Windows poll waits with `WaitForMultipleObjects`/`Sleep`, which wake on the 15.6 ms system tick: 1,000 chained zero timers (a few thousand happen during a workbench boot: `setImmediate` of the Node shims, `timeout(0)`, `RunOnceScheduler`) cost 15 s instead of 1. `spike_init` now calls `timeBeginPeriod(1)` (`QJS98_TIMER_RES=0` turns it off for comparison). `bench2.js` (`run-bench2.cmd`) measures timers, stat, big-file read and compile; run it with and without `set QJS98_TIMER_RES=0`.
+
+Under Wine, the first `[status]` line (window opened, UI built) went from t=40 s to t=10 s with the file-read fix alone.
+
+**Enter:** `char` events below 32 were dropped as "control keys handled through keydown", but Enter is text in a `<textarea>` (Monaco's input area gets the line break from the browser): it now inserts `\n` with `inputType: 'insertLineBreak'` (a single-line `<input>` only gets the key events), and a character is not generated when the `keydown` was cancelled (as in browsers).
+
 Also found: the window host opens after the script import but the whole workbench build is one long synchronous stretch, so the first `[status]` line (and the 60 s screenshot) arrives late; `--progress <s>` logs a timeline in any mode.
