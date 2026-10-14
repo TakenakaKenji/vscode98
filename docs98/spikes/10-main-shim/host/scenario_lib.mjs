@@ -3,6 +3,7 @@
 import { runScenario } from '../../08-workbench-boot/host/boot_common.js';
 import { paintDocument, toPPM } from '../../06-rendering/host/dom/paint.js';
 import { NativeBackend } from '../../07-native-render/host/native_backend.js';
+import { zoom, ScaledBackend } from '../../06-rendering/host/dom/zoom.js';
 import { createInputDriver } from '../../06-rendering/host/dom/input_driver.js';
 import * as std from 'qjs:std';
 
@@ -21,6 +22,7 @@ function vkOf(ch) {
 export async function createRig(ctx, { settleRounds = 12 } = {}) {
 	const { doc, log, env } = ctx; const W = ctx.W, H = ctx.H; const backend = new NativeBackend(W, H, {});
 	globalThis.__tcLog = ctx.log; globalThis.__clipboard98 = { text: '', readText() { return this.text; }, writeText(t) { this.text = String(t); } };   // the system clipboard of the window host
+	zoom.set(0); zoom.onChange = (f) => { env.resize?.(Math.round(W / f), Math.round(H / f)); };   // page zoom as the window host does it
 	const driver = createInputDriver(ctx, {}); let shots = 0; const failures = [];
 	const settle = (s = 20, rounds = settleRounds) => runScenario(ctx, { seconds: s, stableRounds: rounds });
 	const rig = {
@@ -64,7 +66,7 @@ export async function createRig(ctx, { settleRounds = 12 } = {}) {
 		async waitFor(fn, seconds = 15) { const end = performance.now() + seconds * 1000; for (;;) { let v = null; try { v = fn(); } catch { v = null; } if (v) { return v; } if (performance.now() > end) { return null; } await settle(2, 6); } },
 		/** records a check: prints PASS/FAIL and remembers failures */
 		check(name, ok, detail = '') { log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ' :: ' + detail : ''}`); if (!ok) { failures.push(name); } return ok; },
-		shot(name) { doc.__ensureLayout(); backend.reset(); const r = paintDocument(doc, W, H, backend); const dir = ctx.opt('shot-dir', '/tmp/claude-0/shots'); const f = std.open(`${dir}/${name}.ppm`, 'wb'); if (!f) { log(`shot: cannot write ${dir}/${name}.ppm`); return; } const ppm = toPPM(r.px, W, H); f.write(ppm.buffer, 0, ppm.length); f.close(); shots++; },
+		shot(name) { doc.__ensureLayout(); backend.reset(); const z = zoom.factor; const r = paintDocument(doc, Math.round(W / z), Math.round(H / z), z === 1 ? backend : new ScaledBackend(backend, z)); const dir = ctx.opt('shot-dir', '/tmp/claude-0/shots'); const f = std.open(`${dir}/${name}.ppm`, 'wb'); if (!f) { log(`shot: cannot write ${dir}/${name}.ppm`); return; } const ppm = toPPM(r.px, W, H); f.write(ppm.buffer, 0, ppm.length); f.close(); shots++; },
 		summary() { log(`SUMMARY ${failures.length ? failures.length + ' FAILED: ' + failures.join('; ') : 'all passed'}`); },
 	};
 	await settle(40, 40); return rig;

@@ -6,6 +6,7 @@ import * as win from 'spike:win';
 import { paintDocument } from '../../06-rendering/host/dom/paint.js';
 import { NativeBackend } from '../../07-native-render/host/native_backend.js';
 
+import { zoom, ScaledBackend } from '../../06-rendering/host/dom/zoom.js';
 import { createInputDriver, editable } from '../../06-rendering/host/dom/input_driver.js';
 
 /** opens the window and keeps it in sync with the document; returns { id, repaint(), close() } */
@@ -15,11 +16,12 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 	const repaint = () => { forced = true; };
 	// the clipboard of the text controls is the system clipboard (the window's text is CRLF on Windows, the DOM's LF)
 	globalThis.__clipboard98 = { readText: () => { const t = win.clipboardGet(); return t === null || t === undefined ? '' : String(t).replace(/\r\n/g, '\n'); }, writeText: (t) => win.clipboardSet(String(t).replace(/\r?\n/g, '\r\n')) };
+	zoom.onChange = (f) => { log?.('[window] zoom ' + f); env.resize?.(Math.round(W / f), Math.round(H / f)); repaint(); };
 	const driver = createInputDriver(ctx, { setCursor: (c) => win.setCursor(id, c), activity: repaint });
 	function paintNow() {
 		const t0 = performance.now(); doc.__ensureLayout(); paintedPasses = (doc.__passStats || []).length; paintedGen = doc.__paintGen | 0;
 		if (!backend || backend.w !== W || backend.h !== H) { backend = new NativeBackend(W, H, { exact }); } else { backend.reset(); }
-		const r = paintDocument(doc, W, H, backend);
+		const z = zoom.factor; const r = paintDocument(doc, z === 1 ? W : Math.round(W / z), z === 1 ? H : Math.round(H / z), z === 1 ? backend : new ScaledBackend(backend, z));
 		win.present(id, r.px, W, H, 0, 0, W, H); paints++; paintMs += performance.now() - t0; lastPaint = performance.now();
 	}
 	// any layout pass since the last paint counts: code that reads geometry runs layout itself and clears doc.__dirty, so `__dirty` alone misses most changes
@@ -30,9 +32,10 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 	};
 	win.setHandler((wid, type, a, b, c, d, mods) => {
 		if (type !== 'mousemove' && type !== 'paint' && ctx.opt?.('debug-input', '0') === '1') { ctx.log?.('[input] event ' + type + ' ' + a + ' ' + b + ' ' + c + ' ' + d); }
+		if (zoom.factor !== 1 && (type === 'mousemove' || type === 'mousedown' || type === 'mouseup' || type === 'dblclick' || type === 'wheel')) { a = Math.round(a / zoom.factor); b = Math.round(b / zoom.factor); }   // window pixels -> CSS pixels
 		if (driver.handle(type, a, b, c, d, mods)) { return; }
 		switch (type) {
-			case 'resize': W = a; H = b; log?.(`[window] resize ${a}x${b}`); env.resize?.(a, b); repaint(); break;
+			case 'resize': W = a; H = b; log?.(`[window] resize ${a}x${b}`); env.resize?.(Math.round(a / zoom.factor), Math.round(b / zoom.factor)); repaint(); break;
 			case 'focus': { if (a) { env.window.dispatchEvent(new env.window.Event('focus')); } else { env.window.dispatchEvent(new env.window.Event('blur')); } break; }
 			case 'close': win.destroy(wid); log?.('[window] closed'); try { onClose?.(); } finally { std.exit(0); } break;
 			case 'paint': break;   // the echo of our own present(): repainting on it is an endless loop (found on Windows 7: 12 frames/s of an idle workbench)

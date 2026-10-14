@@ -2,6 +2,7 @@
 // modifier bits) into DOM events and the default actions of a browser: focus on click, text editing and selection in <input>/<textarea>, Tab navigation, click activation.
 // The window host feeds it from WM_* messages; scenarios and tests feed it directly, so a test exercises exactly the path a user does.
 import { createDocSelection } from './docselect.js';
+import { createDnd } from './dnd.js';
 import { isTextControl, copyCut, controlKeydown, controlTextInput, controlMouseDown, controlMouseMove, controlMouseUp, dragging, controlWheel, focusNext, clickDefault } from './textcontrol.js';
 
 // Windows virtual-key code -> [DOM key, DOM code]; letters, digits and OEM punctuation are handled below
@@ -35,10 +36,12 @@ export function createInputDriver(ctx, hooks = {}) {
 	const at = (x, y) => doc.elementFromPoint(x, y) || doc.body;
 	/** the target of a move/up: the element that captured the pointer (setPointerCapture) or the element under it */
 	const target = (x, y) => { const c = doc.__capture; if (c) { if (c.el.isConnected !== false && doc.contains(c.el)) { return c.el; } doc.__capture = null; } return at(x, y); };
+	let dnd = null;
 	const releaseCapture = () => { const c = doc.__capture; if (c) { doc.__capture = null; dispatch(c.el, new env.window.PointerEvent('lostpointercapture', { bubbles: true, pointerId: c.id ?? 1, pointerType: 'mouse' })); } };
 	const dispatch = (el, ev) => { try { return el.dispatchEvent(ev); } catch (e) { ctx.note?.('window event ' + ev.type, e); return true; } };
 	const pdispatch = (el, ev) => (ctx.opt?.('no-pointer', '0') === '1' ? true : dispatch(el, ev));   // --no-pointer 1: legacy mouse events only (A/B switch)
 	const guard = (what, f) => { try { return f(); } catch (e) { ctx.note?.(what, e); return false; } };
+	dnd = createDnd(ctx, { at, dispatch });
 	const setCursor = (el) => { try { const c = env.window.getComputedStyle(el).cursor; hooks.setCursor?.(c && c !== 'auto' ? c : (editable(el) ? 'text' : 'default')); } catch { /* keep */ } };
 	const focusFor = (el) => { for (let e = el; e; e = e.parentElement) { if (editable(e) || e.hasAttribute?.('tabindex') || isButtonish(e)) { e.focus?.(); return; } } doc.activeElement?.blur?.(); };
 	const clickCount = (x, y, base) => { const now = performance.now(); const near = now - lastClick.t < 500 && Math.abs(lastClick.x - x) < 5 && Math.abs(lastClick.y - y) < 5; lastClick = { t: now, x, y, n: near ? Math.min(3, lastClick.n + 1) : (base || 1) }; return lastClick.n; };
@@ -56,13 +59,14 @@ export function createInputDriver(ctx, hooks = {}) {
 		if (c === 0) { setActive(el, true); }
 		const pointerOk = pdispatch(el, Pe('pointerdown', { ...base, button: c, buttons: d, detail })); let ok = false;
 		if (pointerOk && dispatch(el, Ev('mousedown', { ...base, button: c, buttons: d, detail }))) { focusFor(el); ok = true; }   // a pointerdown the page cancels (Monaco does, and focuses its own input area) suppresses the compatibility mousedown; the default action of a press happens only when neither was canceled
-		if (ok && c === 0) { let tc = false; for (let e = el; e; e = e.parentElement) { if (isTextControl(e)) { guard('text control mousedown', () => controlMouseDown(e, a, b, detail, !!(mods & 1))); tc = true; break; } } if (!tc) { guard('page text selection', () => docSel.start(el, a, b, detail, !!(mods & 1))); } }
+		if (ok && c === 0) { let tc = false; for (let e = el; e; e = e.parentElement) { if (isTextControl(e)) { guard('text control mousedown', () => controlMouseDown(e, a, b, detail, !!(mods & 1))); tc = true; break; } } if (!tc) { guard('page text selection', () => docSel.start(el, a, b, detail, !!(mods & 1))); } guard('drag arm', () => dnd.arm(el, a, b)); }
 		return base;
 	};
 	function mouse(type, a, b, c, d, mods) {
 		const base = { clientX: a, clientY: b, screenX: a, screenY: b, ctrlKey: !!(mods & 2), shiftKey: !!(mods & 1), altKey: !!(mods & 4), metaKey: !!(mods & 8) };
 		switch (type) {
 			case 'mousemove': {
+				if ((c & 1) && guard('drag move', () => dnd.move(a, b, mods))) { return; }
 				if (dragging() && (c & 1)) { guard('text control drag', () => controlMouseMove(a, b)); } else if (docSel.active && (c & 1)) { guard('page text drag', () => docSel.move(a, b)); }
 				const el = target(a, b); if (el !== hover) { const prev = hover; if (prev) { pdispatch(prev, Pe('pointerout', { ...base, relatedTarget: el })); dispatch(prev, Ev('mouseout', { ...base, relatedTarget: el })); } pdispatch(el, Pe('pointerover', { ...base, relatedTarget: prev })); dispatch(el, Ev('mouseover', { ...base, relatedTarget: prev })); hover = el; enterLeave(prev, el, base); setCursor(el); }
 				pdispatch(el, Pe('pointermove', { ...base, buttons: c })); dispatch(el, Ev('mousemove', { ...base, buttons: c })); return;
@@ -70,6 +74,7 @@ export function createInputDriver(ctx, hooks = {}) {
 			case 'leave': if (hover) { const prev = hover; dispatch(prev, Ev('mouseout', { clientX: -1, clientY: -1 })); hover = null; enterLeave(prev, null, base); } return;
 			case 'mousedown': { const el = at(a, b); downTarget = el; const detail = c === 0 ? clickCount(a, b, 1) : 1; if (debug()) { const dsc = (e) => e ? e.localName + '.' + String(e.className || '').slice(0, 60) : 'null'; ctx.log?.('[input] mousedown at ' + a + ',' + b + ' target=' + dsc(el) + ' parent=' + dsc(el.parentElement) + ' active-before=' + dsc(doc.activeElement)); } press(el, a, b, c, d, detail, mods); return; }
 			case 'mouseup': {
+				if (guard('drop', () => dnd.up(a, b, mods))) { if (downTarget) { setActive(downTarget, false); } downTarget = null; docSel.end(); releaseCapture(); return; }
 				const el = target(a, b); controlMouseUp(); docSel.end(); if (downTarget) { setActive(downTarget, false); } pdispatch(el, Pe('pointerup', { ...base, button: c, buttons: d, detail: 1 })); dispatch(el, Ev('mouseup', { ...base, button: c, buttons: d, detail: 1 })); releaseCapture();
 				if (downTarget && (downTarget === el || downTarget.contains?.(el) || el.contains?.(downTarget))) { if (dispatch(el, Ev(c === 2 ? 'contextmenu' : 'click', { ...base, button: c, detail: 1 })) && c === 0) { guard('click default', () => clickDefault(el)); } } downTarget = null; return;
 			}

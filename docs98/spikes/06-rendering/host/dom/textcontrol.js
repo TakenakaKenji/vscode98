@@ -102,10 +102,10 @@ export function paintSelect(p, b, dx, dy) {
 // ---- clipboard (a host with a system clipboard installs globalThis.__clipboard98 = { readText(), writeText(text) })
 const memoryClipboard = { text: '', readText() { return this.text; }, writeText(t) { this.text = String(t); } };
 const clipboard = () => globalThis.__clipboard98 || memoryClipboard;
-function dataTransfer() {   // enough of DataTransfer for clipboard events: string items (Monaco's paste pipeline iterates `items` and calls getAsString), no files
+export function dataTransfer() {   // enough of DataTransfer for clipboard events: string items (Monaco's paste pipeline iterates `items` and calls getAsString), no files
 	const data = new Map();
 	return { setData(t, v) { data.set(t, String(v)); }, getData(t) { return data.get(t === 'text' ? 'text/plain' : t) ?? ''; }, clearData(t) { if (t) { data.delete(t); } else { data.clear(); } }, get types() { return [...data.keys()]; },
-		get items() { return [...data].map(([type, value]) => ({ kind: 'string', type, getAsString(cb) { if (cb) { cb(value); } }, getAsFile() { return null; } })); }, files: [], dropEffect: 'none', effectAllowed: 'all' };
+		get items() { return [...data].map(([type, value]) => ({ kind: 'string', type, getAsString(cb) { if (cb) { cb(value); } }, getAsFile() { return null; } })); }, files: [], dropEffect: 'none', effectAllowed: 'all', setDragImage() { } };
 }
 const selectedText = (el) => controlValue(el).slice(el.selectionStart ?? 0, el.selectionEnd ?? 0);
 /** copy / cut as a browser performs them: the (cancelable) event first, whose handler may supply the data; then the default for a text control; the data goes to the system clipboard */

@@ -31,7 +31,7 @@ export function installPreload(win, ipc, { argv, process: proc, readFileSync }) 
 				}
 			},
 		},
-		webFrame: { setZoomLevel(level) { if (typeof level === 'number') { ipc.webFrameZoom?.(level); } } },
+		webFrame: { setZoomLevel(level) { if (typeof level === 'number') { globalThis.__zoom98?.set(level); } } },
 		webUtils: { getPathForFile(file) { return file.path ?? ''; } },
 		process: {
 			get platform() { return proc.platform; }, get arch() { return proc.arch; }, get env() { return { ...proc.env }; }, get versions() { return proc.versions; }, get type() { return 'renderer'; }, get execPath() { return proc.execPath; },
