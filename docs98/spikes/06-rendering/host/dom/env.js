@@ -91,6 +91,19 @@ export class Document extends Node {
 			if (ob.v !== el.__cs.values) { if (bad.length < 50) { bad.push('stale style of ' + el.localName + '.' + (el.getAttribute('class') || '')); } } }
 		this.__styleOnlyChecked = (this.__styleOnlyChecked || 0) + n;
 	}
+	/** <script> elements inserted into the document run: inline code at once, `src` asynchronously (read through the host, evaluated in the global scope), followed by a load (or error) event, as a browser does for the AMD loader and the like */
+	__scanScripts(root) {
+		const scripts = []; const walk = (n) => { if (n.nodeType === 1 && n.localName === 'script') { scripts.push(n); } if (n.__children) { for (const c of n.__children) { walk(c); } } }; walk(root);
+		for (const s of scripts) {
+			if (s.__ran) { continue; } const type = (s.getAttribute('type') || 'text/javascript').toLowerCase(); if (!/^(text|application)\/(javascript|ecmascript)$|^$/.test(type)) { continue; } s.__ran = true; const src = s.getAttribute('src'); const env = this.__env;
+			const run = (code, name) => { try { (0, eval)(code + '\n//# sourceURL=' + name); } catch (e) { if (globalThis.console) { console.error('[script ' + name + ']', e && (e.stack || e.message || e)); } } };
+			if (!src) { if (s.textContent) { run(s.textContent, 'inline-script'); } continue; }
+			setTimeout(() => {
+				let text; try { const buf = env.readUrl ? env.readUrl(src) : globalThis.__readFileBytes(decodeURIComponent(src.replace(/^[a-z-]+:\/\/(vscode-app)?/, '').replace(/[?#].*$/, ''))); text = new TextDecoder().decode(buf); } catch (e) { s.dispatchEvent(new D.ErrorEvent('error', { message: String(e && e.message || e) })); return; }
+				run(text, src); s.dispatchEvent(new D.Event('load'));
+			}, 0);
+		}
+	}
 	__ensureLayout() {
 		const env = this.__env;
 		if (this.__layout && !this.__dirty) { return; }
@@ -186,7 +199,7 @@ function summarizeDirty(log, doc, lay, t0) {
 	return { total: lay.__elementCount ?? doc.__styleCount, mutations: log.length, counts, restyleEstimate: live, styleMs: lay.styleMs, layoutMs: lay.layoutMs, ms: performance.now() - t0, style: lay.styleInfo };
 }
 export function installEnvironment(opts = {}) {
-	const g = opts.global ?? globalThis; const env = { vw: opts.width ?? 800, vh: opts.height ?? 520, dpr: 1, dark: false, rootFontSize: 16, scrollbarSize: opts.scrollbarSize ?? 0, window: g };
+	const g = opts.global ?? globalThis; const env = { vw: opts.width ?? 800, vh: opts.height ?? 520, dpr: 1, dark: false, rootFontSize: 16, scrollbarSize: opts.scrollbarSize ?? 0, window: g, readUrl: opts.readUrl };
 	if (opts.opentype) { setOpentype(opts.opentype); }
 	env.onFontFace = (decls) => { try { let family, src; for (const d of decls) { if (d.name === 'font-family') { family = d.value; } else if (d.name === 'src') { src = d.value; } } const m = src && /url\(\s*["']?((?:data|file|vscode-file|https?):[^"')]+)["']?\s*\)/.exec(src); if (family && m && opts.opentype) { let buf; if (m[1].startsWith('data:')) { const b64 = m[1].slice(m[1].indexOf(',') + 1); buf = Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer; } else if (opts.readUrl) { buf = opts.readUrl(m[1]); } else { buf = globalThis.__readFileBytes(decodeURIComponent(m[1].replace(/^[a-z-]+:\/\/(vscode-app)?/, '').replace(/[?#].*$/, ''))); } const font = opts.opentype.parse(buf); font.__adv = new Map(); registerFontFace(family, font); } } catch (e) { noteMissing('font-face parse: ' + (e && e.message)); } };
 	const doc = new Document(env); env.document = doc;

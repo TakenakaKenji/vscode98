@@ -34,6 +34,7 @@ const readBytes = (f) => { const h = std.open(f, 'rb'); if (!h) { throw new Erro
 globalThis.__readFileBytes = readBytes;
 const rss = () => { const m = /VmRSS:\s+(\d+)/.exec(std.loadFile('/proc/self/status') || ''); const h = /VmHWM:\s+(\d+)/.exec(std.loadFile('/proc/self/status') || ''); return { rss: m ? Math.round(+m[1] / 1024) : 0, peak: h ? Math.round(+h[1] / 1024) : 0 }; };
 const log = (m) => { std.out.puts(m + '\n'); std.out.flush(); };
+globalThis.__log98 = log;   // live logging for probes placed in the workbench bundle (console output is only summarised at the end)
 console.error ??= (...a) => { std.err.puts(a.map(String).join(' ') + '\n'); };
 for (const m of ['group', 'groupCollapsed', 'groupEnd', 'table', 'time', 'timeEnd', 'timeLog', 'count', 'countReset', 'dir', 'dirxml', 'assert', 'clear', 'profile', 'profileEnd', 'timeStamp']) { console[m] ??= () => { }; }   // the extension host's output is replayed with console.group()
 
@@ -44,13 +45,13 @@ Module.registerHooks({ resolve(specifier, context, nextResolve) { if (specifier.
 // ---- user settings for a headless run: no trust prompt (the git extension is limited in untrusted workspaces), no welcome page, no telemetry or update checks
 { const dir = nodePath.join(userDataDir, 'User'); const mk = (d) => { if (os.stat(d)[1] !== 0) { mk(nodePath.dirname(d)); os.mkdir(d, 0o777); } }; mk(dir);
 	if (opt('seed-settings', '1') === '1') {   // product defaults: added when missing from settings.json, never overriding what the user set
-		const defaults = { 'security.workspace.trust.enabled': false, 'workbench.startupEditor': 'none', 'telemetry.telemetryLevel': 'off', 'update.mode': 'none', 'extensions.autoUpdate': false, 'extensions.autoCheckUpdates': false, 'chat.disableAIFeatures': true, 'workbench.secondarySideBar.defaultVisibility': 'hidden', 'window.commandCenter': false, 'workbench.layoutControl.enabled': false, 'breadcrumbs.enabled': false, 'editor.minimap.enabled': false, 'workbench.tips.enabled': false, 'workbench.enableExperiments': false, 'update.showReleaseNotes': false, 'window.dialogStyle': 'custom', 'files.simpleDialog.enable': true, ...JSON.parse(opt('seed-extra', '{}')) };
+		const defaults = { 'security.workspace.trust.enabled': false, 'workbench.startupEditor': 'none', 'telemetry.telemetryLevel': 'off', 'update.mode': 'none', 'extensions.autoUpdate': false, 'extensions.autoCheckUpdates': false, 'chat.disableAIFeatures': true, 'workbench.secondarySideBar.defaultVisibility': 'hidden', 'window.commandCenter': false, 'workbench.layoutControl.enabled': false, 'breadcrumbs.enabled': false, 'editor.minimap.enabled': false, 'workbench.tips.enabled': false, 'workbench.enableExperiments': false, 'update.showReleaseNotes': false, 'window.dialogStyle': 'custom', 'files.simpleDialog.enable': true, 'terminal.integrated.gpuAcceleration': 'off', ...JSON.parse(opt('seed-extra', '{}')) };
 		let cur = {}; const txt = std.loadFile(dir + '/settings.json'); if (txt) { try { cur = JSON.parse(txt); } catch { cur = null; } }
 		if (cur) { let changed = !txt; for (const [k, v] of Object.entries(defaults)) { if (!(k in cur)) { cur[k] = v; changed = true; } } if (changed) { const f = std.open(dir + '/settings.json', 'w'); f.puts(JSON.stringify(cur, null, 2)); f.close(); } }
 	}
 }
 // ---- main process
-const mainArgs = ['--user-data-dir', userDataDir, '--extensions-dir', extDir, '--disable-gpu', '--disable-telemetry', ...(opt('workspace') ? [opt('workspace')] : [])];
+const mainArgs = ['--user-data-dir', userDataDir, '--extensions-dir', extDir, '--disable-gpu', '--disable-telemetry', ...(opt('log-level') ? ['--log', opt('log-level')] : []), ...(opt('workspace') ? [opt('workspace')] : [])];
 const child = cp.fork(nodePath.join(here, 'run_main.mjs'), [appRoot, ...mainArgs], { serialization: 'json', stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...nodeProcess.env, APP98_ROOT: appRoot, ELECTRON_STUB_LOG: opt('stub-log', nodePath.join(globalThis.__builtins.os.tmpdir(), 'electron-stub.log')) } });
 log('[harness] forked main pid ' + child.pid); const echo = opt('echo-main', '0') === '1'; child.stdout.on('data', (d) => { mainLog.push(String(d)); if (echo) { std.err.puts('[main] ' + String(d)); } }); child.stderr.on('data', (d) => { mainLog.push(String(d)); if (echo) { std.err.puts('[main!] ' + String(d)); } });
 child.on('exit', (c) => { mainLog.push(`[main exited ${c}]`); });

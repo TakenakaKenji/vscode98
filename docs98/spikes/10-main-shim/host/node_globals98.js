@@ -30,3 +30,8 @@ def('MessageEvent', class MessageEvent extends globalThis.Event { constructor(t,
 def('CloseEvent', class CloseEvent extends globalThis.Event { constructor(t, o = {}) { super(t, o); this.code = o.code ?? 0; this.reason = o.reason ?? ''; this.wasClean = !!o.wasClean; } });
 def('ErrorEvent', class ErrorEvent extends globalThis.Event { constructor(t, o = {}) { super(t, o); this.message = o.message ?? ''; this.error = o.error; } });
 def('CustomEvent', class CustomEvent extends globalThis.Event { constructor(t, o = {}) { super(t, o); this.detail = o.detail ?? null; } });
+// QuickJS-ng defines `navigator` ('quickjs-ng/x'); Node 21+ has one starting with 'Node.js/', which is how libraries (xterm's platform detection) tell Node from a browser
+if (typeof navigator === 'object' && navigator && !/^Node\.js\//.test(String(navigator.userAgent))) {
+	const set = (k, v) => { try { Object.defineProperty(navigator, k, { value: v, configurable: true, writable: true }); } catch { /* read-only */ } };
+	set('userAgent', 'Node.js/24'); set('platform', globalThis.process && globalThis.process.platform || 'linux'); set('language', 'en-US'); set('languages', ['en-US']); set('hardwareConcurrency', 2);
+}

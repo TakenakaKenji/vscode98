@@ -12,7 +12,7 @@ A="$OUT/app"; rm -rf "$A"; mkdir -p "$A"
 copytree "$APP/out" "$A/out" --exclude='*.map'
 cp "$APP/product.json" "$APP/package.json" "$A/"
 mkdir -p "$A/node_modules"
-while read -r p; do [ -n "$p" ] || continue; copytree "$ROOT/node_modules/$p" "$A/node_modules/$p" --exclude='*.md' --exclude='*.map' --exclude='test' --exclude='tests' --exclude='docs' --exclude='.github' --exclude='*.d.ts'; done < "${NEEDMODS:-/tmp/claude-0/needmods.txt}"
+while read -r p; do [ -n "$p" ] || continue; copytree "$ROOT/node_modules/$p" "$A/node_modules/$p" --exclude='*.md' --exclude='*.map' --exclude='test' --exclude='tests' --exclude='docs' --exclude='.github' --exclude='*.d.ts'; done < "${NEEDMODS:-$S/11-windows-host/host/needmods.txt}"
 RGDIR=$(bash "$S/11-windows-host/host/fetch_rg.sh"); mkdir -p "$A/node_modules/@vscode/ripgrep/bin" "$A/node_modules/@vscode/ripgrep/lib"   # the Search view runs rg.exe (the linux binary of the node module is useless here)
 cp "$ROOT/node_modules/@vscode/ripgrep/package.json" "$A/node_modules/@vscode/ripgrep/"; cp "$ROOT/node_modules/@vscode/ripgrep/lib/index.js" "$A/node_modules/@vscode/ripgrep/lib/"; cp "$RGDIR/rg.exe" "$A/node_modules/@vscode/ripgrep/bin/rg.exe"; cp "$RGDIR/LICENSE-MIT" "$RGDIR/UNLICENSE" "$A/node_modules/@vscode/ripgrep/bin/"
 find "$A/node_modules" -name '*.node' -exec truncate -s 0 {} \;              # the native addons are stand-ins (native_addons98.js); the files only have to exist for module resolution
