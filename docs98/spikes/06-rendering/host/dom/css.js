@@ -246,33 +246,45 @@ function bucketKeys(c) {
 	return null;
 }
 function rarest(classes, freq) { let best = classes[0], n = freq.get(best) || 0; for (let i = 1; i < classes.length; i++) { const m = freq.get(classes[i]) || 0; if (m < n) { n = m; best = classes[i]; } } return best; }
+/** the index entries of a rule (without cascade data), as the delta between two rule sets needs them */
+export function baseEntriesOf(rule) { const c = baseEntries.get(rule); return c && c.base ? c.base : []; }
 let matchToken = 0;   // an entry filed under several buckets is considered once per matching walk (entry.mk)
 const baseEntries = new WeakMap();   // CSSStyleRule -> the cascade-independent parts of its index entries (null: unparsable)
-/** Builds an index of all active style rules for a document: array of { complex selector, decls, ua, order }, bucketed by the rightmost compound's id/class/tag. */
-export function buildRuleIndex(doc, env) {
+/** The cascade-independent index entries of a rule (parsed selectors, expanded declarations, ancestor-filter bits, bucket keys), cached until the rule is edited; null when unparsable. */
+function baseOf(rule) {
+	const cached = baseEntries.get(rule);   // the parsed selectors, expanded declarations and ancestor-filter bits of a rule only change when the rule is edited (declarations replaced, selector text set): the rebuilds after a stylesheet change reuse them
+	if (cached !== undefined && cached.src === rule.__decls && cached.sel === rule.selectorText) { return cached.base; }
+	let base, list; try { list = rule.selectors; } catch { noteMissing('css: unparsable selector'); base = null; }
+	if (list) { const decls = expandRuleDecls(rule), sel = rule.selectorText; base = list.map((complex) => ({ complex, decls, spec: complex.spec, pseudoElement: complex.parts[complex.parts.length - 1].compound.pseudoElement, need: needOf(complex), needAny: needAnyOf(complex), sel, keys: bucketKeys(complex.parts[complex.parts.length - 1].compound) })); }
+	baseEntries.set(rule, { src: rule.__decls, sel: rule.selectorText, base }); return base;
+}
+function countKeys(base, freq) { for (const b of base) { const k = b.keys; if (k !== null) { for (let i = 0; i < k.length; i += 2) { if (k[i] === 3) { for (const cl of k[i + 1]) { freq.set(cl, (freq.get(cl) || 0) + 1); } } else if (k[i] === 1) { freq.set(k[i + 1], (freq.get(k[i + 1]) || 0) + 1); } } } } }   // how many rules use each class
+function placeEntries(index, base, f, freq, added) {
+	for (const b of base) {
+		const e = { complex: b.complex, decls: b.decls, ua: f.ua, order: f.order, spec: b.spec, pseudoElement: b.pseudoElement, need: b.need, needAny: b.needAny, sel: b.sel, mk: 0 }; index.count++; if (added) { added.push(e); }
+		const keys = b.keys; if (keys === null) { index.universal.push(e); } else { for (let i = 0; i < keys.length; i += 2) { const k = keys[i]; if (k === 3) { push(index.byClass, rarest(keys[i + 1], freq), e); } else { push(k === 0 ? index.byId : k === 1 ? index.byClass : index.byTag, keys[i + 1], e); } } }
+	}
+}
+/**
+ * Builds an index of all active style rules for a document: entries { complex selector, decls, ua, order }, bucketed by the rightmost compound's id/class/tag (see bucketKeys).
+ * When `prev` (the index of the previous build) is given and the rules are the same as before except for new ones at the end (a stylesheet was appended, or rules were added to the last one),
+ * `prev` is extended in place instead of rebuilt and `prev.added` lists the new entries; otherwise a new index is returned.
+ */
+export function buildRuleIndex(doc, env, prev) {
 	const flat = []; const state = { order: 0 };
 	for (const { sheet, ua } of sheetsOf(doc)) { flattenRules(sheet.cssRules, env, flat, ua, state); }
-	const byId = new Map(), byClass = new Map(), byTag = new Map(), universal = []; let count = 0; const freq = new Map();
+	if (prev && flat.length >= prev.rules.length) {
+		let same = true; const n0 = prev.rules.length; for (let i = 0; i < n0; i++) { const r = flat[i].rule; if (r !== prev.rules[i] || r.__decls !== prev.decls[i] || r.selectorText !== prev.sels[i]) { same = false; break; } }
+		if (same) {
+			const added = []; for (let i = n0; i < flat.length; i++) { const f = flat[i], base = baseOf(f.rule); prev.rules.push(f.rule); prev.decls.push(f.rule.__decls); prev.sels.push(f.rule.selectorText); if (base) { countKeys(base, prev.freq); placeEntries(prev, base, f, prev.freq, added); } }
+			prev.added = added; return prev;
+		}
+	}
+	const index = { byId: new Map(), byClass: new Map(), byTag: new Map(), universal: [], count: 0, rules: [], decls: [], sels: [], freq: new Map(), added: null };
 	const bases = new Array(flat.length);
-	for (let n = 0; n < flat.length; n++) {
-		const f = flat[n]; let cached = baseEntries.get(f.rule), base;   // the parsed selectors, expanded declarations and ancestor-filter bits of a rule only change when the rule is edited (declarations replaced, selector text set): the rebuilds after a stylesheet change reuse them
-		if (cached !== undefined && cached.src === f.rule.__decls && cached.sel === f.rule.selectorText) { base = cached.base; }
-		else {
-			let list; try { list = f.rule.selectors; } catch { noteMissing('css: unparsable selector'); base = null; }
-			if (list) { const decls = expandRuleDecls(f.rule), sel = f.rule.selectorText; base = list.map((complex) => ({ complex, decls, spec: complex.spec, pseudoElement: complex.parts[complex.parts.length - 1].compound.pseudoElement, need: needOf(complex), needAny: needAnyOf(complex), sel, keys: bucketKeys(complex.parts[complex.parts.length - 1].compound) })); }
-			baseEntries.set(f.rule, { src: f.rule.__decls, sel: f.rule.selectorText, base });
-		}
-		bases[n] = base;
-		if (base) { for (const b of base) { const k = b.keys; if (k !== null) { for (let i = 0; i < k.length; i += 2) { if (k[i] === 3) { for (const cl of k[i + 1]) { freq.set(cl, (freq.get(cl) || 0) + 1); } } else if (k[i] === 1) { freq.set(k[i + 1], (freq.get(k[i + 1]) || 0) + 1); } } } } }   // how many rules use each class
-	}
-	for (let n = 0; n < flat.length; n++) {
-		const base = bases[n]; if (!base) { continue; } const f = flat[n];
-		for (const b of base) {
-			const e = { complex: b.complex, decls: b.decls, ua: f.ua, order: f.order, spec: b.spec, pseudoElement: b.pseudoElement, need: b.need, needAny: b.needAny, sel: b.sel, mk: 0 }; count++;
-			const keys = b.keys; if (keys === null) { universal.push(e); } else { for (let i = 0; i < keys.length; i += 2) { const k = keys[i]; if (k === 3) { push(byClass, rarest(keys[i + 1], freq), e); } else { push(k === 0 ? byId : k === 1 ? byClass : byTag, keys[i + 1], e); } } }
-		}
-	}
-	return { byId, byClass, byTag, universal, count };
+	for (let n = 0; n < flat.length; n++) { const f = flat[n]; const base = bases[n] = baseOf(f.rule); index.rules.push(f.rule); index.decls.push(f.rule.__decls); index.sels.push(f.rule.selectorText); if (base) { countKeys(base, index.freq); } }
+	for (let n = 0; n < flat.length; n++) { if (bases[n]) { placeEntries(index, bases[n], flat[n], index.freq, null); } }
+	return index;
 }
 // ---- ancestor Bloom filter (as in WebKit/Blink): rejects descendant/child selectors whose required ancestor tag/id/class is not on the element's ancestor chain
 const BLOOM_WORDS = 32;   // 1024 bits

@@ -11,6 +11,7 @@
 // pseudo-classes) appear in each of those roles in the active rules; (c) a mutation is planned only for the roles whose keys it touches. Anything unforeseen falls back to a
 // full restyle (see layout.js). The fuzz test (tests/style_fuzz.mjs) and the verify mode of the workbench harness compare against a full restyle.
 import { matchesComplex } from './selectors.js';
+import { baseEntriesOf } from './css.js';
 
 const STATE_ATTR = { disabled: ['[disabled]'], enabled: ['[disabled]'], checked: ['[checked]'], 'read-only': ['[readonly]'], 'read-write': ['[readonly]'], required: ['[required]'], optional: ['[required]'], link: ['[href]'], 'any-link': ['[href]'] };
 const STATE = new Set(['hover', 'active', 'focus', 'focus-visible', 'focus-within', 'checked', 'disabled', 'enabled', 'target', 'read-only', 'read-write', 'placeholder-shown', 'required', 'optional', 'visited', 'link', 'any-link', 'indeterminate', 'default', 'valid', 'invalid', 'modal', 'popover-open', 'fullscreen', 'user-invalid', 'in-range', 'out-of-range']);
@@ -39,19 +40,36 @@ function shapeMatch(sh, el) {
 	if (sh.classes.length) { const cl = el.classes(); if (!sh.classes.every(c => cl.includes(c))) { return false; } } if (sh.attrs.length && !sh.attrs.every(n => el.__attrs.has(n))) { return false; }
 	return sh.anyOf.every(alt => alt.some(a => shapeMatch(a, el)));
 }
-/** Can `el` match a compound of one of `shapes` (a list of shapeOf() results; undefined or containing null = anything)? */
+/**
+ * Can `el` match a compound of one of `shapes` (a list of shapeOf() results; undefined or containing null = anything)? The lists get long (hundreds of shapes), so they are indexed once by the
+ * most selective thing a shape requires (id, first class, tag; the others stay in a "rest" list); an element can only match a shape whose key it has. The index is kept on the array
+ * and extended when shapes were appended.
+ */
 function shapesMatch(shapes, el) {
-	if (!shapes) { return true; } for (const sh of shapes) { if (!sh || shapeMatch(sh, el)) { return true; } } return false;
+	if (!shapes) { return true; }
+	let ix = shapes.__six; if (ix === undefined || ix.n !== shapes.length) { ix = indexShapes(shapes, ix); }
+	if (ix.any) { return true; }
+	for (const sh of ix.rest) { if (shapeMatch(sh, el)) { return true; } }
+	const id = el.getAttribute('id'); if (id) { const l = ix.byId.get(id); if (l) { for (const sh of l) { if (shapeMatch(sh, el)) { return true; } } } }
+	const cl = el.classes(); for (let i = 0; i < cl.length; i++) { const l = ix.byClass.get(cl[i]); if (l) { for (const sh of l) { if (shapeMatch(sh, el)) { return true; } } } }
+	const l = ix.byTag.get(el.localName); if (l) { for (const sh of l) { if (shapeMatch(sh, el)) { return true; } } }
+	return false;
+}
+function indexShapes(shapes, prev) {
+	const ix = prev || { n: 0, any: false, rest: [], byId: new Map(), byClass: new Map(), byTag: new Map() };
+	const put = (m, k, sh) => { const l = m.get(k); if (l) { l.push(sh); } else { m.set(k, [sh]); } };
+	for (let i = ix.n; i < shapes.length; i++) { const sh = shapes[i]; if (!sh) { ix.any = true; } else if (sh.id) { put(ix.byId, sh.id, sh); } else if (sh.classes.length) { put(ix.byClass, sh.classes[0], sh); } else if (sh.tag) { put(ix.byTag, sh.tag, sh); } else { ix.rest.push(sh); } }
+	ix.n = shapes.length; Object.defineProperty(shapes, '__six', { value: ix, writable: true, configurable: true, enumerable: false }); return ix;
 }
 /** Whether a change of state/structure `key` of `el` can change how its descendants match (the key is context somewhere, in a compound `el` can satisfy). */
 const ctxHit = (inv, key, el) => inv.ctxKeys.has(key) && shapesMatch(inv.ctxShapes.get(key), el);
 
 /** Analyses the active rules once per rule-set change: which keys occur as ancestor context, as sibling context, inside :has(), and which structural pseudo-classes are used. */
-export function analyzeIndex(index, prev) {
+export function analyzeIndex(index, prev, only) {
 	const fresh = { ctxKeys: new Set(), ctxShapes: new Map(), sibKeys: new Set(), sibKeysDeep: new Set(), sibUniversal: false, sibUniShapes: [], sibAllKeys: new Set(), adj: 0, adjChain: false, selfStateKeys: new Set(), hasRules: [], struct: { first: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, last: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, nth: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, nthLast: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, empty: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] } }, entries: 0 };
-	const all = [...index.byId.values(), ...index.byClass.values(), ...index.byTag.values(), index.universal].flat();
+	const all = only || [...index.byId.values(), ...index.byClass.values(), ...index.byTag.values(), index.universal].flat();   // `only`: just the entries that were added to `prev`'s index
 	// the analysis only ever grows (a key or shape that was context once stays context), so a rule-set change scans just the rules not seen before; it starts over when most of what it remembers is gone
-	const inv = prev && prev.__seen && prev.__seen.size <= 2 * all.length + 2000 ? prev : Object.defineProperty(fresh, '__seen', { value: new Set() }); inv.entries = all.length; const seen = inv.__seen;
+	const inv = prev && prev.__seen && (only || prev.__seen.size <= 2 * all.length + 2000) ? prev : Object.defineProperty(fresh, '__seen', { value: new Set() }); inv.entries = only ? index.count : all.length; const seen = inv.__seen;
 	const scanCompoundPseudos = (c, left, eff, forced, shape) => {
 		for (const p of c.pseudos) {
 			const cats = STRUCT_CAT[p.name]; if (cats) { for (const cat of cats) { inv.struct[cat].any = true; if (left || forced) { inv.struct[cat].left = true; inv.struct[cat].shapes.push(shape); } if (eff) { inv.struct[cat].sib = Math.max(inv.struct[cat].sib, eff); inv.struct[cat].sibShapes.push(shape); } } }
@@ -88,18 +106,32 @@ export function mergeInv(a, b) {
 }
 
 /** Entries of `index` as a Map(decls -> Set(complex)) used to find the rules that differ between two rule sets. */
-function signature(index) { const m = new Map(); for (const e of [...index.byId.values(), ...index.byClass.values(), ...index.byTag.values(), index.universal].flat()) { let s = m.get(e.decls); if (!s) { s = new Set(); m.set(e.decls, s); } s.add(e.complex); } return m; }
 const bucketize = (entries) => { const byId = new Map(), byClass = new Map(), byTag = new Map(), universal = []; const push = (m, k, e) => { const l = m.get(k); if (l) { l.push(e); } else { m.set(k, [e]); } }; for (const e of entries) { const c = e.complex.parts[e.complex.parts.length - 1].compound; if (c.id) { push(byId, c.id, e); } else if (c.classes.length) { push(byClass, c.classes[0], e); } else if (c.tag) { push(byTag, c.tag, e); } else { universal.push(e); } } return { byId, byClass, byTag, universal }; };
-/** The rules that were added to or removed from the active set between two indexes (null when the difference is too large to be worth analysing). */
+/**
+ * The rules that were added to or removed from the active set between two indexes (null when the difference is too large to be worth analysing). Rules are compared by identity: the rule
+ * objects of an unchanged stylesheet are the same in both builds, a rule whose declarations were replaced counts as removed and added (its selectors are the same objects), a rule whose
+ * selector text changed or moved relative to the others sends the whole restyle down the full path.
+ */
 export function diffIndex(oldIndex, newIndex, limit = 3000) {
-	const a = signature(oldIndex), b = signature(newIndex); const changed = []; const all = (idx) => [...idx.byId.values(), ...idx.byClass.values(), ...idx.byTag.values(), idx.universal].flat();
-	for (const e of all(newIndex)) { const s = a.get(e.decls); if (!s || !s.has(e.complex)) { changed.push(e); } } for (const e of all(oldIndex)) { const s = b.get(e.decls); if (!s || !s.has(e.complex)) { changed.push(e); } }
+	const oldPos = new Map(); const orules = oldIndex.rules; for (let i = 0; i < orules.length; i++) { oldPos.set(orules[i], i); }
+	const nrules = newIndex.rules; const changed = []; let last = -1; let kept = 0; const seen = new Set();
+	const add = (rule) => { for (const b of baseEntriesOf(rule)) { changed.push({ complex: b.complex, decls: b.decls }); } };
+	for (let i = 0; i < nrules.length; i++) {
+		const r = nrules[i]; const p = oldPos.get(r);
+		if (p === undefined) { add(r); }
+		else {
+			if (p < last) { return null; }   // the cascade also depends on the order of the rules: rules present in both sets changed their relative order (a stylesheet was moved)
+			last = p; kept++; seen.add(p);
+			if (oldIndex.sels[p] !== newIndex.sels[i]) { return null; } if (oldIndex.decls[p] !== newIndex.decls[i]) { add(r); }
+		}
+		if (changed.length > limit) { return null; }
+	}
+	if (kept !== orules.length) { for (let p = 0; p < orules.length; p++) { if (!seen.has(p)) { add(orules[p]); } } }
 	if (changed.length > limit) { return null; }
-	// the cascade also depends on the order of the rules: if rules present in both sets changed their relative order (a stylesheet was moved), everything may differ
-	const ordered = (idx, other) => { const seq = []; let last = null; for (const e of all(idx).sort((x, y) => x.order - y.order)) { if (other.has(e.decls) && e.decls !== last) { seq.push(e.decls); last = e.decls; } } return seq; };
-	const so = ordered(oldIndex, b), sn = ordered(newIndex, a); if (so.length !== sn.length) { return null; } for (let i = 0; i < so.length; i++) { if (so[i] !== sn[i]) { return null; } }
 	return bucketize(changed);
 }
+/** The delta (as diffIndex returns it) for entries that were added to an index; null when there are too many. */
+export function deltaOfAdded(entries, limit = 3000) { return entries.length > limit ? null : bucketize(entries); }
 /** Whether any entry of a changed-rules bucket set can match `el` (the subject compound only: pseudo-element rules act on their host element). */
 export function matchesDelta(el, delta) {
 	const test = (list) => { if (list) { for (const e of list) { if (matchesComplex(el, e.complex)) { return true; } } } return false; };

@@ -36,8 +36,9 @@ async function run0(ctx) {
 	const line = doc.querySelector('.view-line'); const lr = line.getBoundingClientRect();
 	log('keys: click in text: ' + fmt(await drive(() => press(lr.left + 20, lr.top + lr.height / 2)))); await settle(5);
 	const ta = doc.activeElement; if (!ta || ta.localName !== 'textarea') { log('keys: no textarea focused'); return; }
+	globalThis.__pl = {};
 	for (const ch of 'abcdefgh'.slice(0, Number(ctx.opt('keys', 6)))) {
 		const r = await drive(() => { key(ta, 'keydown', ch); ta.value = (ta.value || '') + ch; ta.dispatchEvent(new InputEvent('input', { data: ch, inputType: 'insertText', bubbles: true })); key(ta, 'keyup', ch); });
-		log(`keys: key '${ch}': ${fmt(r)}`); if (ch === 'e') { log('keys: last pass ' + JSON.stringify(doc.__passStats.slice(-2).map(x => ({ total: x.total, mut: x.mutations, counts: x.counts, styleMs: x.styleMs, layoutMs: x.layoutMs, ms: x.ms, style: x.style })))); }
+		log(`keys: key '${ch}': ${fmt(r)}`); if (ch === 'f') { log('keys: plan laps ' + JSON.stringify(globalThis.__pl)); } if (ch === 'e') { log('keys: last pass ' + JSON.stringify(doc.__passStats.slice(-2).map(x => ({ total: x.total, mut: x.mutations, counts: x.counts, styleMs: x.styleMs, layoutMs: x.layoutMs, ms: x.ms, style: x.style })))); }
 	}
 }
