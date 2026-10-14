@@ -30,6 +30,7 @@ export class JsBackend {
 	get clip() { return this.clipStack[this.clipStack.length - 1]; }
 	pushClip(x0, y0, x1, y1) { const c = this.clip; this.clipStack.push([Math.max(c[0], x0), Math.max(c[1], y0), Math.min(c[2], x1), Math.min(c[3], y1)]); }
 	popClip() { this.clipStack.pop(); }
+	resetClip() { this.clipStack.push([0, 0, this.S.w, this.S.h]); }   // a fixed box ignores the overflow clips of its ancestors
 	fillRect(x, y, w, h, color, alphaMul = 1) {
 		if (!color || color[3] <= 0 || w <= 0 || h <= 0) { return; } this.stats.rects++;
 		const c = this.clip; const x0 = Math.max(c[0], x), y0 = Math.max(c[1], y), x1 = Math.min(c[2], x + w), y1 = Math.min(c[3], y + h); if (x1 <= x0 || y1 <= y0) { return; }
@@ -111,6 +112,7 @@ class Painter {
 	fillRoundRect(x, y, w, h, radii, color, alphaMul = 1) { this.b.fillRoundRect(x, y, w, h, radii, color, alphaMul); }
 	pushClip(x0, y0, x1, y1) { this.b.pushClip(x0, y0, x1, y1); }
 	popClip() { this.b.popClip(); }
+	resetClip() { this.b.resetClip(); }
 	drawText(frag, dx, dy, alphaMul) {
 		const v = frag.v, color = v.color; if (!color || color[3] <= 0 || v.visibility === 'hidden') { return; }
 		const font = frag.font, size = frag.size, ls = frag.ls; const x = frag.ax + dx; const by = Math.round(frag.abaseline + dy);
@@ -131,7 +133,22 @@ class Painter {
 		const draw = (side, rx, ry, rw, rh) => { const st = v[`border-${side}-style`]; if (st === 'none' || st === 'hidden') { return; } const col = v[`border-${side}-color`]; if (!col || col === 'currentcolor') { return; } if (st === 'dashed' || st === 'dotted' || st === 'double') { note('border-style ' + st); } this.fillRect(rx, ry, rw, rh, col, alphaMul); };
 		draw('top', x, y, w, bt); draw('bottom', x, y + h - bb, w, bb); draw('left', x, y + bt, bl, h - bt - bb); draw('right', x + w - br, y + bt, br, h - bt - bb);
 	}
+	/** a position:fixed box is positioned against the viewport: the overflow clips of its ancestors (a menu bar button, say) do not apply to it, only its own */
 	paintBox(b, dx, dy, alphaMul) {
+		if (b.pos === 'fixed' && b.el) {
+			const z = b.v['z-index'];
+			// a fixed box with a positive z-index (a menu, a dialog) sits in the top layer: painted after all normal content, not in its ancestors' paint order
+			if (this.topLayer && typeof z === 'number' && z > 0) { this.topLayer.push({ b, dx, dy, alphaMul, z }); return; }
+			this.resetClip(); try { this.paintBox0(b, dx, dy, alphaMul); } finally { this.popClip(); } return;
+		}
+		this.paintBox0(b, dx, dy, alphaMul);
+	}
+	paintTopLayer() {
+		const q = this.topLayer; this.topLayer = null;
+		q.sort((a, b2) => a.z - b2.z);   // Array.prototype.sort is stable: document order breaks ties
+		for (const e of q) { this.paintBox(e.b, e.dx, e.dy, e.alphaMul); }
+	}
+	paintBox0(b, dx, dy, alphaMul) {
 		const v = b.v; if (!v) { return; }
 		// transforms: translation is exact; other matrices are approximated by their translation (recorded)
 		let tdx = 0, tdy = 0; if (b.matrix) { tdx = b.matrix[4]; tdy = b.matrix[5]; if (b.matrix[0] !== 1 || b.matrix[3] !== 1 || b.matrix[1] || b.matrix[2]) { note('non-translate transform'); } dx += tdx; dy += tdy; }
@@ -172,7 +189,7 @@ export function paintDocument(doc, width, height, backend = new JsBackend(width,
 	const rb = lay.rootBox; let bg = rb.v['background-color']; if (!(bg && bg[3] > 0)) { const body = doc.body && lay.boxOf.get(doc.body); if (body && body.v['background-color'] && body.v['background-color'][3] > 0) { bg = body.v['background-color']; } }
 	if (bg && bg[3] > 0) { p.fillRect(0, 0, width, height, bg); }
 	const saveBg = rb.v['background-color']; rb.v['background-color'] = [0, 0, 0, 0]; const body = doc.body && lay.boxOf.get(doc.body); const saveBodyBg = body && body.v['background-color']; if (body && !(saveBg && saveBg[3] > 0)) { body.v['background-color'] = [0, 0, 0, 0]; }
-	p.paintBox(rb, 0, 0, 1); rb.v['background-color'] = saveBg; if (body && saveBodyBg) { body.v['background-color'] = saveBodyBg; }
+	p.topLayer = []; p.paintBox(rb, 0, 0, 1); p.paintTopLayer(); rb.v['background-color'] = saveBg; if (body && saveBodyBg) { body.v['background-color'] = saveBodyBg; }
 	return { px: backend.finish(), w: width, h: height, stats: p.stats };
 }
 export function toPPM(px, w, h) { const header = `P6\n${w} ${h}\n255\n`; const out = new Uint8Array(header.length + w * h * 3); for (let i = 0; i < header.length; i++) { out[i] = header.charCodeAt(i); } let o = header.length; for (let i = 0; i < w * h; i++) { const a = px[i * 4 + 3] / 255; out[o++] = Math.round(px[i * 4] * a + 255 * (1 - a)); out[o++] = Math.round(px[i * 4 + 1] * a + 255 * (1 - a)); out[o++] = Math.round(px[i * 4 + 2] * a + 255 * (1 - a)); } return out; }

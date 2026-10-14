@@ -193,7 +193,7 @@ static void glyph_run(Ctx *c, int fontId, double size, double ls, double wsp, do
 #include "raster_int.h"
 
 /* ---------------------------------------------------------------- command stream */
-enum { OP_FILL_RECT = 1, OP_FILL_RRECT, OP_PUSH_CLIP, OP_POP_CLIP, OP_PUSH_LAYER, OP_POP_LAYER, OP_GLYPH_RUN };
+enum { OP_FILL_RECT = 1, OP_FILL_RRECT, OP_PUSH_CLIP, OP_POP_CLIP, OP_PUSH_LAYER, OP_POP_LAYER, OP_GLYPH_RUN, OP_RESET_CLIP };
 static int get_f64(JSContext *ctx, JSValueConst v, double **out, size_t *count) {
 	size_t off, len, bpe; JSValue buf = JS_GetTypedArrayBuffer(ctx, v, &off, &len, &bpe); if (JS_IsException(buf)) { return -1; }
 	size_t sz; uint8_t *p = JS_GetArrayBuffer(ctx, &sz, buf); JS_FreeValue(ctx, buf); if (!p) { return -1; }
@@ -245,6 +245,7 @@ static JSValue js_execute(JSContext *ctx, JSValueConst t, int argc, JSValueConst
 		case OP_FILL_RRECT: (c->integer ? fill_rrect_i : fill_rrect)(c, cmd[i], cmd[i + 1], cmd[i + 2], cmd[i + 3], &cmd[i + 4], &cmd[i + 8], cmd[i + 12]); i += 13; break;
 		case OP_PUSH_CLIP: { const double *p = c->clips[c->nclips - 1].c; Clip n; n.c[0] = fmax(p[0], cmd[i]); n.c[1] = fmax(p[1], cmd[i + 1]); n.c[2] = fmin(p[2], cmd[i + 2]); n.c[3] = fmin(p[3], cmd[i + 3]); if (c->nclips < 256) { c->clips[c->nclips++] = n; } i += 4; break; }
 		case OP_POP_CLIP: if (c->nclips > 1) { c->nclips--; } break;
+		case OP_RESET_CLIP: { Surf *RS = cur(c); Clip n; n.c[0] = RS->bx0; n.c[1] = RS->by0; n.c[2] = RS->bx1; n.c[3] = RS->by1;   /* the whole surface (a layer's region when inside one) */ if (c->nclips < 256) { c->clips[c->nclips++] = n; } break; }   /* a clip that ignores the ones below it (position:fixed) */
 		case OP_PUSH_LAYER: if (c->nlayers < 16) { const double *cp = c->clips[c->nclips - 1].c; Surf *P = cur(c); int bx0 = (int)floor(cp[0]), by0 = (int)floor(cp[1]), bx1 = (int)ceil(cp[2]), by1 = (int)ceil(cp[3]); if (bx0 < 0) { bx0 = 0; } if (by0 < 0) { by0 = 0; } if (bx1 > w) { bx1 = w; } if (by1 > h) { by1 = h; } if (bx1 < bx0) { bx1 = bx0; } if (by1 < by0) { by1 = by0; } (void)P;
 			Surf *L = &c->layers[c->nlayers++]; int rw = bx1 - bx0, rh = by1 - by0; L->base = layer_alloc((size_t)(rw ? rw : 1) * (rh ? rh : 1) * 4, &L->cap); L->w = rw; L->h = rh; L->bx0 = bx0; L->by0 = by0; L->bx1 = bx1; L->by1 = by1; L->tx0 = bx1; L->ty0 = by1; L->tx1 = bx0; L->ty1 = by0; L->px = L->base - ((size_t)by0 * rw + bx0) * 4; } break;
 		case OP_POP_LAYER: { double alpha = cmd[i++]; if (c->integer) { pop_layer_i(c, alpha); break; } if (c->nlayers) { Surf sub = c->layers[--c->nlayers]; Surf *d = cur(c); for (int yy = sub.by0; yy < sub.by1; yy++) { for (int xx = sub.bx0; xx < sub.bx1; xx++) { const uint8_t *sp = sub.px + ((size_t)yy * sub.w + xx) * 4; if (sp[3]) { blend(d->px, ((size_t)yy * d->w + xx) * 4, sp[0], sp[1], sp[2], sp[3] / 255.0 * alpha); } } } free(sub.base); } break; }

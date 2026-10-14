@@ -37,12 +37,23 @@ export class Document extends Node {
 	/** the elements whose rectangle contains the point, innermost and last-painted first; stops after `limit` hits */
 	__hitTest(x, y, limit) {
 		this.__ensureLayout(); const out = [];
-		const walk = (b) => {
-			const ch = b.children; for (let i = ch.length - 1; i >= 0; i--) { const c = ch[i]; if (c.kind === 'text' || !c.el) { continue; } if (walk(c)) { return true; } }
+		const top = this.__topLayerBoxes(), topSet = top.set;
+		const walk = (b, isRoot) => {
+			const ch = b.children; for (let i = ch.length - 1; i >= 0; i--) { const c = ch[i]; if (c.kind === 'text' || !c.el || topSet.has(c)) { continue; } if (walk(c, false)) { return true; } }
 			if (b.el && b.v.visibility !== 'hidden' && b.v['pointer-events'] !== 'none') { const r = this.__rect(b.el); if (x >= r.left && x < r.right && y >= r.top && y < r.bottom) { out.push(b.el); if (out.length >= limit) { return true; } } }
 			return false;
 		};
-		if (this.__layout && this.__layout.rootBox) { walk(this.__layout.rootBox); } return out;
+		for (let i = top.list.length - 1; i >= 0; i--) { if (walk(top.list[i], false)) { return out; } }
+		if (this.__layout && this.__layout.rootBox) { walk(this.__layout.rootBox, true); } return out;
+	}
+	/** the position:fixed boxes with a positive z-index (menus, dialogs), in paint order: the painter draws them above everything else, so hit testing must find them first (cached until the next layout pass) */
+	__topLayerBoxes() {
+		if (this.__topCache && this.__topCacheFor === this.__layout) { return this.__topCache; }
+		const list = []; const lay = this.__layout;
+		const collect = (b) => { for (const c of b.children) { if (c.kind === 'text' || !c.el) { continue; } const z = c.v['z-index']; if (c.pos === 'fixed' && typeof z === 'number' && z > 0) { list.push(c); } collect(c); } };
+		if (lay && lay.rootBox) { collect(lay.rootBox); }
+		const idx = new Map(list.map((b, i) => [b, i])); list.sort((a, b) => (a.v['z-index'] - b.v['z-index']) || (idx.get(a) - idx.get(b)));
+		this.__topCacheFor = lay; return (this.__topCache = { list, set: new Set(list) });
 	}
 	/** The caret position nearest to a point, as a collapsed Range in a text node (the editor's mouse hit-testing of text needs it): the text under the element at the point whose line contains `y`, nearest in x. */
 	caretRangeFromPoint(x, y) {
@@ -78,7 +89,7 @@ export class Document extends Node {
 		const t0 = performance.now(); const dirty = this.__dirtyLog || []; this.__dirtyLog = []; let lay = this.__layout, reused = false;
 		if (lay && !this.__noStyleOnly) { const ts = performance.now(); const r = Layout.styleOnly(this, env, lay, dirty); if (r === true) { reused = true; lay.styleMs = performance.now() - ts; lay.layoutMs = 0; lay.styleInfo = this.__styleInfo; if (this.__verifyStyleOnly) { this.__checkStyleOnly(lay); } } else { lay = null; this.__stylesResolved = r === null; this.__preStyleMs = r === null ? performance.now() - ts : 0; } } else { lay = null; }
 		if (!reused) { lay = new Layout(this, env); lay.dirtyLog = dirty; lay.skipStyle = this.__stylesResolved === true; lay.preStyleMs = this.__preStyleMs || 0; this.__stylesResolved = false; this.__preStyleMs = 0; lay.run(); }
-		if (this.__passStats) { this.__passStats.push(summarizeDirty(dirty, this, lay, t0)); } this.__layout = lay; this.__dirty = false; this.__styleDirty = false; this.__layoutCount++; this.__layoutMs += performance.now() - t0; if (!reused) { this.__applyTransforms(lay); } else { this.__styleOnlyPasses = (this.__styleOnlyPasses || 0) + 1; }
+		if (this.__passStats) { this.__passStats.push(summarizeDirty(dirty, this, lay, t0)); } this.__layout = lay; this.__topCache = null; this.__dirty = false; this.__styleDirty = false; this.__layoutCount++; this.__layoutMs += performance.now() - t0; if (!reused) { this.__applyTransforms(lay); } else { this.__styleOnlyPasses = (this.__styleOnlyPasses || 0) + 1; }
 		if (this.__scrollClampPending) { this.__scrollClampPending = false; }
 	}
 	__applyTransforms(lay) {   // 2D affine per box from `transform` (translate / scale / matrix / rotate approximated)
@@ -212,7 +223,8 @@ export function computedStyleFor(doc, el, pseudo) {
 		if (box && /^(margin|padding)-(top|right|bottom|left)$/.test(k)) { const side = { top: 't', right: 'r', bottom: 'b', left: 'l' }[k.split('-')[1]]; return (k.startsWith('margin') ? box['m' + side] : box['p' + side]) + 'px'; }
 		if (k === 'line-height') { const l = vals['line-height']; if (l === 'normal') { return 'normal'; } return typeof l === 'number' ? l + 'px' : (l && l.num !== undefined ? (l.num * vals['font-size']) + 'px' : serializeValue(k, l)); }
 		if (k === 'font-size') { return vals[k] + 'px'; } if (k === 'font-weight') { return String(vals[k]); }
-		if (k in vals) { return serializeValue(k, vals[k]); } return '';
+		if (k in vals) { return serializeValue(k, vals[k]); } if (k === 'zoom') { return '1'; }   // an empty zoom would make DOM.getDomNodeZoomLevel() multiply by 0: the menu bar's dropdowns landed at 0,0
+		return '';
 	};
 	const target = { getPropertyValue: get, getPropertyPriority: () => '', item: (i) => Object.keys(vals)[i] ?? '', get length() { return Object.keys(vals).length; }, setProperty() { }, removeProperty() { return ''; }, get cssText() { return ''; } };
 	return new Proxy(target, { get(t, k) { if (typeof k === 'symbol' || k in t) { return t[k]; } return get(k); }, has() { return true; } });

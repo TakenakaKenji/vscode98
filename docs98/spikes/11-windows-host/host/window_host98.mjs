@@ -62,7 +62,7 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 			case 'keydown': case 'keyup': {
 				const [key, code] = keyInfo(a, mods, c); const target = doc.activeElement || doc.body;
 				const ev = new env.window.KeyboardEvent(type, { bubbles: true, cancelable: true, composed: true, key, code, keyCode: a, which: a, repeat: !!d, ctrlKey: !!(mods & 2), shiftKey: !!(mods & 1), altKey: !!(mods & 4), metaKey: !!(mods & 8) });
-				const notPrevented = dispatch(target, ev); if (type === 'keydown') { charSuppressed = !notPrevented; } break;   // a key whose keydown was handled (cancelled) produces no character, as in browsers
+				const notPrevented = dispatch(target, ev); if (type === 'keydown') { charSuppressed = !notPrevented; } if (ctx.opt?.('debug-input', '0') === '1' && type === 'keydown') { ctx.log?.('[input] key ' + key + ' code=' + code + ' mods=' + mods + ' ctrl=' + ev.ctrlKey + ' prevented=' + !notPrevented + ' target=' + (target.localName || '?')); } break;   // a key whose keydown was handled (cancelled) produces no character, as in browsers
 			}
 			case 'char': {                       // text input: control keys are handled through keydown (Enter, Backspace, Tab)
 				const target = doc.activeElement; const sup = charSuppressed; charSuppressed = false; if (sup || !editable(target)) { break; }

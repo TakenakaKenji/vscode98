@@ -43,6 +43,12 @@ async function run0(ctx) {
 		const r = await drive(() => { key(ta, 'keydown', ch); ta.value = (ta.value || '') + ch; ta.dispatchEvent(new InputEvent('input', { data: ch, inputType: 'insertText', bubbles: true })); key(ta, 'keyup', ch); });
 		log(`keys: key '${ch}': ${fmt(r)}`); if (ch === 'f') { log('keys: layout per run [pack, native, apply, boxes] ' + JSON.stringify(ctx.layoutTiming.perRun.slice(-3)) + ' layoutMs ' + JSON.stringify(doc.__passStats.slice(-3).map(x => +x.layoutMs.toFixed(1)))); } if (ch === 'e') { log('keys: last pass ' + JSON.stringify(doc.__passStats.slice(-2).map(x => ({ total: x.total, mut: x.mutations, counts: x.counts, styleMs: x.styleMs, layoutMs: x.layoutMs, ms: x.ms, style: x.style })))); }
 	}
+	// undo / redo with the keyboard
+	{ const ta4 = doc.activeElement; const lines = () => JSON.stringify([...doc.querySelectorAll('.editor-instance .view-line')].map(l => l.textContent));
+		const kd = (k, code, kc, mods) => { const ev = new KeyboardEvent('keydown', { key: k, code, keyCode: kc, bubbles: true, cancelable: true, composed: true, ...mods }); ev.which = kc; ta4.dispatchEvent(ev); return ev.defaultPrevented; };
+		log('keys: before undo ' + lines()); let prevented = null;
+		log('keys: ctrl+z: ' + fmt(await drive(() => { kd('Control', 'ControlLeft', 17, { ctrlKey: true }); prevented = kd('z', 'KeyZ', 90, { ctrlKey: true }); }))); log('keys: ctrl+z defaultPrevented=' + prevented + ' lines ' + lines());
+		log('keys: ctrl+y: ' + fmt(await drive(() => { prevented = kd('y', 'KeyY', 89, { ctrlKey: true }); }))); log('keys: ctrl+y defaultPrevented=' + prevented + ' lines ' + lines()); }
 	// drag-select: press at the start of the first line, move right in 8 px steps with the button down, release
 	{ const lr2 = doc.querySelector('.view-line').getBoundingClientRect(); const y = lr2.top + lr2.height / 2; const x0 = lr2.left + 2;
 		const mv = (x, name) => { const el = doc.elementFromPoint(x, y) || doc.body; el.dispatchEvent(new PointerEvent('pointermove', { ...base(x, y), pointerId: 1, pointerType: 'mouse', isPrimary: true })); el.dispatchEvent(new MouseEvent('mousemove', base(x, y))); };

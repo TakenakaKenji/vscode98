@@ -5,7 +5,7 @@ import * as nr from 'spike:render';
 import { nativeFontId, ensureAdvances, ensureOutline } from './native_fonts.js';
 import { textGamma } from '../../06-rendering/host/dom/paint.js';
 
-const OP_FILL_RECT = 1, OP_FILL_RRECT = 2, OP_PUSH_CLIP = 3, OP_POP_CLIP = 4, OP_PUSH_LAYER = 5, OP_POP_LAYER = 6, OP_GLYPH_RUN = 7;
+const OP_FILL_RECT = 1, OP_FILL_RRECT = 2, OP_PUSH_CLIP = 3, OP_POP_CLIP = 4, OP_PUSH_LAYER = 5, OP_POP_LAYER = 6, OP_GLYPH_RUN = 7, OP_RESET_CLIP = 8;
 
 export class NativeBackend {
 	/** exact: use the double-precision rasterizer (byte-identical to the JS backend); default is the integer rasterizer */
@@ -25,6 +25,7 @@ export class NativeBackend {
 	}
 	pushClip(x0, y0, x1, y1) { this.reserve(5); const b = this.buf; let n = this.n; b[n++] = OP_PUSH_CLIP; b[n++] = x0; b[n++] = y0; b[n++] = x1; b[n++] = y1; this.n = n; this.commands++; }
 	popClip() { this.reserve(1); this.buf[this.n++] = OP_POP_CLIP; this.commands++; }
+	resetClip() { this.reserve(1); this.buf[this.n++] = OP_RESET_CLIP; this.commands++; }
 	pushLayer() { this.reserve(1); this.buf[this.n++] = OP_PUSH_LAYER; this.commands++; }
 	popLayer(alpha) { this.reserve(2); this.buf[this.n++] = OP_POP_LAYER; this.buf[this.n++] = alpha; this.commands++; }
 	glyphRun(font, size, ls, wsp, x, by, color, alphaMul, text) {
