@@ -54,5 +54,7 @@ async function run0(ctx) {
 	for (let rep = 2; rep <= 3; rep++) { const ta2 = doc.activeElement; log('keys: Escape: ' + fmt(await drive(() => { const ev = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true, composed: true }); ev.which = 27; ta2.dispatchEvent(ev); }))); await settle(5);
 		const ta3 = doc.activeElement; log('keys: F1 #' + rep + ': ' + fmt(await drive(() => { key(ta3, 'keydown', 'F1'); key(ta3, 'keyup', 'F1'); }))); await settle(5); }
 	{ let h = 2166136261; const px = backend.pixels; for (let i = 0; i < px.length; i += 7) { h = Math.imul(h ^ px[i], 16777619); } log('keys: frame checksum ' + (h >>> 0).toString(16)); }
+	log('keys: style-only passes ' + (doc.__styleOnlyPasses || 0) + ' of ' + doc.__passStats.length + (doc.__verifyStyleOnly ? ', verified boxes ' + doc.__styleOnlyChecked + ', mismatches ' + JSON.stringify(doc.__styleOnlyMismatches || []) : ''));
+	log('keys: why layout was needed ' + JSON.stringify(doc.__styleOnlyWhy));
 	log('keys: palette rows ' + doc.querySelectorAll('.quick-input-list .monaco-list-row').length + ', active ' + (doc.activeElement && doc.activeElement.localName));
 }

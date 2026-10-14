@@ -18,6 +18,21 @@ const countElements = (el) => { let n = 1; for (const c of el.__children) { if (
  * all other passes restyle only what style_invalidation.js plans (see there for the levels). Cached per element: el.__cs (computed style), el.__cands (matched rules),
  * el.__pcands (matched rules of ::before/::after), el.__anc (ancestor Bloom filter). Statistics of the pass go to doc.__styleInfo.
  */
+// ---- style-only passes: when a pass only restyled elements and none of the properties that layout (or a box's kind) reads changed, the previous layout is still right.
+// PAINT_ONLY lists the properties that only painting reads (colors, backgrounds, shadows, outlines, radii, opacity, cursor, z-index, ...); every other property counts as layout-relevant.
+const PAINT_ONLY = new Set(['color', 'background-color', 'background-image', 'background-position', 'background-position-x', 'background-position-y', 'background-size', 'background-repeat', 'background-clip', 'background-origin', 'background-attachment',
+	'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color', 'border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius',
+	'outline-color', 'outline-style', 'outline-width', 'outline-offset', 'box-shadow', 'text-shadow', 'opacity', 'cursor', 'pointer-events', 'z-index', 'text-decoration-line', 'text-decoration-color', 'text-decoration-style', 'text-decoration-thickness',
+	'caret-color', 'accent-color', 'fill', 'stroke', 'stroke-width', 'mix-blend-mode', 'user-select', 'transition', 'transition-property', 'transition-duration', 'transition-timing-function', 'transition-delay', 'animation', 'will-change', 'scroll-behavior']);
+// attributes that no layout code reads (the style system still sees them as attribute selectors)
+const NO_LAYOUT_ATTR = new Set(['role', 'title', 'custom-hover', 'placeholder', 'tabindex', 'draggable', 'spellcheck', 'autocomplete', 'aria-label']);
+/** do two computed-style value maps differ in a property layout reads? */
+export function layoutPropsDiffer(a, b) {
+	for (const k in b) { if (!PAINT_ONLY.has(k) && !deepEqual(a[k], b[k])) { return true; } }
+	for (const k in a) { if (!(k in b) && !PAINT_ONLY.has(k)) { return true; } }
+	return false;
+}
+const pseudoDiffers = (a, b) => (a === null || a === undefined) !== (b === null || b === undefined) || (a && b && deepEqual(a.values, b.values) === false);   // a pseudo-element's whole style: its box is rebuilt (not patched) when it changes
 export function resolveStyles(doc, env, log) {
 	const t0 = performance.now(); const root = doc.documentElement; const passId = (doc.__stylePass = (doc.__stylePass || 0) + 1);
 	const envKey = `${env.vw}x${env.vh}|${env.dark}|${env.dpr}`; let index = doc.__ruleIndex; let delta = null; let full = null;
@@ -35,19 +50,23 @@ export function resolveStyles(doc, env, log) {
 	if (plan) { for (const el of plan.marks.keys()) { for (let a = el; a && a.nodeType === 1 && a.__dd !== passId; a = a.parentNode) { a.__dd = passId; } } }
 	info.planMs = performance.now() - t0 - indexMs;
 	if (plan && globalThis.__styleDebug) { globalThis.__styleDebug(plan, log, planInv || index.inv); }
+	let layoutChanged = false; const changed = [];   // restyled elements, and whether any of them changed in a way layout reads
 	const walk = (el, parentCS, parentAnc, forced, prev) => {
 		let lvl = forced; if (plan) { const m = plan.marks.get(el); if (m !== undefined && m > lvl) { lvl = m; } } if (full) { lvl = 3; }
 		let cs = el.__cs, anc = el.__anc, childForced = 0; el.__prev = prev;
 		if (lvl > 0 || !cs) {
 			const rematch = lvl >= 2 || !cs || !el.__cands; anc = ancestorFilter(el, parentAnc); el.__anc = anc;
+			const oldCs = cs, ob = el.__before, oa = el.__after;
 			let cands, pc; if (rematch) { const all = matchedDeclarationsAll(el, index); cands = all[0]; pc = el.__pcands = [all[1], all[2]]; } else { cands = el.__cands; pc = el.__pcands ??= [matchedDeclarations(el, index, null, 'before'), matchedDeclarations(el, index, null, 'after')]; }
 			const ncs = computeStyle(el, parentCS, index, env, null, cands); info.recomputed++; if (rematch) { info.rematched++; }
 			['before', 'after'].forEach((pe, i) => { const pcs = pc[i].length ? computeStyle(el, ncs, index, env, pe, pc[i]) : null; const c = pcs && pcs.values.content; el['__' + pe] = (c && c !== 'none' && c !== 'normal') ? pcs : null; });
-			el.__cands = cands; childForced = lvl === 3 ? 3 : (inheritedChanged(cs, ncs, INH) ? 1 : 0); el.__cs = cs = ncs;
+			el.__cands = cands; childForced = lvl === 3 ? 3 : (inheritedChanged(cs, ncs, INH) ? 1 : 0); el.__cs = cs = ncs; changed.push(el);
+			if (!layoutChanged && (!oldCs || layoutPropsDiffer(oldCs.values, ncs.values) || pseudoDiffers(ob, el.__before) || pseudoDiffers(oa, el.__after))) { layoutChanged = true; }
 		} else if (el.__dd !== passId) { return; } else { anc = ancestorFilter(el, parentAnc); el.__anc = anc; }   // ancestors on the way to a marked element: their filter is rebuilt too, a cached one may predate a class change that no rule cared about then
 		let pe = null; for (const c of el.__children) { if (c.nodeType === 1) { walk(c, cs, anc, childForced, pe); pe = c; } }
 	};
 	if (root) { setMatchMemo(passId); try { walk(root, null, null, 0); } finally { setMatchMemo(0); } } doc.__styleCount = total; doc.__styleReady = true; { const ae = doc.__activeElement && doc.__activeElement.isConnected ? doc.__activeElement : null; doc.__styledActive = ae; doc.__styledChain = []; for (let a = ae; a && a.nodeType === 1; a = a.parentNode) { doc.__styledChain.push(a); } } doc.__logOverflow = false; info.ms = performance.now() - t0; doc.__styleInfo = info;
+	doc.__styleResult = { layoutChanged: layoutChanged || !!root === false, changed };
 	if (doc.__verifyStyles) { verifyStyles(doc, env, index); }
 }
 /** Test oracle: restyle everything from scratch (without the ancestor filter) and record every difference to the cached styles in doc.__styleMismatches. */
@@ -81,7 +100,7 @@ const REPLACED = new Set(['img', 'canvas', 'video', 'svg', 'iframe', 'input', 's
 export class Layout {
 	constructor(doc, env) { this.doc = doc; this.env = env; this.boxOf = new Map(); this.oofList = []; }
 	run() {
-		const ts = performance.now(); resolveStyles(this.doc, this.env, this.dirtyLog); this.styleMs = performance.now() - ts; this.styleInfo = this.doc.__styleInfo; const tl = performance.now();
+		const ts = performance.now(); this.vw = this.env.vw; this.vh = this.env.vh; if (!this.skipStyle) { resolveStyles(this.doc, this.env, this.dirtyLog); } this.styleMs = this.skipStyle ? (this.preStyleMs || 0) : performance.now() - ts; this.styleInfo = this.doc.__styleInfo; const tl = performance.now();
 		const root = this.doc.documentElement; this.rootBox = null; this.boxOf.clear(); this.fragsByText = new Map();
 		if (!root) { return; }
 		const rootBox = this.build(root, null); this.rootBox = rootBox; if (!rootBox) { return; }
@@ -94,6 +113,32 @@ export class Layout {
 		// body background propagates to the canvas; absolutely positioned boxes are laid out after the flow is known
 		for (const b of this.oofList) { this.layoutOof(b); }
 		this.computeScroll(rootBox); this.layoutMs = performance.now() - tl;
+	}
+	/**
+	 * A pass that only changed attributes the style system reads (no inserted/removed nodes, no text, no layout attributes), at the same viewport size, and whose restyled elements differ from before
+	 * only in paint-only properties, keeps the previous layout: the boxes of the restyled elements get their new style and nothing is laid out. Returns false when a real layout is needed
+	 * (the styles are resolved by then only if `false` came after the style step: run() resolves them again, which is cheap because nothing is left dirty).
+	 */
+	static styleOnly(doc, env, prev, log) {
+		const W = (doc.__styleOnlyWhy ??= {}); const why = (k) => { W[k] = (W[k] || 0) + 1; };
+		if (!prev.rootBox || prev.vw !== env.vw || prev.vh !== env.vh || doc.__logOverflow || !log || !log.length) { why('setup'); return false; }
+		for (const [kind, what, , arg] of log) { if ((kind !== 'style' && !(what === 'attr' && NO_LAYOUT_ATTR.has(arg))) || what === 'ins' || what === 'rem' || (what === 'attr' && arg === 'type')) { why(kind !== 'style' ? 'layout-attr/text:' + what + ':' + arg : what === 'ins' || what === 'rem' ? 'ins/rem' : 'type'); return false; } }
+		resolveStyles(doc, env, log); const r = doc.__styleResult; prev.dirtyLog = log;
+		if (r && r.layoutChanged) { why('style:layout-prop'); }
+		if (!r || r.layoutChanged || doc.__styleInfo.mode === 'full' && doc.__styleInfo.reason === 'environment changed') { return null; }   // null: styles are resolved already, only the layout is missing
+		for (const el of r.changed) {
+			const box = prev.boxOf.get(el); if (!box) { continue; }
+			box.cs = el.__cs; box.v = el.__cs.values;
+			for (const c of box.children) {
+				if (c.kind === 'text') { if (c.pseudo === undefined) { prev.patchText(c, box); } }
+				else if (c.anon) { c.v = anonStyle(box.v); for (const t of c.children) { if (t.kind === 'text') { prev.patchText(t, c); } } }
+			}
+		}
+		return true;
+	}
+	patchText(t, owner) {
+		t.v = owner.v; t.cs = owner.cs;
+		if (t.el) { const fr = this.fragsByText.get(t.el); if (fr) { for (const f of fr) { f.v = owner.v; } } }
 	}
 	// ---- tree building
 	build(el, parent) {

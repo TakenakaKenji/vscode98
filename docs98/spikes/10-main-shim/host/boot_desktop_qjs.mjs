@@ -91,7 +91,7 @@ const errors = []; let liveNote = null; const note = (k, e) => { const m = (e &&
 env.window.addEventListener('error', (ev) => note('window.onerror', ev.error || ev.message));
 globalThis.__rejection = (promise, reason, handled) => { if (handled) { return; } const ev = new globalThis.Event('unhandledrejection', { cancelable: true }); ev.promise = promise; ev.reason = reason; globalThis.dispatchEvent(ev); if (!ev.defaultPrevented) { note('unhandledRejection', reason); } };
 const consoleLog = []; for (const k of ['log', 'info', 'warn', 'error', 'debug', 'trace']) { console[k] = (...a) => { consoleLog.push([k, a.map(x => (x && x.stack) || String(x)).join(' ')]); }; }
-doc.__passStats = []; if (opt('verify', '0') === '1') { doc.__verifyStyles = true; } if (opt('pack-verify', '0') === '1') { globalThis.__packVerify = true; }
+doc.__passStats = []; if (opt('verify', '0') === '1') { doc.__verifyStyles = true; } if (opt('pack-verify', '0') === '1') { globalThis.__packVerify = true; } if (opt('verify-style-only', '0') === '1') { doc.__verifyStyleOnly = true; } if (opt('no-style-only', '0') === '1') { doc.__noStyleOnly = true; }
 const tImport = performance.now();
 log('[harness] page scripts: ' + JSON.stringify(scripts));
 for (const s of scripts) { try { await import(s); log('[harness] imported ' + s + ' after ' + Math.round(performance.now() - t00) + ' ms (' + Math.round(performance.now() - tImport) + ' ms for the import)'); } catch (e) { log('[harness] import failed ' + s + ': ' + (e && e.stack || e)); note('import ' + s, e); } }
@@ -122,6 +122,7 @@ if (opt('progress', '0') !== '0') { const every = Number(opt('progress', 5)) * 1
 await runScenario(ctx, { seconds, stableRounds: Number(opt('stable', 25)) });
 const done = performance.now();
 if (globalThis.__packVerify) { log('pack verify: ' + JSON.stringify(globalThis.__packStats)); }
+log('style-only passes (previous layout kept): ' + (doc.__styleOnlyPasses || 0) + ' of ' + (doc.__passStats || []).length + (doc.__verifyStyleOnly ? '; verified ' + (doc.__styleOnlyChecked || 0) + ' boxes, mismatches ' + JSON.stringify(doc.__styleOnlyMismatches || []) : ''));
 summarizeRun(ctx, { tImport, tLoaded, done, t00, errors, consoleLog, rssAfterImport, missing, unsupported });
 if (opt('scenario')) { const sc = await import(opt('scenario')); await sc.run(ctx); }
 log('--- main process output (last 40 lines)\n' + mainLog.join('').split('\n').slice(-40).join('\n'));

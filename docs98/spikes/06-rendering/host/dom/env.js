@@ -64,10 +64,21 @@ export class Document extends Node {
 	}
 	__registerFontFaces(sheet) { const env = this.__env; for (const r of sheet.cssRules) { if (r.type === 5 && env.onFontFace) { env.onFontFace(r.__decls); } } }
 	// ---- geometry (layout is computed lazily, only when something is dirty)
+	/** test oracle for style-only passes: lay everything out again from the same styles and compare every box (geometry) and the style each box holds */
+	__checkStyleOnly(lay) {
+		const fresh = new Layout(this, this.__env); fresh.skipStyle = true; fresh.dirtyLog = []; fresh.run(); const bad = (this.__styleOnlyMismatches ??= []); let n = 0;
+		for (const [el, fb] of fresh.boxOf) { const ob = lay.boxOf.get(el); n++; if (!ob) { if (bad.length < 50) { bad.push('no box for ' + el.localName + '.' + (el.getAttribute('class') || '')); } continue; }
+			if (ob.ax !== fb.ax || ob.ay !== fb.ay || ob.w !== fb.w || ob.h !== fb.h) { if (bad.length < 50) { bad.push('geometry of ' + el.localName + '.' + (el.getAttribute('class') || '') + ': ' + [ob.ax, ob.ay, ob.w, ob.h] + ' vs ' + [fb.ax, fb.ay, fb.w, fb.h]); } }
+			if (ob.v !== el.__cs.values) { if (bad.length < 50) { bad.push('stale style of ' + el.localName + '.' + (el.getAttribute('class') || '')); } } }
+		this.__styleOnlyChecked = (this.__styleOnlyChecked || 0) + n;
+	}
 	__ensureLayout() {
 		const env = this.__env;
 		if (this.__layout && !this.__dirty) { return; }
-		const t0 = performance.now(); const dirty = this.__dirtyLog || []; this.__dirtyLog = []; const lay = new Layout(this, env); lay.dirtyLog = dirty; lay.run(); if (this.__passStats) { this.__passStats.push(summarizeDirty(dirty, this, lay, t0)); } this.__layout = lay; this.__dirty = false; this.__styleDirty = false; this.__layoutCount++; this.__layoutMs += performance.now() - t0; this.__applyTransforms(lay);
+		const t0 = performance.now(); const dirty = this.__dirtyLog || []; this.__dirtyLog = []; let lay = this.__layout, reused = false;
+		if (lay && !this.__noStyleOnly) { const ts = performance.now(); const r = Layout.styleOnly(this, env, lay, dirty); if (r === true) { reused = true; lay.styleMs = performance.now() - ts; lay.layoutMs = 0; lay.styleInfo = this.__styleInfo; if (this.__verifyStyleOnly) { this.__checkStyleOnly(lay); } } else { lay = null; this.__stylesResolved = r === null; this.__preStyleMs = r === null ? performance.now() - ts : 0; } } else { lay = null; }
+		if (!reused) { lay = new Layout(this, env); lay.dirtyLog = dirty; lay.skipStyle = this.__stylesResolved === true; lay.preStyleMs = this.__preStyleMs || 0; this.__stylesResolved = false; this.__preStyleMs = 0; lay.run(); }
+		if (this.__passStats) { this.__passStats.push(summarizeDirty(dirty, this, lay, t0)); } this.__layout = lay; this.__dirty = false; this.__styleDirty = false; this.__layoutCount++; this.__layoutMs += performance.now() - t0; if (!reused) { this.__applyTransforms(lay); } else { this.__styleOnlyPasses = (this.__styleOnlyPasses || 0) + 1; }
 		if (this.__scrollClampPending) { this.__scrollClampPending = false; }
 	}
 	__applyTransforms(lay) {   // 2D affine per box from `transform` (translate / scale / matrix / rotate approximated)
