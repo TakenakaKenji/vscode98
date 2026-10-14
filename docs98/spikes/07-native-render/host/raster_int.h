@@ -9,6 +9,7 @@
 #endif
 static inline int i_min(int a, int b) { return a < b ? a : b; }
 static inline int i_max(int a, int b) { return a > b ? a : b; }
+static inline void touch(Surf *S, int x0, int y0, int x1, int y1) { if (x0 < S->tx0) { S->tx0 = x0; } if (y0 < S->ty0) { S->ty0 = y0; } if (x1 > S->tx1) { S->tx1 = x1; } if (y1 > S->ty1) { S->ty1 = y1; } }
 static inline int div255(int x) { x += 128; return (x + (x >> 8)) >> 8; }   /* round(x / 255) for 0 <= x <= 65025 */
 static inline int q8(double v) { return v <= 0 ? 0 : v >= 255 ? 255 : (int)(v + 0.5); }
 static inline int qa(double a) { return a <= 0 ? 0 : a >= 1 ? 255 : (int)(a * 255 + 0.5); }
@@ -35,6 +36,7 @@ static void fill_rect_i(Ctx *c, double x, double y, double w, double h, const do
 	int x0f = fx8(x0), y0f = fx8(y0), x1f = fx8(x1), y1f = fx8(y1); Surf *S = cur(c); int W = S->w;
 	int ix0 = x0f >> 8, iy0 = y0f >> 8, ix1 = (x1f + 255) >> 8, iy1 = (y1f + 255) >> 8, fx0 = (x0f + 255) >> 8, fx1 = x1f >> 8;
 	if (ix1 > S->bx1) { ix1 = S->bx1; } if (iy1 > S->by1) { iy1 = S->by1; } if (fx1 > ix1) { fx1 = ix1; }
+	touch(S, ix0, iy0, ix1, iy1);
 	for (int yy = iy0; yy < iy1; yy++) {
 		int cy = i_min((yy + 1) << 8, y1f) - i_max(yy << 8, y0f); if (cy <= 0) { continue; } uint8_t *row = S->px + (size_t)yy * W * 4;
 		if (fx1 > fx0) {
@@ -57,7 +59,7 @@ static void fill_rrect_i(Ctx *c, double x, double y, double w, double h, const d
 	int a8 = qa(col[3] * alphaMul); if (a8 <= 0 || x1 <= x0 || y1 <= y0) { return; } int r8 = q8(col[0]), g8 = q8(col[1]), b8 = q8(col[2]);
 	double rmax = fmin(w, h) / 2; int tl = fx8(fmin(radii[0], rmax)), tr = fx8(fmin(radii[1], rmax)), br = fx8(fmin(radii[2], rmax)), bl = fx8(fmin(radii[3], rmax));
 	int XL = fx8(x), XR = fx8(x + w), YT = fx8(y), YB = fx8(y + h); int x0f = fx8(x0), y0f = fx8(y0), x1f = fx8(x1), y1f = fx8(y1); int W = S->w;
-	int ix0 = x0f >> 8, iy0 = y0f >> 8, ix1 = (x1f + 255) >> 8, iy1 = (y1f + 255) >> 8; if (ix1 > S->bx1) { ix1 = S->bx1; } if (iy1 > S->by1) { iy1 = S->by1; }
+	int ix0 = x0f >> 8, iy0 = y0f >> 8, ix1 = (x1f + 255) >> 8, iy1 = (y1f + 255) >> 8; if (ix1 > S->bx1) { ix1 = S->bx1; } if (iy1 > S->by1) { iy1 = S->by1; } touch(S, ix0, iy0, ix1, iy1);
 	int topR = i_max(tl, tr), botR = i_max(bl, br);
 	for (int yy = iy0; yy < iy1; yy++) {
 		int ey = i_min((yy + 1) << 8, y1f) - i_max(yy << 8, y0f); if (ey <= 0) { continue; } int cyp = (yy << 8) + 128; uint8_t *row = S->px + (size_t)yy * W * 4;
@@ -161,6 +163,7 @@ static void glyph_run_i(Ctx *c, int fontId, double size, double ls, double wsp, 
 			int fxq = (int)js_round((x - floor(x)) * 4); Glyph *gl = get_glyph_i(f, cp, size, fxq, &c->misses); c->glyphs++;
 			if (!gl->empty && a8 > 0) {
 				int gx = (int)floor(x) + gl->left, gy = iby + gl->top;
+				touch(S, gx, gy, gx + gl->w, gy + gl->h);
 				for (int yy = 0; yy < gl->h; yy++) { int py = gy + yy; if (py < cy0 || py >= cy1) { continue; } uint8_t *row = S->px + (size_t)py * S->w * 4; const uint8_t *cv = gl->cov + (size_t)yy * gl->w;
 					for (int xx = 0; xx < gl->w; xx++) { int pxx = gx + xx; if (pxx < cx0 || pxx >= cx1) { continue; } int v = cv[xx]; if (v) { v = GAMMA[v]; blend_i(row + (size_t)pxx * 4, r, g8, b, a8 == 255 ? v : div255(a8 * v)); } } }
 			}
@@ -170,7 +173,9 @@ static void glyph_run_i(Ctx *c, int fontId, double size, double ls, double wsp, 
 }
 static void pop_layer_i(Ctx *c, double alpha) {
 	if (!c->nlayers) { return; } Surf sub = c->layers[--c->nlayers]; Surf *d = cur(c); int aq = qa(alpha);
-	for (int yy = sub.by0; yy < sub.by1; yy++) { const uint8_t *sp = sub.px + ((size_t)yy * sub.w + sub.bx0) * 4; uint8_t *dp = d->px + ((size_t)yy * d->w + sub.bx0) * 4;
-		for (int xx = sub.bx0; xx < sub.bx1; xx++, sp += 4, dp += 4) { int sa = sp[3]; if (sa) { blend_i(dp, sp[0], sp[1], sp[2], div255(sa * aq)); } } }
-	free(sub.base);
+	int ya = i_max(sub.by0, sub.ty0), yb = i_min(sub.by1, sub.ty1), xa = i_max(sub.bx0, sub.tx0), xb = i_min(sub.bx1, sub.tx1);   /* only where something was drawn */
+	for (int yy = ya; yy < yb; yy++) { const uint8_t *sp = sub.px + ((size_t)yy * sub.w + xa) * 4; uint8_t *dp = d->px + ((size_t)yy * d->w + xa) * 4;
+		for (int xx = xa; xx < xb; xx++, sp += 4, dp += 4) { int sa = sp[3]; if (sa) { blend_i(dp, sp[0], sp[1], sp[2], div255(sa * aq)); } } }
+	for (int yy = ya; yy < yb; yy++) { if (xb > xa) { memset((uint8_t *)sub.px + ((size_t)yy * sub.w + xa) * 4, 0, (size_t)(xb - xa) * 4); } }   /* back to all zero, ready for the pool */
+	layer_release(sub.base, sub.cap, 1);
 }

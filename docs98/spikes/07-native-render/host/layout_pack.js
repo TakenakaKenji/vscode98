@@ -43,6 +43,7 @@ function putLen(pk, a, o, x, autoVal = 0) {
 }
 const num = (x, d = 0) => (typeof x === 'number' ? x : d);
 
+const recCache = new WeakMap();   // computed style values -> packed style record (see packTree)
 /** Packs `box` (a Layout.build result) and its descendants in pre-order. Returns the Pack; pk.list[i] is the Box at index i. */
 export function packTree(lay, rootBox, pk = new Pack()) {
 	const walk = (b, parentIdx) => {
@@ -58,6 +59,12 @@ export function packTree(lay, rootBox, pk = new Pack()) {
 			return i;
 		}
 		const v = b.v; const d = b.display;
+		// the style part of a record only depends on the computed style object (unchanged for every element that was not restyled), the box kind and the box flags: reuse it (not for replaced
+		// boxes, whose size comes from the element, nor for records that put calc() trees into the pool: their node indexes belong to this pack)
+		const hit = recCache.get(v);
+		const usable = hit !== undefined && hit.kind === b.kind && hit.display === d && hit.flags === ((b.oof ? 1 : 0) | (b.replaced ? 2 : 0) | (b.pseudo ? 4 : 0));
+		if (usable && !globalThis.__packVerify) { a.set(hit.data, o); a[o + F.PARENT] = parentIdx; for (const c of b.children) { walk(c, i); } return i; }
+		const nc0 = pk.nc;
 		a[o + F.DISPLAY] = d === 'flex' ? 1 : d === 'inline-flex' ? 2 : d === 'flow-root' ? 3 : 0;
 		a[o + F.FLAGS] = (b.oof ? 1 : 0) | (b.replaced ? 2 : 0) | (b.pseudo ? 4 : 0) | (v.transform && v.transform !== 'none' ? 8 : 0);
 		a[o + F.POS] = POS[v.position] ?? 4; a[o + F.BORDERBOX] = v['box-sizing'] === 'border-box' ? 1 : 0;
@@ -77,6 +84,8 @@ export function packTree(lay, rootBox, pk = new Pack()) {
 		const fs = v['font-size']; a[o + F.FSIZE] = fs; const l = v['line-height']; let lh = NaN; if (l !== 'normal' && l !== undefined) { if (l && l.num !== undefined) { lh = l.num * fs; } else { const r = putLhResolve(l, fs); lh = r === null ? NaN : r; } } a[o + F.LH] = lh;
 		const font = resolveFont(v['font-family'], v['font-weight'], v['font-style']); a[o + F.FONT] = nativeFontId(font);
 		if (b.replaced) { const rs = lay.replacedSize(b); a[o + F.REPLW] = rs.w; a[o + F.REPLH] = rs.h; }
+		if (usable && globalThis.__packVerify) { const g = globalThis.__packStats ??= { checked: 0, bad: 0 }; g.checked++; for (let k = 0; k < F.STRIDE; k++) { if (k !== F.PARENT && !Object.is(a[o + k], hit.data[k])) { g.bad++; break; } } }
+		else if (pk.nc === nc0 && !b.anon && !b.replaced) { recCache.set(v, { kind: b.kind, display: d, flags: (b.oof ? 1 : 0) | (b.replaced ? 2 : 0) | (b.pseudo ? 4 : 0), data: a.slice(o, o + F.STRIDE) }); }
 		for (const c of b.children) { walk(c, i); }
 		return i;
 	};

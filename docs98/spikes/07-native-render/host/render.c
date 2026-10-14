@@ -120,7 +120,7 @@ static Glyph *get_glyph(Font *f, int fontId, uint32_t cp, double size, int fxq, 
 /* ---------------------------------------------------------------- surface, blend */
 /* px is addressed as px[(y * w + x) * 4] with absolute coordinates. For an opacity layer only the region [bx0,bx1) x [by0,by1) (the clip when the layer was pushed) is allocated: px is then
  * offset so absolute coordinates still work, and base is the allocation. */
-typedef struct { uint8_t *px, *base; int w, h, bx0, by0, bx1, by1; } Surf;
+typedef struct { uint8_t *px, *base; int w, h, bx0, by0, bx1, by1; int tx0, ty0, tx1, ty1; size_t cap; } Surf;   /* tx/ty: bounding box of what the integer rasterizer drew on a layer (the layer is composited only there) */
 /* ToUint8Clamp as performed when JavaScript stores into a Uint8ClampedArray (round half to even) */
 static inline uint8_t c8(double v) { if (!(v > 0)) { return 0; } if (v >= 255) { return 255; } double f = floor(v); double d = v - f; if (d < 0.5) { return (uint8_t)f; } if (d > 0.5) { return (uint8_t)(f + 1); } return (uint8_t)(((int)f & 1) ? f + 1 : f); }
 static inline void blend(uint8_t *px, size_t i, double r, double g, double b, double a) {
@@ -133,6 +133,16 @@ static inline void blend(uint8_t *px, size_t i, double r, double g, double b, do
 	px[i] = c8((r * a + pr * da * (1 - a)) / oa); px[i + 1] = c8((g * a + pg * da * (1 - a)) / oa); px[i + 2] = c8((b * a + pb * da * (1 - a)) / oa); px[i + 3] = c8(oa * 255);
 }
 
+/* Layer buffers are pooled: a pooled buffer is all zero (the integer rasterizer clears the part it drew on when it composites a layer), so pushing a layer does not have to clear 2.8 MB. */
+#define POOL_N 8
+static uint8_t *pool_buf[POOL_N]; static size_t pool_cap[POOL_N]; static int pool_n;
+static uint8_t *layer_alloc(size_t bytes, size_t *cap) {
+	for (int i = 0; i < pool_n; i++) { if (pool_cap[i] >= bytes) { uint8_t *b = pool_buf[i]; *cap = pool_cap[i]; pool_buf[i] = pool_buf[pool_n - 1]; pool_cap[i] = pool_cap[pool_n - 1]; pool_n--; return b; } }
+	*cap = bytes; return (uint8_t *)calloc(bytes, 1);
+}
+static void layer_release(uint8_t *base, size_t cap, int zeroed) {   /* zeroed: the buffer has been cleared again */
+	if (zeroed && pool_n < POOL_N) { pool_buf[pool_n] = base; pool_cap[pool_n] = cap; pool_n++; } else { free(base); }
+}
 typedef struct { double c[4]; } Clip;
 typedef struct { Surf s; Surf layers[16]; int nlayers; Clip clips[256]; int nclips; long rects, glyphs, misses; int integer; } Ctx;
 static inline Surf *cur(Ctx *c) { return c->nlayers ? &c->layers[c->nlayers - 1] : &c->s; }
@@ -236,7 +246,7 @@ static JSValue js_execute(JSContext *ctx, JSValueConst t, int argc, JSValueConst
 		case OP_PUSH_CLIP: { const double *p = c->clips[c->nclips - 1].c; Clip n; n.c[0] = fmax(p[0], cmd[i]); n.c[1] = fmax(p[1], cmd[i + 1]); n.c[2] = fmin(p[2], cmd[i + 2]); n.c[3] = fmin(p[3], cmd[i + 3]); if (c->nclips < 256) { c->clips[c->nclips++] = n; } i += 4; break; }
 		case OP_POP_CLIP: if (c->nclips > 1) { c->nclips--; } break;
 		case OP_PUSH_LAYER: if (c->nlayers < 16) { const double *cp = c->clips[c->nclips - 1].c; Surf *P = cur(c); int bx0 = (int)floor(cp[0]), by0 = (int)floor(cp[1]), bx1 = (int)ceil(cp[2]), by1 = (int)ceil(cp[3]); if (bx0 < 0) { bx0 = 0; } if (by0 < 0) { by0 = 0; } if (bx1 > w) { bx1 = w; } if (by1 > h) { by1 = h; } if (bx1 < bx0) { bx1 = bx0; } if (by1 < by0) { by1 = by0; } (void)P;
-			Surf *L = &c->layers[c->nlayers++]; int rw = bx1 - bx0, rh = by1 - by0; L->base = (uint8_t *)calloc((size_t)(rw ? rw : 1) * (rh ? rh : 1), 4); L->w = rw; L->h = rh; L->bx0 = bx0; L->by0 = by0; L->bx1 = bx1; L->by1 = by1; L->px = L->base - ((size_t)by0 * rw + bx0) * 4; } break;
+			Surf *L = &c->layers[c->nlayers++]; int rw = bx1 - bx0, rh = by1 - by0; L->base = layer_alloc((size_t)(rw ? rw : 1) * (rh ? rh : 1) * 4, &L->cap); L->w = rw; L->h = rh; L->bx0 = bx0; L->by0 = by0; L->bx1 = bx1; L->by1 = by1; L->tx0 = bx1; L->ty0 = by1; L->tx1 = bx0; L->ty1 = by0; L->px = L->base - ((size_t)by0 * rw + bx0) * 4; } break;
 		case OP_POP_LAYER: { double alpha = cmd[i++]; if (c->integer) { pop_layer_i(c, alpha); break; } if (c->nlayers) { Surf sub = c->layers[--c->nlayers]; Surf *d = cur(c); for (int yy = sub.by0; yy < sub.by1; yy++) { for (int xx = sub.bx0; xx < sub.bx1; xx++) { const uint8_t *sp = sub.px + ((size_t)yy * sub.w + xx) * 4; if (sp[3]) { blend(d->px, ((size_t)yy * d->w + xx) * 4, sp[0], sp[1], sp[2], sp[3] / 255.0 * alpha); } } } free(sub.base); } break; }
 		case OP_GLYPH_RUN: { int fid = (int)cmd[i]; int n = (int)cmd[i + 11]; (c->integer ? glyph_run_i : glyph_run)(c, fid, cmd[i + 1], cmd[i + 2], cmd[i + 3], cmd[i + 4], cmd[i + 5], &cmd[i + 6], cmd[i + 10], n, &cmd[i + 12]); i += 12 + n; break; }
 		default: free(c); return JS_ThrowRangeError(ctx, "bad opcode %d at %d", op, i - 1);
