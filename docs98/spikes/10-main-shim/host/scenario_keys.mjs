@@ -34,7 +34,8 @@ async function run0(ctx) {
 	const row = [...doc.querySelectorAll('.explorer-folders-view .monaco-list-row')].find(r => (r.getAttribute('aria-label') || '').startsWith(name)); if (!row) { log('keys: row not found'); return; }
 	{ const rr = row.getBoundingClientRect(); log('keys: open file: ' + fmt(await drive(() => press(rr.left + 20, rr.top + rr.height / 2)))); await settle(); }
 	const line = doc.querySelector('.view-line'); const lr = line.getBoundingClientRect();
-	log('keys: click in text: ' + fmt(await drive(() => press(lr.left + 20, lr.top + lr.height / 2)))); await settle(5);
+	{ const why = {}; globalThis.__styleDebug = (plan, lg) => { const per = {}; for (const [el, w] of plan.why) { const k = (w || '').slice(0, 60); per[k] = (per[k] || 0) + 1; } for (const [k, n] of Object.entries(per)) { why[k] = (why[k] || 0) + n; } const ch = lg.filter(x => x[1] === 'attr' && x[3] === 'class').map(x => x[2].localName + '.' + String(x[2].getAttribute('class') || '').split(' ').slice(0, 2).join('.')); (why.__classChanged ??= []).push(...ch.slice(0, 6)); };
+	log('keys: click in text: ' + fmt(await drive(() => press(lr.left + 20, lr.top + lr.height / 2)))); log('keys: click marks ' + JSON.stringify(Object.entries(why).filter(([k]) => k !== '__classChanged').sort((a, b) => b[1] - a[1]).slice(0, 12)) + ' classChanged ' + JSON.stringify(why.__classChanged)); globalThis.__styleDebug = undefined; } await settle(5);
 	const ta = doc.activeElement; if (!ta || ta.localName !== 'textarea') { log('keys: no textarea focused'); return; }
 	globalThis.__pl = {};
 	for (const ch of 'abcdefgh'.slice(0, Number(ctx.opt('keys', 6)))) {
