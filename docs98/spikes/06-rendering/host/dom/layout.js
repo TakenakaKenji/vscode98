@@ -2,7 +2,7 @@
 // inline-block and replaced elements, absolute/fixed/relative positioning, flexbox (single and multi-line), overflow/scroll geometry, translate/scale transforms.
 // Not implemented (recorded in `unsupported`): floats, tables (laid out as blocks), grid, multi-column, writing modes, bidi, ::first-line/letter.
 import { buildRuleIndex, computeStyle, matchedDeclarations, matchedDeclarationsAll, resolveLen, PROPS, ancestorFilter, INH } from './css.js';
-import { analyzeIndex, diffIndex, deltaOfAdded, mergeInv, planRestyle, logTouchesSheets, inheritedChanged, deepEqual } from './style_invalidation.js';
+import { analyzeIndex, diffIndex, deltaOfUpdate, mergeInv, planRestyle, logTouchesSheets, inheritedChanged, deepEqual } from './style_invalidation.js';
 import { resolveFont, fontMetrics, advance, kern } from './fonts.js';
 import { noteMissing } from './dom.js';
 import { setMatchMemo } from './selectors.js';
@@ -24,9 +24,9 @@ export function resolveStyles(doc, env, log) {
 	if (!doc.__styleReady) { full = 'first pass'; } else if (log === undefined) { full = 'no mutation log'; } else if (doc.__incremental === false) { full = 'incremental style disabled'; }
 	let planInv = null;
 	if (!index || doc.__indexRulesVersion !== doc.__rulesVersion || envKey !== doc.__indexEnvKey || (log && logTouchesSheets(log))) {
-		const old = index; index = buildRuleIndex(doc, env, old); const extended = index === old && index.added !== null; const added = extended ? index.added : null; index.added = null;
+		const old = index; index = buildRuleIndex(doc, env, old); const upd = index === old ? index.update : null; index.update = null; const extended = upd !== null; const added = extended ? upd.added : null;
 		index.inv = analyzeIndex(index, old && old.inv, added); planInv = old && old.inv && old.inv !== index.inv ? mergeInv(old.inv, index.inv) : index.inv; doc.__ruleIndex = index; doc.__indexRulesVersion = doc.__rulesVersion;
-		if (!full) { if (envKey !== doc.__indexEnvKey) { full = 'environment changed'; } else { delta = !old ? null : extended ? deltaOfAdded(added) : diffIndex(old, index); if (!delta) { full = 'rule set changed too much'; } } }
+		if (!full) { if (envKey !== doc.__indexEnvKey) { full = 'environment changed'; } else { delta = !old ? null : extended ? deltaOfUpdate(upd) : diffIndex(old, index); if (!delta) { full = 'rule set changed too much'; } } }
 		doc.__indexEnvKey = envKey;
 	}
 	const indexMs = performance.now() - t0; let total = root ? countElements(root) : 0; let plan = null;

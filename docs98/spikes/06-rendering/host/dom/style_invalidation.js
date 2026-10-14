@@ -130,8 +130,11 @@ export function diffIndex(oldIndex, newIndex, limit = 3000) {
 	if (changed.length > limit) { return null; }
 	return bucketize(changed);
 }
-/** The delta (as diffIndex returns it) for entries that were added to an index; null when there are too many. */
-export function deltaOfAdded(entries, limit = 3000) { return entries.length > limit ? null : bucketize(entries); }
+/** The delta (as diffIndex returns it) for an in-place update of an index (rules added and removed); null when there are too many. */
+export function deltaOfUpdate(update, limit = 3000) {
+	const changed = []; for (const list of [update.addedRules, update.removedRules]) { for (const rule of list) { for (const b of baseEntriesOf(rule)) { changed.push({ complex: b.complex, decls: b.decls }); } } }
+	return changed.length > limit ? null : bucketize(changed);
+}
 /** Whether any entry of a changed-rules bucket set can match `el` (the subject compound only: pseudo-element rules act on their host element). */
 export function matchesDelta(el, delta) {
 	const test = (list) => { if (list) { for (const e of list) { if (matchesComplex(el, e.complex)) { return true; } } } return false; };

@@ -258,33 +258,56 @@ function baseOf(rule) {
 	if (list) { const decls = expandRuleDecls(rule), sel = rule.selectorText; base = list.map((complex) => ({ complex, decls, spec: complex.spec, pseudoElement: complex.parts[complex.parts.length - 1].compound.pseudoElement, need: needOf(complex), needAny: needAnyOf(complex), sel, keys: bucketKeys(complex.parts[complex.parts.length - 1].compound) })); }
 	baseEntries.set(rule, { src: rule.__decls, sel: rule.selectorText, base }); return base;
 }
-function countKeys(base, freq) { for (const b of base) { const k = b.keys; if (k !== null) { for (let i = 0; i < k.length; i += 2) { if (k[i] === 3) { for (const cl of k[i + 1]) { freq.set(cl, (freq.get(cl) || 0) + 1); } } else if (k[i] === 1) { freq.set(k[i + 1], (freq.get(k[i + 1]) || 0) + 1); } } } } }   // how many rules use each class
+function countKeys(base, freq, d = 1) { for (const b of base) { const k = b.keys; if (k !== null) { for (let i = 0; i < k.length; i += 2) { if (k[i] === 3) { for (const cl of k[i + 1]) { freq.set(cl, (freq.get(cl) || 0) + d); } } else if (k[i] === 1) { freq.set(k[i + 1], (freq.get(k[i + 1]) || 0) + d); } } } } }   // how many rules use each class
+/** files an entry under a bucket and logs where, so that the entries of the last rules can be taken out again (they are the last element of each of their buckets) */
+function put(index, list, e) { list.push(e); index.logB.push(list); index.logE.push(e); }
+function putKey(index, map, key, e) { let l = map.get(key); if (l === undefined) { l = []; map.set(key, l); } put(index, l, e); }
 function placeEntries(index, base, f, freq, added) {
 	for (const b of base) {
 		const e = { complex: b.complex, decls: b.decls, ua: f.ua, order: f.order, spec: b.spec, pseudoElement: b.pseudoElement, need: b.need, needAny: b.needAny, sel: b.sel, mk: 0 }; index.count++; if (added) { added.push(e); }
-		const keys = b.keys; if (keys === null) { index.universal.push(e); } else { for (let i = 0; i < keys.length; i += 2) { const k = keys[i]; if (k === 3) { push(index.byClass, rarest(keys[i + 1], freq), e); } else { push(k === 0 ? index.byId : k === 1 ? index.byClass : index.byTag, keys[i + 1], e); } } }
+		const keys = b.keys; if (keys === null) { put(index, index.universal, e); } else { for (let i = 0; i < keys.length; i += 2) { const k = keys[i]; if (k === 3) { putKey(index, index.byClass, rarest(keys[i + 1], freq), e); } else { putKey(index, k === 0 ? index.byId : k === 1 ? index.byClass : index.byTag, keys[i + 1], e); } } }
 	}
+}
+/** adds rule `f` (a flatten result) to `index`, remembering where its entries start in the log */
+function addRule(index, f, base, added) {
+	index.rules.push(f.rule); index.decls.push(f.rule.__decls); index.sels.push(f.rule.selectorText); index.markLog.push(index.logB.length); index.markCount.push(index.count);
+	if (base) { countKeys(base, index.freq); placeEntries(index, base, f, index.freq, added); }
 }
 /**
  * Builds an index of all active style rules for a document: entries { complex selector, decls, ua, order }, bucketed by the rightmost compound's id/class/tag (see bucketKeys).
- * When `prev` (the index of the previous build) is given and the rules are the same as before except for new ones at the end (a stylesheet was appended, or rules were added to the last one),
- * `prev` is extended in place instead of rebuilt and `prev.added` lists the new entries; otherwise a new index is returned.
+ * When `prev` (the index of the previous build) is given and the rules are the same as before up to some point (a stylesheet was appended, or the last ones were replaced), `prev` is updated
+ * in place (its entries from that point on are taken out and the new ones put in) instead of rebuilt: `prev.update` then says which rules were added and removed and lists the new entries.
+ * A change that moves rules or edits selectors returns a new index.
  */
 export function buildRuleIndex(doc, env, prev) {
 	const flat = []; const state = { order: 0 };
 	for (const { sheet, ua } of sheetsOf(doc)) { flattenRules(sheet.cssRules, env, flat, ua, state); }
-	if (prev && flat.length >= prev.rules.length) {
-		let same = true; const n0 = prev.rules.length; for (let i = 0; i < n0; i++) { const r = flat[i].rule; if (r !== prev.rules[i] || r.__decls !== prev.decls[i] || r.selectorText !== prev.sels[i]) { same = false; break; } }
-		if (same) {
-			const added = []; for (let i = n0; i < flat.length; i++) { const f = flat[i], base = baseOf(f.rule); prev.rules.push(f.rule); prev.decls.push(f.rule.__decls); prev.sels.push(f.rule.selectorText); if (base) { countKeys(base, prev.freq); placeEntries(prev, base, f, prev.freq, added); } }
-			prev.added = added; return prev;
-		}
+	if (prev) {
+		const n0 = prev.rules.length; let p = 0; const nm = Math.min(n0, flat.length);
+		while (p < nm) { const r = flat[p].rule; if (r !== prev.rules[p] || r.__decls !== prev.decls[p] || r.selectorText !== prev.sels[p]) { break; } p++; }
+		if (p > 0 && updateInPlace(prev, flat, p)) { return prev; }
 	}
-	const index = { byId: new Map(), byClass: new Map(), byTag: new Map(), universal: [], count: 0, rules: [], decls: [], sels: [], freq: new Map(), added: null };
-	const bases = new Array(flat.length);
-	for (let n = 0; n < flat.length; n++) { const f = flat[n]; const base = bases[n] = baseOf(f.rule); index.rules.push(f.rule); index.decls.push(f.rule.__decls); index.sels.push(f.rule.selectorText); if (base) { countKeys(base, index.freq); } }
-	for (let n = 0; n < flat.length; n++) { if (bases[n]) { placeEntries(index, bases[n], flat[n], index.freq, null); } }
+	const index = { byId: new Map(), byClass: new Map(), byTag: new Map(), universal: [], count: 0, rules: [], decls: [], sels: [], freq: new Map(), logB: [], logE: [], markLog: [], markCount: [], update: null };
+	for (const f of flat) { addRule(index, f, baseOf(f.rule), null); }
 	return index;
+}
+function updateInPlace(prev, flat, p) {
+	const n0 = prev.rules.length; const oldPos = new Map(); for (let i = p; i < n0; i++) { oldPos.set(prev.rules[i], i); }
+	const addedRules = [], removedRules = []; const kept = new Set(); let last = -1;
+	for (let i = p; i < flat.length; i++) {
+		const r = flat[i].rule; const j = oldPos.get(r);
+		if (j === undefined) { addedRules.push(r); continue; }
+		if (j < last || prev.sels[j] !== r.selectorText) { return false; }   // rules moved relative to each other, or a selector was edited: rebuild
+		last = j; kept.add(j); if (prev.decls[j] !== r.__decls) { addedRules.push(r); }
+	}
+	for (let j = p; j < n0; j++) { if (!kept.has(j)) { removedRules.push(prev.rules[j]); } }
+	// take out the entries of rules p.. (the last ones logged), then put the new tail in
+	const lp = prev.markLog[p] ?? prev.logB.length;
+	for (let k = prev.logB.length - 1; k >= lp; k--) { if (prev.logB[k].pop() !== prev.logE[k]) { return false; } }   // (the index is damaged only if this fires halfway: callers rebuild from `flat` then, nothing else holds it)
+	for (let i = n0 - 1; i >= p; i--) { const c = baseEntries.get(prev.rules[i]); if (c && c.base) { countKeys(c.base, prev.freq, -1); } }
+	prev.count = prev.markCount[p] ?? prev.count; prev.logB.length = lp; prev.logE.length = lp; prev.rules.length = p; prev.decls.length = p; prev.sels.length = p; prev.markLog.length = p; prev.markCount.length = p;
+	const added = []; for (let i = p; i < flat.length; i++) { addRule(prev, flat[i], baseOf(flat[i].rule), added); }
+	prev.update = { added, addedRules, removedRules }; return true;
 }
 // ---- ancestor Bloom filter (as in WebKit/Blink): rejects descendant/child selectors whose required ancestor tag/id/class is not on the element's ancestor chain
 const BLOOM_WORDS = 32;   // 1024 bits
