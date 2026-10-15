@@ -43,7 +43,7 @@ if (chanFd !== undefined) {
 	P.disconnect = () => { if (P.connected) { chan.destroy(); } };
 	// Like Node, the channel only keeps the process alive once someone listens for 'message' or 'disconnect'.
 	let refd = false; const ensureReading = () => { if (!refd) { refd = true; chan.setEncoding('utf8');
-		chan.on('data', (d) => { acc += d; let i; while ((i = acc.indexOf('\n')) >= 0) { const line = acc.slice(0, i); acc = acc.slice(i + 1); if (!line) { continue; } let m; try { m = JSON.parse(line); } catch { continue; } if (m && typeof m.cmd === 'string' && m.cmd.startsWith('NODE_')) { continue; } P.emit('message', m); } });
+		chan.on('data', (d) => { acc += d; let i; while ((i = acc.indexOf('\n')) >= 0) { const line = acc.slice(0, i); acc = acc.slice(i + 1); if (!line) { continue; } let m; try { m = JSON.parse(line); } catch (e) { console.error(`[ipc child] dropped a message that is not JSON (${line.length} chars, ${e && e.message}): ${line.slice(0, 120)} ... ${line.slice(-60)}`); continue; } if (m && typeof m.cmd === 'string' && m.cmd.startsWith('NODE_')) { continue; } P.emit('message', m); } });
 	 chan.resume(); } };
 	for (const m of ['on', 'once', 'addListener', 'prependListener']) { const orig = P[m]; if (orig) { P[m] = function (ev, ...rest) { const r = orig.call(this, ev, ...rest); if (ev === 'message' || ev === 'disconnect') { ensureReading(); } return r; }; } }
 }

@@ -47,7 +47,7 @@ export class ChildProcess extends EventEmitter {
 	disconnect() { if (!this.connected) { queueMicrotask(() => this.emit('error', Object.assign(new Error('Channel closed'), { code: 'ERR_IPC_CHANNEL_CLOSED' }))); return; } this._chan.destroy(); }
 	_attachChannel(chan) {
 		this._chan = chan; this.channel = chan; this.connected = true; let acc = '';
-		chan.setEncoding?.('utf8'); chan.on('data', (d) => { acc += typeof d === 'string' ? d : d.toString('utf8'); let i; while ((i = acc.indexOf('\n')) >= 0) { const line = acc.slice(0, i); acc = acc.slice(i + 1); if (!line) { continue; } let m; try { m = JSON.parse(line); } catch { continue; } if (m && typeof m.cmd === 'string' && m.cmd.startsWith('NODE_')) { continue; } this.emit('message', m); } });
+		chan.setEncoding?.('utf8'); chan.on('data', (d) => { acc += typeof d === 'string' ? d : d.toString('utf8'); let i; while ((i = acc.indexOf('\n')) >= 0) { const line = acc.slice(0, i); acc = acc.slice(i + 1); if (!line) { continue; } let m; try { m = JSON.parse(line); } catch (e) { console.error(`[ipc parent] dropped a message that is not JSON (${line.length} chars, ${e && e.message}): ${line.slice(0, 120)} ... ${line.slice(-60)}`); continue; } if (m && typeof m.cmd === 'string' && m.cmd.startsWith('NODE_')) { continue; } this.emit('message', m); } });
 		chan.on('error', () => { });
 		chan.on('close', () => { if (this.connected) { this.connected = false; this.channel = undefined; this.emit('disconnect'); this._streamClosed(); } });
 		this._pendingClose++;
