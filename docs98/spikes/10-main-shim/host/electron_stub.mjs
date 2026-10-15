@@ -34,7 +34,8 @@ function lenient(obj, name) {
 
 // ---- channel to the renderer harness
 const clean = (v, path = 'msg') => encode(v, (p) => log('LEAK function at ' + p), path);   // JSON-safe (binary as { $u8 }); functions that leaked in as data are dropped and reported
-const toRenderer = (msg) => { if (process.send) { process.send(clean(msg, 'msg')); } else { log('NOSEND ' + show(msg)); } };
+const TRACE_IPC = !!process.env.VSCODE98_TRACE_IPC;   // logs every message between the renderer and main (type, channel, time) to the stub log
+const toRenderer = (msg) => { if (TRACE_IPC) { log(`${Date.now() % 1e7} OUT ${msg.t} ${msg.channel || ''}`); } if (process.send) { process.send(clean(msg, 'msg')); } else { log('NOSEND ' + show(msg)); } };
 
 // ---- app
 class App extends EventEmitter {
@@ -117,7 +118,7 @@ export const webContents = { fromId: (id) => contents.get(id) ? wcProxy(contents
 
 // ---- renderer harness -> main
 if (IS_MAIN) process.on('message', (m0) => {
-	const m = decode(m0); if (!m || !m.t) { return; }
+	const m = decode(m0); if (!m || !m.t) { return; } if (TRACE_IPC) { log(`${Date.now() % 1e7} IN ${m.t} ${m.channel || ''}`); }
 	if (m.t === 'portMsg' || m.t === 'portClose') { handlePortMessage(m); return; }
 	const wc = contents.get(m.wc); if (!wc) { log('MSG for unknown webContents ' + show(m)); return; }
 	const event = { sender: wcProxy(wc), senderFrame: wc.mainFrame, processId: 1, frameId: 1, reply: (ch, ...a) => wc.send(ch, ...a), preventDefault() { } };
