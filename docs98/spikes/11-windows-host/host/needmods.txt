@@ -64,3 +64,6 @@ yallist
 yauzl
 yazl
 @xterm/xterm
+vscode-textmate
+@vscode/iconv-lite-umd
+jschardet
