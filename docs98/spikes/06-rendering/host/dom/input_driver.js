@@ -29,9 +29,11 @@ const isButtonish = (el) => el && (el.localName === 'button' || (el.localName ==
 /** ctx: { doc, env, log?, opt?(name, default), note?(what, error) }; hooks: { setCursor(cursorName), activity() } */
 export function createInputDriver(ctx, hooks = {}) {
 	const { doc, env } = ctx; const debug = () => ctx.opt?.('debug-input', '0') === '1';
-	const Ev = (name, o) => new env.window.MouseEvent(name, { bubbles: true, cancelable: true, composed: true, view: env.window, ...o });
+	/** events of the user (the window's messages) are trusted: webviews check isTrusted before forwarding keys */
+	const trusted = (ev) => { ev.isTrusted = true; return ev; };
+	const Ev = (name, o) => trusted(new env.window.MouseEvent(name, { bubbles: true, cancelable: true, composed: true, view: env.window, ...o }));
 	// Monaco's mouse handling listens to Pointer Events, not mouse events: every mouse action is sent as the pointer event first, then as the legacy mouse event, as browsers do
-	const Pe = (name, o) => new env.window.PointerEvent(name, { bubbles: true, cancelable: true, composed: true, view: env.window, pointerId: 1, pointerType: 'mouse', isPrimary: true, ...o });
+	const Pe = (name, o) => trusted(new env.window.PointerEvent(name, { bubbles: true, cancelable: true, composed: true, view: env.window, pointerId: 1, pointerType: 'mouse', isPrimary: true, ...o }));
 	const docSel = createDocSelection(doc, env);
 	let charSuppressed = false, hover = null, downTarget = null, lastClick = { t: -1e9, x: 0, y: 0, n: 0 };
 	const at = (x, y) => doc.elementFromPoint(x, y) || doc.body;
@@ -69,6 +71,16 @@ export function createInputDriver(ctx, hooks = {}) {
 		if (ok && c === 0) { let tc = false; for (let e = el; e; e = e.parentElement) { if (isTextControl(e)) { guard('text control mousedown', () => controlMouseDown(e, a, b, detail, !!(mods & 1))); tc = true; break; } } if (!tc) { guard('page text selection', () => docSel.start(el, a, b, detail, !!(mods & 1))); } guard('drag arm', () => dnd.arm(el, ra, rb)); }
 		return base;
 	};
+	/** the default action of an unhandled wheel: the nearest scrollable box under the pointer (overflow auto/scroll, or the root of a document) scrolls, then the embedding document's */
+	const scrollByWheel = (el, delta, horizontal) => {
+		for (let e = el; e;) {
+			const d = e.ownerDocument; let can = false;
+			try { if (e === d.documentElement) { const hid = (x) => x && /^(hidden|clip)$/.test(String(gcs(x)[horizontal ? 'overflow-x' : 'overflow-y'])); can = !hid(e) && !hid(d.body); } else { can = /^(auto|scroll)$/.test(String(gcs(e)[horizontal ? 'overflow-x' : 'overflow-y'])); } } catch { can = false; }
+			if (can) { const key = horizontal ? 'scrollLeft' : 'scrollTop'; const before = e[key]; e[key] = before + delta; if (e[key] !== before) { return true; } }
+			e = e.parentElement || (d.__env && d.__env.frameElement) || null;
+		}
+		return false;
+	};
 	let dragDoc = doc;   // the document of the control or text a drag started in: drag moves are reported in its coordinates
 	function mouse(type, a0, b0, c, d, mods) {
 		const mk = (x, y) => ({ clientX: x, clientY: y, screenX: a0, screenY: b0, ctrlKey: !!(mods & 2), shiftKey: !!(mods & 1), altKey: !!(mods & 4), metaKey: !!(mods & 8) });
@@ -90,12 +102,12 @@ export function createInputDriver(ctx, hooks = {}) {
 				const t = deep(a0, b0), el = t.el, base = mk(t.x, t.y); downTarget = el; dragDoc = t.doc; lastClick = { t: performance.now(), x: a0, y: b0, n: 2 }; press(el, t.x, t.y, c, d, 2, mods, a0, b0); controlMouseUp(); setActive(el, false); pdispatch(el, Pe('pointerup', { ...base, button: c, detail: 2 })); dispatch(el, Ev('mouseup', { ...base, button: c, detail: 2 }));
 				if (dispatch(el, Ev('click', { ...base, button: c, detail: 2 }))) { guard('click default', () => clickDefault(el)); } dispatch(el, Ev('dblclick', { ...base, button: c, detail: 2 })); downTarget = null; return;
 			}
-			case 'wheel': { const t = deep(a0, b0), el = t.el, base = mk(t.x, t.y); const px = -c / 120 * 100; if (dispatch(el, new env.window.WheelEvent('wheel', { bubbles: true, cancelable: true, composed: true, ...base, deltaX: d ? -px : 0, deltaY: d ? 0 : px, deltaMode: 0 })) && !d) { for (let e = el; e; e = e.parentElement) { if (e.localName === 'textarea') { guard('textarea wheel', () => controlWheel(e, px)); break; } } } return; }
+			case 'wheel': { const t = deep(a0, b0), el = t.el, base = mk(t.x, t.y); const px = -c / 120 * 100; if (dispatch(el, trusted(new env.window.WheelEvent('wheel', { bubbles: true, cancelable: true, composed: true, ...base, deltaX: d ? -px : 0, deltaY: d ? 0 : px, deltaMode: 0 }))) && !d) { let done = false; for (let e = el; e; e = e.parentElement) { if (e.localName === 'textarea') { guard('textarea wheel', () => controlWheel(e, px)); done = true; break; } } if (!done) { guard('wheel scroll', () => scrollByWheel(el, px, false)); } } else if (!d) { /* canceled: the page scrolled itself */ } return; }
 		}
 	}
 	function keyboard(type, a, b, c, d, mods) {
 		const [key, code] = keyInfo(a, mods, c); const ft = focusTarget(), target = ft.el, fdoc = ft.doc;
-		const ev = new env.window.KeyboardEvent(type, { bubbles: true, cancelable: true, composed: true, key, code, keyCode: a, which: a, repeat: !!d, ctrlKey: !!(mods & 2), shiftKey: !!(mods & 1), altKey: !!(mods & 4), metaKey: !!(mods & 8) });
+		const ev = trusted(new env.window.KeyboardEvent(type, { bubbles: true, cancelable: true, composed: true, key, code, keyCode: a, which: a, repeat: !!d, ctrlKey: !!(mods & 2), shiftKey: !!(mods & 1), altKey: !!(mods & 4), metaKey: !!(mods & 8) }));
 		const notPrevented = dispatch(target, ev); if (type === 'keydown') { charSuppressed = !notPrevented; }
 		if (debug() && type === 'keydown') { ctx.log?.('[input] key ' + key + ' code=' + code + ' mods=' + mods + ' ctrl=' + ev.ctrlKey + ' prevented=' + !notPrevented + ' target=' + (target.localName || '?')); }   // a key whose keydown was handled (cancelled) produces no character, as in browsers
 		if (!notPrevented) { return; }

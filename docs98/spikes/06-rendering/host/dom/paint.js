@@ -149,6 +149,22 @@ class Painter {
 		if (b.pos === 'fixed' && b.el) { this.resetClip(); const bc = this.baseClip; if (bc) { this.pushClip(bc[0], bc[1], bc[2], bc[3]); } try { this.paintBox0(b, dx, dy, alphaMul); } finally { if (bc) { this.popClip(); } this.popClip(); } return; }
 		this.paintBox0(b, dx, dy, alphaMul);
 	}
+	/** the list marker of a list item: bullet shapes and numbers, outside the content box next to the first line */
+	paintMarker(b, dx, dy, alphaMul) {
+		const type = b.v['list-style-type'] || 'disc'; if (type === 'none' || b.v.visibility === 'hidden') { return; }
+		const first = (n) => { if (n.frags && n.frags.length) { return n.frags[0]; } for (const c of n.children) { if (c.kind === 'text' || c.kind === 'inline') { continue; } const f = first(c); if (f) { return f; } } return null; };
+		const fr = first(b); if (!fr || fr.abaseline === undefined) { return; } const size = fr.size, color = b.v.color, by = Math.round(fr.abaseline + dy); const right = b.ax + dx + b.bl + (b.pl || 0) - Math.max(4, Math.round(size * 0.3));
+		if (type === 'disc' || type === 'circle' || type === 'square') {
+			const d = Math.max(3, Math.round(size * 0.33)), x = right - d, y = by - Math.round(size * 0.3) - Math.round(d / 2) + 1;
+			if (type === 'square') { this.fillRect(x, y, d, d, color, alphaMul); } else if (type === 'disc') { this.fillRoundRect(x, y, d, d, [d / 2, d / 2, d / 2, d / 2], color, alphaMul); } else { this.fillRoundRect(x, y, d, d, [d / 2, d / 2, d / 2, d / 2], color, alphaMul); const w = Math.max(1, Math.round(d / 4)); this.fillRoundRect(x + w, y + w, d - 2 * w, d - 2 * w, [d / 2, d / 2, d / 2, d / 2], b.v['background-color'] && b.v['background-color'][3] > 0 ? b.v['background-color'] : [0, 0, 0, 1], alphaMul); }
+			return;
+		}
+		const par = b.el.parentElement; let n = 1; if (par) { const start = parseInt(par.getAttribute('start') || '', 10); if (!Number.isNaN(start)) { n = start; } for (const sib of par.__children) { if (sib === b.el) { break; } if (sib.nodeType === 1 && sib.localName === 'li') { n++; } } }
+		const alpha = (k, up) => { let t = ''; for (let i = k; i > 0; i = Math.floor((i - 1) / 26)) { t = String.fromCharCode(97 + ((i - 1) % 26)) + t; } return up ? t.toUpperCase() : t; };
+		const roman = (k, up) => { const m = [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']]; let t = ''; for (const [v, r] of m) { while (k >= v) { t += r; k -= v; } } return up ? t.toUpperCase() : t; };
+		const label = (type === 'lower-alpha' || type === 'lower-latin' ? alpha(n, false) : type === 'upper-alpha' || type === 'upper-latin' ? alpha(n, true) : type === 'lower-roman' ? roman(n, false) : type === 'upper-roman' ? roman(n, true) : String(n)) + '. ';
+		const w = this.doc.__measure({ font: fr.font, size: fr.size, ls: fr.ls }, label); this.b.glyphRun(fr.font, fr.size, fr.ls, 0, right + Math.max(4, Math.round(size * 0.3)) - w, by, color, alphaMul, label);
+	}
 	/** the document of an iframe, painted into the content box of the iframe element: clipped to it, with fixed boxes clipped to it too */
 	paintFrame(b, dx, dy) {
 		const cdoc = b.el.__frame.doc; cdoc.__ensureLayout(); const clay = cdoc.__layout; if (!clay || !clay.rootBox) { return; }
@@ -165,6 +181,7 @@ class Painter {
 		const layered = opacity < 1; if (layered) { this.b.pushLayer(); }
 		const clips = (v['overflow-x'] !== 'visible' || v['overflow-y'] !== 'visible'); const sx = b.el && b.el.__scrollLeft || 0, sy = b.el && b.el.__scrollTop || 0;
 		this.paintBackgroundAndBorders(b, dx, dy, 1);
+		if (v.display === 'list-item' && b.el) { this.paintMarker(b, dx, dy, alphaMul); }
 		if (b.el && b.el.localName === 'iframe' && b.el.__frame) { this.paintFrame(b, dx, dy); }
 		if (b.el && b.el.__tc) { paintTextControl(this, b, dx, dy); } else if (b.el && b.el.__tcSelect) { paintSelect(this, b, dx, dy); }
 		const lay = this.doc.__layout; const items = lay ? itemsOf(lay, b) : null; const cdx = dx - sx, cdy = dy - sy;

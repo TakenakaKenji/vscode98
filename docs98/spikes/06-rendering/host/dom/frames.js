@@ -9,7 +9,7 @@ import { MessageChannel, MessagePort, postMessageToWindow } from './messaging.js
 const AsyncFunction = Object.getPrototypeOf(async function () { }).constructor;
 const BLANK = '<!DOCTYPE html><html><head></head><body></body></html>';
 
-const logError = (m) => { const c = globalThis.console; (c && (c.error || c.log) || (() => { })).call(c, m); };
+const logError = (m) => { if (globalThis.__log98) { globalThis.__log98(m); return; } const c = globalThis.console; (c && (c.error || c.log) || (() => { })).call(c, m); };
 const resolveUrl = (href, base) => { try { return new URL(href, base).href; } catch { return String(href); } };
 const decode = (buf) => (typeof buf === 'string' ? buf : new TextDecoder().decode(buf));
 

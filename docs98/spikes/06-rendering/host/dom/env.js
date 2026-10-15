@@ -37,7 +37,7 @@ export class Document extends Node {
 	createDocumentFragment() { const f = new DocumentFragment(); f.ownerDocument = this; return f; } createRange() { return new D.Range(this); } createEvent(t) { return new D.Event(''); }
 	createTreeWalker(root, what, filter) { return new TreeWalker(root, what, filter); } createNodeIterator(root, what, filter) { return new NodeIterator(this, root, what, filter); }
 	get implementation() { const env = this.__env; return { createHTMLDocument(title) { const d = new Document(env); d.title = title ?? ''; return d; }, createDocument(ns, qname) { const d = new Document(env); for (const c of [...d.__children]) { d.__removeChild(c, false); } if (qname) { d.appendChild(d.__createElementNS(ns, qname)); } return d; }, hasFeature() { return true; } }; }
-	importNode(n, deep) { return n.cloneNode(deep); } adoptNode(n) { return n; } open() { } close() { } write() { } writeln() { }
+	importNode(n, deep) { const c = n.cloneNode(deep); D.adoptTree(c, this); return c; } adoptNode(n) { if (n.parentNode) { n.parentNode.__removeChild(n, true); } D.adoptTree(n, this); return n; } open() { } close() { } write() { } writeln() { }
 	elementFromPoint(x, y) { return this.__hitTest(x, y, 1)[0] ?? null; }
 	/** the innermost element at a point, through iframes */
 	__deepHit(x, y) { return deepHit(this, x, y); }
@@ -70,6 +70,7 @@ export class Document extends Node {
 	/** The caret position nearest to a point, as a collapsed Range in a text node (the editor's mouse hit-testing of text needs it): the text under the element at the point whose line contains `y`, nearest in x. */
 	caretRangeFromPoint(x, y) {
 		this.__ensureLayout(); const lay = this.__layout; const el = lay && this.elementFromPoint(x, y); if (!el) { return null; }
+		{ const bx = lay.boxOf.get(el); if (bx) { const r = this.__rect(el); x -= (r.left - bx.ax); y -= (r.top - bx.ay); } }   // fragment positions are in the unscrolled layout space
 		let best = null, bestD = Infinity;
 		const scan = (n) => { for (const c of n.__children) { if (c.nodeType === 3) { for (const f of lay.fragsByText.get(c) || []) { if (y < f.ay || y >= f.ay + f.asc + f.desc) { continue; } const w = this.__measure(f, f.text); const d = x < f.ax ? f.ax - x : x > f.ax + w ? x - f.ax - w : 0; if (d < bestD) { bestD = d; best = { node: c, f }; } } } else if (c.nodeType === 1) { scan(c); } } };
 		scan(el); const r = new D.Range(this);
@@ -138,7 +139,7 @@ export class Document extends Node {
 		let pts = [[raw.x, raw.y], [raw.x + raw.w, raw.y], [raw.x, raw.y + raw.h], [raw.x + raw.w, raw.y + raw.h]]; let sx = 0, sy = 0;
 		for (let b = box; b; b = b.parent) {
 			const v = b.v; if (b.matrix && b.el) { const m = b.matrix; const ox = b.ax + b.w / 2, oy = b.ay + b.h / 2; pts = pts.map(([x, y]) => { const dx = x - ox, dy = y - oy; return [ox + m[0] * dx + m[2] * dy + m[4], oy + m[1] * dx + m[3] * dy + m[5]]; }); }
-			if (b.parent && b.el && b.parent.el && (b.parent.el.__scrollTop || b.parent.el.__scrollLeft)) { const p = b.parent.el; const sc = p.__cs && p.__cs.values; if (sc && (sc['overflow-x'] !== 'visible' || sc['overflow-y'] !== 'visible') && b.pos !== 'fixed') { const cbIs = b.pos !== 'absolute' || (b.parent.pos !== 'static'); if (cbIs) { pts = pts.map(([x, y]) => [x - (p.__scrollLeft || 0), y - (p.__scrollTop || 0)]); } } }
+			if (b.parent && b.el && b.parent.el && (b.parent.el.__scrollTop || b.parent.el.__scrollLeft)) { const p = b.parent.el; const sc = p.__cs && p.__cs.values; if (sc && (sc['overflow-x'] !== 'visible' || sc['overflow-y'] !== 'visible' || p === this.documentElement) && b.pos !== 'fixed') { const cbIs = b.pos !== 'absolute' || (b.parent.pos !== 'static'); if (cbIs) { pts = pts.map(([x, y]) => [x - (p.__scrollLeft || 0), y - (p.__scrollTop || 0)]); } } }
 		}
 		const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]); const x0 = Math.min(...xs), y0 = Math.min(...ys); return new DOMRect(x0, y0, Math.max(...xs) - x0, Math.max(...ys) - y0);
 	}
@@ -159,7 +160,7 @@ export class Document extends Node {
 	__offsetParent(el) { const box = this.__boxFor(el); if (!box || el.localName === 'body' || el.localName === 'html') { return null; } if (box.pos === 'fixed') { return null; } const p = this.__offsetParentBox(box); return p ? p.el : this.body; }
 	__setScroll(el, axis, v) {
 		this.__ensureLayout(); const box = this.__layout.boxOf.get(el); let max = Infinity;
-		if (box) { const cs = box.v; if (axis === 'top') { max = Math.max(0, (box.scrollH || 0) - (box.h - box.bt - box.bb)); } else { max = Math.max(0, (box.scrollW || 0) - (box.w - box.bl - box.br)); } if (box.kind === 'inline') { max = 0; } if (cs['overflow-x'] === 'visible' && cs['overflow-y'] === 'visible' && el !== this.documentElement) { max = 0; } }
+		if (box) { const cs = box.v; if (axis === 'top') { max = Math.max(0, (box.scrollH || 0) - (box.h - box.bt - box.bb)); } else { max = Math.max(0, (box.scrollW || 0) - (box.w - box.bl - box.br)); } if (el === this.documentElement) { const env = this.__env; max = axis === 'top' ? Math.max(0, Math.max(box.h, box.scrollH || 0) - env.vh) : Math.max(0, Math.max(box.w, box.scrollW || 0) - env.vw); } if (box.kind === 'inline') { max = 0; } if (cs['overflow-x'] === 'visible' && cs['overflow-y'] === 'visible' && el !== this.documentElement) { max = 0; } }
 		v = Math.max(0, Math.min(v, max)); const key = axis === 'top' ? '__scrollTop' : '__scrollLeft'; if (el[key] !== v) { el[key] = v; if (el === this.documentElement) { this.dispatchEvent(new D.Event('scroll', { bubbles: true })); } else { el.dispatchEvent(new D.Event('scroll')); } }
 	}
 	__rangeRects(range) {

@@ -46,7 +46,7 @@ export class EventTarget {
 	addEventListener(type, fn, opts) { if (!fn) { return; } const capture = typeof opts === 'boolean' ? opts : !!(opts && opts.capture); const once = !!(opts && opts.once); const m = (this.__l ??= new Map()); let l = m.get(type); if (!l) { l = []; m.set(type, l); } if (l.some(e => e.fn === fn && e.capture === capture)) { return; } const e = { fn, capture, once, passive: !!(opts && opts.passive) }; l.push(e); if (opts && opts.signal) { opts.signal.addEventListener('abort', () => this.removeEventListener(type, fn, opts)); } }
 	removeEventListener(type, fn, opts) { const capture = typeof opts === 'boolean' ? opts : !!(opts && opts.capture); const l = this.__l && this.__l.get(type); if (!l) { return; } const i = l.findIndex(e => e.fn === fn && e.capture === capture); if (i >= 0) { l.splice(i, 1); } }
 	dispatchEvent(ev) {
-		ev.target = ev.target || this; const path = []; for (let n = this; n; n = n.__parentForEvents()) { path.push(n); }
+		if (!ev.target) { ev.target = this; } const path = []; for (let n = this; n; n = n.__parentForEvents()) { path.push(n); }
 		const run = (node, phase) => {
 			const l = node.__l && node.__l.get(ev.type); if (!l) { return; } ev.currentTarget = node; ev.eventPhase = node === ev.target ? 2 : phase;
 			for (const e of l.slice()) { if (ev._stopImm) { break; } if (node !== ev.target && e.capture !== (phase === 1)) { continue; } if (e.once) { node.removeEventListener(ev.type, e.fn, e.capture); } try { typeof e.fn === 'function' ? e.fn.call(node, ev) : e.fn.handleEvent(ev); } catch (err) { reportError(err); } }
@@ -58,10 +58,12 @@ export class EventTarget {
 	}
 	__parentForEvents() { return null; }
 }
-function reportError(e) { if (globalThis.console) { console.error('[event listener error]', e && (e.stack || e.message || e)); } }
+function reportError(e) { if (globalThis.__log98) { globalThis.__log98('[event listener error] ' + (e && (e + '\n' + (e.stack || '')))); return; } if (globalThis.console) { console.error('[event listener error]', e && (e.stack || e.message || e)); } }
 
 // ---- nodes ------------------------------------------------------------------------------------------------------------------------------------
 let nextId = 1;
+/** makes `node` and its descendants belong to document `doc` (cached styles of the old document are dropped) */
+function adoptTree(node, doc) { const walk = (n) => { n.ownerDocument = doc; if (n.nodeType === 1) { n.__cs = undefined; n.__sheet = undefined; } if (n.__children) { for (const c of n.__children) { walk(c); } } }; walk(node); }
 export class Node extends EventTarget {
 	constructor() { super(); this.parentNode = null; this.__children = []; this.ownerDocument = null; this.__id = nextId++; }
 	// `parentNode` is a plain own data property (fast: selector matching and layout read it constantly); the accessor on the prototype only exists so that code which looks it up there first (DOMPurify's lookupGetter on Element.prototype) finds a getter
@@ -86,6 +88,7 @@ export class Node extends EventTarget {
 		if (ref && ref.parentNode !== this) { throw new DOMException('The node before which the new node is to be inserted is not a child of this node.', 'NotFoundError'); }
 		if (node.contains && node.contains(this)) { throw new DOMException('The new child element contains the parent.', 'HierarchyRequestError'); }
 		if (node.parentNode) { node.parentNode.__removeChild(node, true); }
+		{ const dd = this.nodeType === 9 ? this : this.ownerDocument; if (dd && node.ownerDocument !== dd && node.nodeType !== 9) { adoptTree(node, dd); } }   // a node moved in from another document (DOMParser, template, another frame) belongs to this one now
 		const i = ref ? this.__children.indexOf(ref) : this.__children.length; this.__children.splice(i, 0, node); node.parentNode = this;
 		this.__invalidate('style', 'ins', node, i); this.__queueMutation({ type: 'childList', target: this, addedNodes: [node], removedNodes: [] }); node.__connectedChanged && node.__connectedChanged(this.isConnected); if (node.nodeType === 1 || node.nodeType === 11) { const dd = this.nodeType === 9 ? this : this.ownerDocument; if (dd && dd.__scanScripts && this.isConnected) { dd.__scanScripts(node); } } return node;
 	}
@@ -389,5 +392,5 @@ export class MutationObserver {
 		}
 	}
 }
-export { mixin, camel, dash, toNode, ParentNodeMixin };
+export { mixin, camel, dash, toNode, ParentNodeMixin, adoptTree };
 setEventCtors(Event, InputEvent);

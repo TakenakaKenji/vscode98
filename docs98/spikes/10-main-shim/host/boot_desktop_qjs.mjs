@@ -92,7 +92,7 @@ const env = installEnvironment({ width: W, height: H, opentype, readUrl: (u) => 
 { const pre = nodePath.join(appRoot, 'out', 'vs', 'workbench', 'contrib', 'webview', 'browser', 'pre'); const plain = env.fetchResource;
   env.fetchResource = (u) => {
 	u = String(u); let m;
-	if ((m = /^vscode-webview:\/\/[^/]*(\/[^?#]*)/.exec(u))) { return readBytes(nodePath.join(pre, decodeURIComponent(m[1]))); }
+	if ((m = /^vscode-webview:\/\/[^/]*(\/[^?#]*)/.exec(u))) { const f = nodePath.join(pre, decodeURIComponent(m[1])); if (opt('webview-debug', '0') === '1' && /index\.html$/.test(f)) { const t = std.loadFile(f).replace('function forwardKeyEvent(channel, e) {', "function forwardKeyEvent(channel, e) { __log98('FWD ' + channel + ' key=' + e.key + ' trusted=' + e.isTrusted);"); return new TextEncoder().encode(t).buffer; } return readBytes(f); }
 	if ((m = /^https?:\/\/file(?:%2B|\+)[^/]*\.vscode-resource\.vscode-cdn\.net(\/[^?#]*)/i.exec(u))) { let p = decodeURIComponent(m[1]); if (/^\/[A-Za-z]:/.test(p)) { p = p.slice(1); } return readBytes(p); }
 	if ((m = /^data:([^,]*),(.*)$/s.exec(u))) { const bytes = /;base64/.test(m[1]) ? Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0)) : new TextEncoder().encode(decodeURIComponent(m[2])); return bytes.buffer; }
 	return plain(u);
