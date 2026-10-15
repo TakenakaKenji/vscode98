@@ -60,9 +60,10 @@ const child = cp.fork(nodePath.join(here, 'run_main.mjs'), [appRoot, ...mainArgs
 log('[harness] forked main pid ' + child.pid); const echo = opt('echo-main', '0') === '1'; child.stdout.on('data', (d) => { mainLog.push(String(d)); if (echo) { std.err.puts('[main] ' + String(d)); } }); child.stderr.on('data', (d) => { mainLog.push(String(d)); if (echo) { std.err.puts('[main!] ' + String(d)); } });
 child.on('exit', (c, sig) => { mainLog.push(`[main exited ${c}]`); log('[harness] main process exited: code ' + c + ' signal ' + sig); });
 // ---- ipcRenderer transport
+const DEBUG_IPC = opt('debug-ipc', '0') === '1';   // log every message to and from main with a timestamp
 const listeners = new Map(), pending = new Map(); let nextInvoke = 1, wcId = 0;
 const ipc = {
-	send: (channel, ...args) => (opt('debug-ipc', '0') === '1' && log(`[ipc] send ${channel}`), child.send(encode({ t: 'send', wc: wcId, channel, args }))),
+	send: (channel, ...args) => (DEBUG_IPC && log(`[ipc] ${Date.now() % 1e7} send ${channel}`), child.send(encode({ t: 'send', wc: wcId, channel, args }))),
 	invoke: (channel, ...args) => new Promise((res, rej) => { const id = nextInvoke++; if (opt('debug-ipc', '0') === '1') { log(`[ipc] invoke ${channel}`); } pending.set(id, { res, rej }); child.send(encode({ t: 'invoke', id, wc: wcId, channel, args })); }),
 	on: (ch, fn) => { let l = listeners.get(ch); if (!l) { l = []; listeners.set(ch, l); } l.push(fn); },
 	once: (ch, fn) => { const w = (...a) => { ipc.off(ch, w); fn(...a); }; ipc.on(ch, w); },
@@ -73,6 +74,7 @@ if (Number(opt('pty-prewarm-ms', 20000)) > 0) { os.setTimeout(() => { try { ipc.
 const ports = new PortTable((m) => child.send(encode({ ...m, wc: wcId })));
 let onWindowLoad; const loadRequested = new Promise((r) => { onWindowLoad = r; }); let createOpts;
 child.on('message', (m0) => {
+	if (DEBUG_IPC) { const m1 = decode(m0); log(`[ipc] ${Date.now() % 1e7} recv ${m1 && m1.t} ${(m1 && m1.channel) || ''}`); }
 	const m = decode(m0);
 	if (m.t === 'createWindow') { createOpts = m; wcId = m.wc; }
 	else if (m.t === 'loadURL') { onWindowLoad(m); }
