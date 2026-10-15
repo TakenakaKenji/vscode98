@@ -29,7 +29,9 @@ export function contextItems(lay) {
 			else { walk(c, ctx); }
 		}
 	};
-	if (root) { walk(root, root); } return (lay.__ctxItems = map);
+	if (root) { walk(root, root); }
+	for (const l of map.values()) { l.neg.sort((a, b) => numZ(a) - numZ(b)); l.pos.sort((a, b) => numZ(a) - numZ(b)); }   // by z-index, equal ones stay in tree order (the sort is stable)
+	return (lay.__ctxItems = map);
 }
 const EMPTY = { neg: [], zero: [], pos: [] };
 export function itemsOf(lay, b) { return (b === lay.rootBox || createsContext(b) ? contextItems(lay).get(b) : null) || EMPTY; }
