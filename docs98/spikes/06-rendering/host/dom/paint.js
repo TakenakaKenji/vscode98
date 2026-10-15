@@ -105,6 +105,20 @@ export class JsBackend {
 			x += adv + ls + (cp === 32 ? wsp : 0);
 		}
 	}
+	/** draws a decoded image { w, h, data (RGBA) } scaled into the rectangle (x, y, w, h): bilinear when scaling, clipped */
+	drawImage(im, x, y, w, h, alphaMul = 1) {
+		if (w <= 0 || h <= 0 || !im) { return; } const c = this.clip; const x0 = Math.max(c[0], Math.round(x)), y0 = Math.max(c[1], Math.round(y)), x1 = Math.min(c[2], Math.round(x + w)), y1 = Math.min(c[3], Math.round(y + h)); if (x1 <= x0 || y1 <= y0) { return; }
+		const S = this.S, px = S.px, W = S.w, d = im.data, sx = im.w / w, sy = im.h / h;
+		for (let yy = y0; yy < y1; yy++) {
+			const fy = Math.min(im.h - 1, Math.max(0, (yy + 0.5 - y) * sy - 0.5)), iy = Math.floor(fy), ty = fy - iy, iy2 = Math.min(iy + 1, im.h - 1);
+			for (let xx = x0; xx < x1; xx++) {
+				const fx = Math.min(im.w - 1, Math.max(0, (xx + 0.5 - x) * sx - 0.5)), ix = Math.floor(fx), tx = fx - ix, ix2 = Math.min(ix + 1, im.w - 1); const a = (iy * im.w + ix) * 4, b = (iy * im.w + ix2) * 4, c2 = (iy2 * im.w + ix) * 4, e = (iy2 * im.w + ix2) * 4;
+				const w00 = (1 - tx) * (1 - ty), w10 = tx * (1 - ty), w01 = (1 - tx) * ty, w11 = tx * ty; const al = d[a + 3] * w00 + d[b + 3] * w10 + d[c2 + 3] * w01 + d[e + 3] * w11; if (al <= 0) { continue; }
+				const pa = (k) => d[a + k] * d[a + 3] * w00 + d[b + k] * d[b + 3] * w10 + d[c2 + k] * d[c2 + 3] * w01 + d[e + k] * d[e + 3] * w11;   // premultiplied interpolation
+				blend(px, (yy * W + xx) * 4, pa(0) / al, pa(1) / al, pa(2) / al, al / 255 * alphaMul);
+			}
+		}
+	}
 	pushLayer() { this.layers.push(this.S); this.S = new Surface(this.S.w, this.S.h); }
 	popLayer(alpha) { const sub = this.S; this.S = this.layers.pop(); for (let i = 0; i < sub.px.length; i += 4) { if (sub.px[i + 3]) { blend(this.S.px, i, sub.px[i], sub.px[i + 1], sub.px[i + 2], sub.px[i + 3] / 255 * alpha); } } }
 }
@@ -137,7 +151,7 @@ class Painter {
 		const x = (rectOverride ? rectOverride.x : b.ax) + dx, y = (rectOverride ? rectOverride.y : b.ay) + dy, w = rectOverride ? rectOverride.w : b.w, h = rectOverride ? rectOverride.h : b.h;
 		const radii = ['border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius'].map(k => { const r = v[k]; const l = typeof r === 'number' ? r : (r && r.pct !== undefined ? r.pct / 100 * Math.min(w, h) : 0); return l; });
 		if (v['background-color'] && v['background-color'][3] > 0) { this.fillRoundRect(x, y, w, h, radii, v['background-color'], alphaMul); }
-		if (v['background-image'] && v['background-image'] !== 'none') { note('background-image'); }
+		if (v['background-image'] && v['background-image'] !== 'none') { this.paintBackgroundImage(b, v, x, y, w, h, alphaMul); }
 		if (v['box-shadow'] && v['box-shadow'] !== 'none') { note('box-shadow'); } if (v['outline-style'] && v['outline-style'] !== 'none') { note('outline'); } if (v.filter && v.filter !== 'none') { note('filter'); }
 		const bt = b.bt, bb = b.bb, bl = b.bl, br = b.br; if (!(bt || bb || bl || br)) { return; }
 		if (radii.some(r => r > 0)) { note('rounded border (drawn square)'); }
@@ -148,6 +162,28 @@ class Painter {
 	paintBox(b, dx, dy, alphaMul) {
 		if (b.pos === 'fixed' && b.el) { this.resetClip(); const bc = this.baseClip; if (bc) { this.pushClip(bc[0], bc[1], bc[2], bc[3]); } try { this.paintBox0(b, dx, dy, alphaMul); } finally { if (bc) { this.popClip(); } this.popClip(); } return; }
 		this.paintBox0(b, dx, dy, alphaMul);
+	}
+	/** background-image: url(...) with background-size, -position and -repeat, drawn inside the padding box (gradients are not drawn) */
+	paintBackgroundImage(b, v, x, y, w, h, alphaMul) {
+		const m = /^url\(\s*(["']?)([\s\S]*?)\1\s*\)/i.exec(String(v['background-image']).trim()); if (!m) { note('gradient background'); return; }
+		const im = this.doc.__imageByUrl(m[2]); if (!im) { return; }
+		const ax = x + (b.bl || 0), ay = y + (b.bt || 0), aw = w - (b.bl || 0) - (b.br || 0), ah = h - (b.bt || 0) - (b.bb || 0); if (aw <= 0 || ah <= 0) { return; }
+		const num = (t, ref) => (t === undefined || t === 'auto' ? null : /%$/.test(t) ? parseFloat(t) / 100 * ref : parseFloat(t) * (/(em|rem)$/.test(t) ? (v['font-size'] || 16) : 1));
+		const st = String(v['background-size'] || 'auto').trim().toLowerCase().split(/\s+/); const nw = im.iw || im.w, nh = im.ih || im.h; let iw = nw, ih = nh;
+		if (st[0] === 'cover' || st[0] === 'contain') { const k = st[0] === 'cover' ? Math.max(aw / nw, ah / nh) : Math.min(aw / nw, ah / nh); iw = nw * k; ih = nh * k; }
+		else { const sw = num(st[0], aw), sh = num(st[1], ah); if (sw !== null && sh !== null) { iw = sw; ih = sh; } else if (sw !== null) { iw = sw; ih = sw * nh / nw; } else if (sh !== null) { ih = sh; iw = sh * nw / nh; } }
+		if (iw <= 0 || ih <= 0) { return; }
+		const pt = String(v['background-position'] || '0% 0%').trim().toLowerCase().split(/\s+/); const kx = { left: '0%', center: '50%', right: '100%' }, ky = { top: '0%', center: '50%', bottom: '100%' };
+		let px = pt[0], py = pt[1]; if (px === 'top' || px === 'bottom') { const t = px; px = py; py = t; } px = kx[px] ?? px; py = ky[py] ?? py ?? '50%'; if (pt.length === 1 && ky[pt[0]] && !kx[pt[0]]) { py = ky[pt[0]]; px = '50%'; }
+		const ox = /%$/.test(px) ? (aw - iw) * parseFloat(px) / 100 : parseFloat(px) || 0, oy = /%$/.test(py) ? (ah - ih) * parseFloat(py) / 100 : parseFloat(py) || 0;
+		const rep = String(v['background-repeat'] || 'repeat').toLowerCase(); const rx = rep === 'repeat' || rep === 'repeat-x' || rep === 'space' || rep === 'round', ry = rep === 'repeat' || rep === 'repeat-y' || rep === 'space' || rep === 'round';
+		const x0 = rx ? ax + ((ox % iw) - iw) % iw : ax + ox, y0 = ry ? ay + ((oy % ih) - ih) % ih : ay + oy;
+		this.pushClip(ax, ay, ax + aw, ay + ah); let n = 0;
+		try { for (let yy = y0; yy < ay + ah && n < 2500; yy += ry ? ih : 1e9) { for (let xx = x0; xx < ax + aw && n < 2500; xx += rx ? iw : 1e9) { this.b.drawImage(im, xx, yy, iw, ih, alphaMul); n++; } } } finally { this.popClip(); }
+	}
+	/** an <img>: the decoded picture scaled into the content box */
+	paintImage(b, dx, dy, alphaMul) {
+		if (b.v.visibility === 'hidden') { return; } const im = this.doc.__imageFor(b.el); if (!im) { return; } const x = b.ax + dx + b.bl + (b.pl || 0), y = b.ay + dy + b.bt + (b.pt || 0), w = b.w - b.hx, h = b.h - b.vy; if (w > 0 && h > 0) { this.b.drawImage(im, x, y, w, h, alphaMul); }
 	}
 	/** the list marker of a list item: bullet shapes and numbers, outside the content box next to the first line */
 	paintMarker(b, dx, dy, alphaMul) {
@@ -182,6 +218,7 @@ class Painter {
 		const clips = (v['overflow-x'] !== 'visible' || v['overflow-y'] !== 'visible'); const sx = b.el && b.el.__scrollLeft || 0, sy = b.el && b.el.__scrollTop || 0;
 		this.paintBackgroundAndBorders(b, dx, dy, 1);
 		if (v.display === 'list-item' && b.el) { this.paintMarker(b, dx, dy, alphaMul); }
+		if (b.el && b.el.localName === 'img') { this.paintImage(b, dx, dy, alphaMul); }
 		if (b.el && b.el.localName === 'iframe' && b.el.__frame) { this.paintFrame(b, dx, dy); }
 		if (b.el && b.el.__tc) { paintTextControl(this, b, dx, dy); } else if (b.el && b.el.__tcSelect) { paintSelect(this, b, dx, dy); }
 		const lay = this.doc.__layout; const items = lay ? itemsOf(lay, b) : null; const cdx = dx - sx, cdy = dy - sy;

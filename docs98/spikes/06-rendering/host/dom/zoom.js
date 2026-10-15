@@ -15,6 +15,7 @@ export class ScaledBackend {
 	fillRoundRect(x, y, w, h, radii, color, alphaMul = 1) { const z = this.z; this.b.fillRoundRect(x * z, y * z, w * z, h * z, radii && radii.map((r) => r * z), color, alphaMul); }
 	pushClip(x0, y0, x1, y1) { const z = this.z; this.b.pushClip(x0 * z, y0 * z, x1 * z, y1 * z); }
 	popClip() { this.b.popClip(); } resetClip() { this.b.resetClip(); } pushLayer() { this.b.pushLayer(); } popLayer(alpha) { this.b.popLayer(alpha); }
+	drawImage(im, x, y, w, h, alphaMul) { const z = this.z; this.b.drawImage(im, x * z, y * z, w * z, h * z, alphaMul); }
 	glyphRun(font, size, ls, wsp, x, by, color, alphaMul, text) { const z = this.z; this.b.glyphRun(font, size * z, ls * z, wsp * z, x * z, by * z, color, alphaMul, text); }
 	reset() { this.b.reset?.(); } finish() { return this.b.finish(); }
 }

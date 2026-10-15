@@ -245,7 +245,7 @@ export class Layout {
 	measure(font, text, size, ls, v) { let w = 0, prev = 0; const ws = v ? v['word-spacing'] : 0; for (const ch of text) { const cp = ch.codePointAt(0); w += advance(font, cp, size) + ls + (cp === 32 && typeof ws === 'number' ? ws : 0); if (ls === 0 && prev) { w += kern(font, prev, cp, size); } prev = cp; } return w; }
 	replacedSize(box) {
 		const el = box.el, n = el.localName, v = box.v; if (box.__rs) { return box.__rs; } let w = 0, h = 0; const attr = (a) => { const x = el.getAttribute(a); return x === null ? null : parseFloat(x); };
-		if (n === 'canvas') { w = attr('width') ?? 300; h = attr('height') ?? 150; } else if (n === 'img' || n === 'video' || n === 'svg' || n === 'iframe') { w = attr('width') ?? (n === 'iframe' ? 300 : 0); h = attr('height') ?? (n === 'iframe' ? 150 : 0); }
+		if (n === 'canvas') { w = attr('width') ?? 300; h = attr('height') ?? 150; } else if (n === 'img' || n === 'video' || n === 'svg' || n === 'iframe') { w = attr('width') ?? (n === 'iframe' ? 300 : 0); h = attr('height') ?? (n === 'iframe' ? 150 : 0); if (n === 'img') { const im = el.ownerDocument.__imageFor && el.ownerDocument.__imageFor(el); if (im) { const aw = attr('width'), ah = attr('height'); const nw = im.iw || im.w, nh = im.ih || im.h; w = aw ?? (ah !== null ? ah * nw / nh : nw); h = ah ?? (aw !== null ? aw * nh / nw : nh); box.__ratio = nh / nw; } } }
 		else if (n === 'input') { const t = (el.getAttribute('type') || 'text').toLowerCase(); if (t === 'checkbox' || t === 'radio') { w = h = 13; } else { w = 153; h = Math.round(fontMetrics(this.fontOf(box), v['font-size']).lineHeightNormal) + 6; } }
 		else if (n === 'textarea') { const cols = attr('cols') ?? 20, rows = attr('rows') ?? 2; const font = this.fontOf(box); w = cols * advance(font, 48, v['font-size']) + 8; h = rows * fontMetrics(font, v['font-size']).lineHeightNormal + 6; }
 		else if (n === 'select') { const font = this.fontOf(box), fs = v['font-size']; const opts = optionList(el); let mw = 0; for (const o of opts) { mw = Math.max(mw, this.measure(font, o.text, fs, 0, v)); } const lh = Math.round(fontMetrics(font, fs).lineHeightNormal); const rows = el.hasAttribute('multiple') ? Math.max(1, parseInt(el.getAttribute('size') ?? '4', 10) || 4) : parseInt(el.getAttribute('size') ?? '1', 10) || 1; w = Math.round(mw) + 28; h = rows > 1 ? rows * lh + 4 : lh + 6; }
@@ -271,7 +271,7 @@ export class Layout {
 		const res = { mtOut: box.mt, mbOut: box.mb };
 		let contentH;
 		const savedCbw = this.curCbw; this.curCbw = cw;
-		if (box.replaced) { const rs = this.replacedSize(box); if (wSpec.size === null && opts.forceW === undefined) { cw = this.clampSize(wSpec, rs.w); } contentH = ch ?? this.clampSize(hSpec, rs.h); }
+		if (box.replaced) { const rs = this.replacedSize(box); if (wSpec.size === null && opts.forceW === undefined) { cw = this.clampSize(wSpec, rs.w); } contentH = ch ?? this.clampSize(hSpec, box.__ratio && cw > 0 ? cw * box.__ratio : rs.h); }
 		else if (box.kind === 'flex' || (box.display === 'inline-flex')) { contentH = this.layoutFlex(box, cw, ch); }
 		else { contentH = this.layoutFlow(box, cw, ch, res); }
 		this.curCbw = savedCbw;

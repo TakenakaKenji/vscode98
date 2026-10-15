@@ -5,7 +5,8 @@ import * as nr from 'spike:render';
 import { nativeFontId, ensureAdvances, ensureOutline } from './native_fonts.js';
 import { textGamma } from '../../06-rendering/host/dom/paint.js';
 
-const OP_FILL_RECT = 1, OP_FILL_RRECT = 2, OP_PUSH_CLIP = 3, OP_POP_CLIP = 4, OP_PUSH_LAYER = 5, OP_POP_LAYER = 6, OP_GLYPH_RUN = 7, OP_RESET_CLIP = 8;
+const OP_FILL_RECT = 1, OP_FILL_RRECT = 2, OP_PUSH_CLIP = 3, OP_POP_CLIP = 4, OP_PUSH_LAYER = 5, OP_POP_LAYER = 6, OP_GLYPH_RUN = 7, OP_RESET_CLIP = 8, OP_DRAW_IMAGE = 9;
+let nextImageId = 1; const imageIds = new WeakMap();   // decoded images are copied to C once and referred to by id afterwards
 
 export class NativeBackend {
 	/** exact: use the double-precision rasterizer (byte-identical to the JS backend); default is the integer rasterizer */
@@ -28,6 +29,10 @@ export class NativeBackend {
 	resetClip() { this.reserve(1); this.buf[this.n++] = OP_RESET_CLIP; this.commands++; }
 	pushLayer() { this.reserve(1); this.buf[this.n++] = OP_PUSH_LAYER; this.commands++; }
 	popLayer(alpha) { this.reserve(2); this.buf[this.n++] = OP_POP_LAYER; this.buf[this.n++] = alpha; this.commands++; }
+	drawImage(im, x, y, w, h, alphaMul = 1) {
+		if (!im || w <= 0 || h <= 0) { return; } let id = imageIds.get(im); if (id === undefined) { id = nextImageId++; imageIds.set(im, id); nr.registerImage(id, im.w, im.h, im.data); }
+		this.reserve(8); const b = this.buf; let n = this.n; b[n++] = OP_DRAW_IMAGE; b[n++] = id; b[n++] = x; b[n++] = y; b[n++] = w; b[n++] = h; b[n++] = alphaMul; this.n = n; this.commands++;
+	}
 	glyphRun(font, size, ls, wsp, x, by, color, alphaMul, text) {
 		const id = nativeFontId(font); ensureAdvances(font, id, text); const cps = []; const out = font.__nout;
 		for (const ch of text) { const cp = ch.codePointAt(0); if (cp !== 32 && cp !== 160 && cp !== 9 && !out.has(cp)) { ensureOutline(font, id, cp); } cps.push(cp); }

@@ -224,7 +224,7 @@ static void layout_block(Box *b, double cbw, double cbh, Opts o) {
 	if (!o.hasForceW && (b->kind == K_BLOCK || b->kind == K_FLEX) && (b->autoML || b->autoMR)) { double rem = cbw - cw - b->hx - (b->autoML ? 0 : b->ml) - (b->autoMR ? 0 : b->mr); if (b->autoML && b->autoMR) { b->ml = dmax(0, rem / 2); b->mr = rem < 0 ? rem : b->ml; } else if (b->autoML) { b->ml = dmax(0, rem); } else { b->mr = dmax(0, rem); } }
 	double ch = NAN; if (o.hasForceH) { ch = dmax(0, o.forceH - b->vy); } else if (hSpec.hasSize) { ch = clamp_size(&hSpec, hSpec.size); }
 	Res res = { b->mt, b->mb }; double contentH; double savedCbw = G.curCbw; int savedHas = G.hasCurCbw; G.curCbw = cw; G.hasCurCbw = 1;
-	if (b->replaced) { if (!wSpec.hasSize && !o.hasForceW) { cw = clamp_size(&wSpec, b->s[F_REPLW]); } contentH = !isnan(ch) ? ch : clamp_size(&hSpec, b->s[F_REPLH]); }
+	if (b->replaced) { if (!wSpec.hasSize && !o.hasForceW) { cw = clamp_size(&wSpec, b->s[F_REPLW]); } contentH = !isnan(ch) ? ch : ((b->flags & 16) && cw > 0 && b->s[F_REPLW] > 0 ? clamp_size(&hSpec, cw * b->s[F_REPLH] / b->s[F_REPLW]) : clamp_size(&hSpec, b->s[F_REPLH])); }
 	else if (b->kind == K_FLEX || b->display == 2) { contentH = layout_flex(b, cw, ch); }
 	else { contentH = layout_flow(b, cw, ch, &res); }
 	G.curCbw = savedCbw; G.hasCurCbw = savedHas;

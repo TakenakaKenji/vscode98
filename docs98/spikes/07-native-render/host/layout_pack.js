@@ -83,7 +83,7 @@ export function packTree(lay, rootBox, pk = new Pack()) {
 		a[o + F.LS] = typeof v['letter-spacing'] === 'number' ? v['letter-spacing'] : 0; a[o + F.WSP] = typeof v['word-spacing'] === 'number' ? v['word-spacing'] : 0; a[o + F.TTRANSFORM] = TTR[v['text-transform']] ?? 0;
 		const fs = v['font-size']; a[o + F.FSIZE] = fs; const l = v['line-height']; let lh = NaN; if (l !== 'normal' && l !== undefined) { if (l && l.num !== undefined) { lh = l.num * fs; } else { const r = putLhResolve(l, fs); lh = r === null ? NaN : r; } } a[o + F.LH] = lh;
 		const font = resolveFont(v['font-family'], v['font-weight'], v['font-style']); a[o + F.FONT] = nativeFontId(font);
-		if (b.replaced) { const rs = lay.replacedSize(b); a[o + F.REPLW] = rs.w; a[o + F.REPLH] = rs.h; }
+		if (b.replaced) { const rs = lay.replacedSize(b); a[o + F.REPLW] = rs.w; a[o + F.REPLH] = rs.h; if (b.__ratio) { a[o + F.FLAGS] += 16; } }
 		if (usable && globalThis.__packVerify) { const g = globalThis.__packStats ??= { checked: 0, bad: 0 }; g.checked++; for (let k = 0; k < F.STRIDE; k++) { if (k !== F.PARENT && !Object.is(a[o + k], hit.data[k])) { g.bad++; break; } } }
 		else if (pk.nc === nc0 && !b.anon && !b.replaced) { recCache.set(v, { kind: b.kind, display: d, flags: (b.oof ? 1 : 0) | (b.replaced ? 2 : 0) | (b.pseudo ? 4 : 0), data: a.slice(o, o + F.STRIDE) }); }
 		for (const c of b.children) { walk(c, i); }

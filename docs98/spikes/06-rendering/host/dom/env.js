@@ -7,12 +7,24 @@ import { isHoisted, itemsOf } from './stacking.js';
 import { CSSStyleSheet, serializeValue, parseColor, PROPS, resolveLen } from './css.js';
 import { Layout } from './layout.js';
 import { iframeProps, syncFrames, deepHit, splitHtml, mountMarkup } from './frames.js';
+import { decodeImage } from './images.js';
 import { resolveFont, fontMetrics, advance, registerFontFace, setOpentype } from './fonts.js';
 import { parseSelector, matches } from './selectors.js';
 
 const { Node, Element, Text, Comment, DocumentFragment, EventTarget, tagClasses, SVG_NS, HTMLElement, SVGElement, HTMLUnknownElement, mixin, noteMissing } = D;
 const XHTML = 'http://www.w3.org/1999/xhtml';
 D.mixin(D.HTMLIFrameElement, iframeProps);
+D.mixin(D.HTMLImageElement, {
+	get naturalWidth() { const i = this.ownerDocument.__imageFor(this); return i ? (i.iw || i.w) : 0; }, get naturalHeight() { const i = this.ownerDocument.__imageFor(this); return i ? (i.ih || i.h) : 0; },
+	get complete() { return true; }, get currentSrc() { return this.getAttribute('src') ?? ''; },
+	get width() { const a = parseFloat(this.getAttribute('width')); if (!Number.isNaN(a)) { return a; } const i = this.ownerDocument.__imageFor(this); return i ? (i.iw || i.w) : 0; }, set width(v) { this.setAttribute('width', v); },
+	get height() { const a = parseFloat(this.getAttribute('height')); if (!Number.isNaN(a)) { return a; } const i = this.ownerDocument.__imageFor(this); return i ? (i.ih || i.h) : 0; }, set height(v) { this.setAttribute('height', v); },
+	get x() { return 0; }, get y() { return 0; }, get crossOrigin() { return this.getAttribute('crossorigin'); }, set crossOrigin(v) { this.setAttribute('crossorigin', v); }, get decoding() { return 'auto'; }, set decoding(v) { }, get loading() { return 'eager'; }, set loading(v) { },
+	decode() { const i = this.ownerDocument.__imageFor(this); return i ? Promise.resolve() : Promise.reject(new D.DOMException('The source image cannot be decoded.', 'EncodingError')); },
+	/** a new source starts loading at once (new Image(); img.src = ...), the others when first laid out */
+	__attrHook(n) { if (n === 'src') { this.__imgSrc = undefined; this.ownerDocument.__imageFor(this); } },
+});
+const imageCache = new Map();   // url -> decoded image or null (failed)
 
 class DOMRect { constructor(x = 0, y = 0, w = 0, h = 0) { this.x = x; this.y = y; this.width = w; this.height = h; this.top = h < 0 ? y + h : y; this.left = w < 0 ? x + w : x; this.right = Math.max(x, x + w); this.bottom = Math.max(y, y + h); } toJSON() { return { x: this.x, y: this.y, width: this.width, height: this.height, top: this.top, right: this.right, bottom: this.bottom, left: this.left }; } static fromRect(r = {}) { return new DOMRect(r.x, r.y, r.width, r.height); } }
 
@@ -108,6 +120,17 @@ export class Document extends Node {
 				run(text, src); s.dispatchEvent(new D.Event('load'));
 			}, 0);
 		}
+	}
+	/** the decoded picture at a URL (relative to the document), or null; cached across documents */
+	__imageByUrl(src) {
+		let url; try { url = new URL(src, this.baseURI).href; } catch { url = src; }
+		let im = imageCache.get(url); if (im === undefined) { try { im = decodeImage(this.__env.fetchResource(url)); } catch (e) { im = null; if (globalThis.__log98) { globalThis.__log98('[image] ' + url.slice(0, 120) + ': ' + (e && (e.message + ' ' + String(e.stack).split('\n').slice(0, 3).join(' | ')))); } } if (imageCache.size > 200) { imageCache.clear(); } imageCache.set(url, im); }
+		return im;
+	}
+	/** the decoded picture of an <img> (loaded synchronously on first use; `load` or `error` is dispatched as a task) or null */
+	__imageFor(el) {
+		const src = el.getAttribute('src'); if (!src) { return null; } if (el.__imgSrc === src) { return el.__img || null; }
+		el.__imgSrc = src; const im = this.__imageByUrl(src); el.__img = im; setTimeout(() => { el.dispatchEvent(new D.Event(im ? 'load' : 'error')); }, 0); return im;
 	}
 	__ensureLayout() {
 		const env = this.__env;

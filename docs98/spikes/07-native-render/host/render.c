@@ -193,7 +193,34 @@ static void glyph_run(Ctx *c, int fontId, double size, double ls, double wsp, do
 #include "raster_int.h"
 
 /* ---------------------------------------------------------------- command stream */
-enum { OP_FILL_RECT = 1, OP_FILL_RRECT, OP_PUSH_CLIP, OP_POP_CLIP, OP_PUSH_LAYER, OP_POP_LAYER, OP_GLYPH_RUN, OP_RESET_CLIP };
+enum { OP_FILL_RECT = 1, OP_FILL_RRECT, OP_PUSH_CLIP, OP_POP_CLIP, OP_PUSH_LAYER, OP_POP_LAYER, OP_GLYPH_RUN, OP_RESET_CLIP, OP_DRAW_IMAGE };
+/* ---- images: registered once by JavaScript (straight-alpha RGBA), drawn scaled with bilinear sampling (16.16 fixed point), clipped, composited like a rectangle of per-pixel alpha */
+static int get_u8(JSContext *ctx, JSValueConst v, uint8_t **out, size_t *count);
+typedef struct { int w, h; uint8_t *rgba; } Image;
+#define MAX_IMAGES 4096
+static Image images[MAX_IMAGES];
+static void draw_image(Ctx *c, int id, double x, double y, double w, double h, double alphaMul) {
+	if (id <= 0 || id >= MAX_IMAGES || !images[id].rgba || w <= 0 || h <= 0) { return; } const Image *im = &images[id]; const double *cl = c->clips[c->nclips - 1].c;
+	int x0 = (int)fmax(cl[0], floor(x + 0.5)), y0 = (int)fmax(cl[1], floor(y + 0.5)), x1 = (int)fmin(cl[2], floor(x + w + 0.5)), y1 = (int)fmin(cl[3], floor(y + h + 0.5)); Surf *S = cur(c);
+	if (x0 < S->bx0) { x0 = S->bx0; } if (y0 < S->by0) { y0 = S->by0; } if (x1 > S->bx1) { x1 = S->bx1; } if (y1 > S->by1) { y1 = S->by1; } if (x1 <= x0 || y1 <= y0) { return; }
+	touch(S, x0, y0, x1, y1); int am = (int)(alphaMul * 256 + 0.5); if (am > 256) { am = 256; } double sx = im->w / w, sy = im->h / h;
+	for (int yy = y0; yy < y1; yy++) {
+		double fy = (yy + 0.5 - y) * sy - 0.5; if (fy < 0) { fy = 0; } if (fy > im->h - 1) { fy = im->h - 1; } int iy = (int)fy, iy2 = iy + 1 < im->h ? iy + 1 : iy; int ty = (int)((fy - iy) * 256); uint8_t *row = S->px + (size_t)yy * S->w * 4;
+		for (int xx = x0; xx < x1; xx++) {
+			double fx = (xx + 0.5 - x) * sx - 0.5; if (fx < 0) { fx = 0; } if (fx > im->w - 1) { fx = im->w - 1; } int ix = (int)fx, ix2 = ix + 1 < im->w ? ix + 1 : ix; int tx = (int)((fx - ix) * 256);
+			const uint8_t *p00 = im->rgba + ((size_t)iy * im->w + ix) * 4, *p10 = im->rgba + ((size_t)iy * im->w + ix2) * 4, *p01 = im->rgba + ((size_t)iy2 * im->w + ix) * 4, *p11 = im->rgba + ((size_t)iy2 * im->w + ix2) * 4;
+			int w00 = (256 - tx) * (256 - ty), w10 = tx * (256 - ty), w01 = (256 - tx) * ty, w11 = tx * ty;   /* sum 65536 */
+			int a00 = p00[3] * w00, a10 = p10[3] * w10, a01 = p01[3] * w01, a11 = p11[3] * w11; int asum = a00 + a10 + a01 + a11; if (asum <= 0) { continue; }
+			int r = (int)(((int64_t)p00[0] * a00 + (int64_t)p10[0] * a10 + (int64_t)p01[0] * a01 + (int64_t)p11[0] * a11) / asum), g = (int)(((int64_t)p00[1] * a00 + (int64_t)p10[1] * a10 + (int64_t)p01[1] * a01 + (int64_t)p11[1] * a11) / asum), b = (int)(((int64_t)p00[2] * a00 + (int64_t)p10[2] * a10 + (int64_t)p01[2] * a01 + (int64_t)p11[2] * a11) / asum);
+			int a = (int)(((int64_t)asum * am) >> 24); if (a > 255) { a = 255; } blend_i(row + (size_t)xx * 4, r, g, b, a);
+		}
+	}
+}
+static JSValue js_register_image(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) {
+	int id, w, h; JS_ToInt32(ctx, &id, argv[0]); JS_ToInt32(ctx, &w, argv[1]); JS_ToInt32(ctx, &h, argv[2]); uint8_t *p; size_t n; if (get_u8(ctx, argv[3], &p, &n) < 0 || n < (size_t)w * h * 4) { return JS_ThrowTypeError(ctx, "RGBA Uint8Array expected"); }
+	if (id <= 0 || id >= MAX_IMAGES) { return JS_ThrowRangeError(ctx, "image id"); } free(images[id].rgba); images[id].w = w; images[id].h = h; images[id].rgba = (uint8_t *)malloc((size_t)w * h * 4); memcpy(images[id].rgba, p, (size_t)w * h * 4); return JS_UNDEFINED;
+}
+static JSValue js_free_image(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv) { int id; JS_ToInt32(ctx, &id, argv[0]); if (id > 0 && id < MAX_IMAGES) { free(images[id].rgba); images[id].rgba = NULL; } return JS_UNDEFINED; }
 static int get_f64(JSContext *ctx, JSValueConst v, double **out, size_t *count) {
 	size_t off, len, bpe; JSValue buf = JS_GetTypedArrayBuffer(ctx, v, &off, &len, &bpe); if (JS_IsException(buf)) { return -1; }
 	size_t sz; uint8_t *p = JS_GetArrayBuffer(ctx, &sz, buf); JS_FreeValue(ctx, buf); if (!p) { return -1; }
@@ -236,7 +263,7 @@ static JSValue js_execute(JSContext *ctx, JSValueConst t, int argc, JSValueConst
 	double *cmd; size_t cn; if (get_f64(ctx, argv[3], &cmd, &cn) < 0) { return JS_EXCEPTION; }
 	if (pn < (size_t)w * h * 4 || (size_t)count > cn) { return JS_ThrowRangeError(ctx, "buffer too small"); }
 	if (!gamma_init) { for (int i = 0; i < 256; i++) { GAMMA[i] = (uint8_t)i; } gamma_init = 1; }
-	int mode = 0; if (argc > 5) { JS_ToInt32(ctx, &mode, argv[5]); } int prof = (mode & 2) != 0; mode &= 1; double opNs[8] = { 0 }; long opN[8] = { 0 }; struct timespec ts0, ts1;
+	int mode = 0; if (argc > 5) { JS_ToInt32(ctx, &mode, argv[5]); } int prof = (mode & 2) != 0; mode &= 1; double opNs[16] = { 0 }; long opN[16] = { 0 }; struct timespec ts0, ts1;
 	Ctx *c = (Ctx *)calloc(1, sizeof(Ctx)); c->integer = mode == 1; c->s.px = px; c->s.w = w; c->s.h = h; c->s.bx0 = 0; c->s.by0 = 0; c->s.bx1 = w; c->s.by1 = h; c->nclips = 1; c->clips[0].c[0] = 0; c->clips[0].c[1] = 0; c->clips[0].c[2] = w; c->clips[0].c[3] = h;
 	for (int i = 0; i < count;) {
 		int op = (int)cmd[i++]; if (prof) { prof_now(&ts0); }
@@ -250,6 +277,7 @@ static JSValue js_execute(JSContext *ctx, JSValueConst t, int argc, JSValueConst
 			Surf *L = &c->layers[c->nlayers++]; int rw = bx1 - bx0, rh = by1 - by0; L->base = layer_alloc((size_t)(rw ? rw : 1) * (rh ? rh : 1) * 4, &L->cap); L->w = rw; L->h = rh; L->bx0 = bx0; L->by0 = by0; L->bx1 = bx1; L->by1 = by1; L->tx0 = bx1; L->ty0 = by1; L->tx1 = bx0; L->ty1 = by0; L->px = L->base - ((size_t)by0 * rw + bx0) * 4; } break;
 		case OP_POP_LAYER: { double alpha = cmd[i++]; if (c->integer) { pop_layer_i(c, alpha); break; } if (c->nlayers) { Surf sub = c->layers[--c->nlayers]; Surf *d = cur(c); for (int yy = sub.by0; yy < sub.by1; yy++) { for (int xx = sub.bx0; xx < sub.bx1; xx++) { const uint8_t *sp = sub.px + ((size_t)yy * sub.w + xx) * 4; if (sp[3]) { blend(d->px, ((size_t)yy * d->w + xx) * 4, sp[0], sp[1], sp[2], sp[3] / 255.0 * alpha); } } } free(sub.base); } break; }
 		case OP_GLYPH_RUN: { int fid = (int)cmd[i]; int n = (int)cmd[i + 11]; (c->integer ? glyph_run_i : glyph_run)(c, fid, cmd[i + 1], cmd[i + 2], cmd[i + 3], cmd[i + 4], cmd[i + 5], &cmd[i + 6], cmd[i + 10], n, &cmd[i + 12]); i += 12 + n; break; }
+		case OP_DRAW_IMAGE: draw_image(c, (int)cmd[i], cmd[i + 1], cmd[i + 2], cmd[i + 3], cmd[i + 4], cmd[i + 5]); i += 6; break;
 		default: free(c); return JS_ThrowRangeError(ctx, "bad opcode %d at %d", op, i - 1);
 		}
 		if (prof) { prof_now(&ts1); opNs[op] += (ts1.tv_sec - ts0.tv_sec) * 1e9 + (ts1.tv_nsec - ts0.tv_nsec); opN[op]++; }
@@ -261,7 +289,7 @@ static JSValue js_execute(JSContext *ctx, JSValueConst t, int argc, JSValueConst
 
 static const JSCFunctionListEntry funcs[] = {
 	JS_CFUNC_DEF("registerFont", 4, js_register_font), JS_CFUNC_DEF("provideAdvance", 3, js_provide_advance), JS_CFUNC_DEF("provideOutline", 3, js_provide_outline), JS_CFUNC_DEF("provideKern", 4, js_provide_kern),
-	JS_CFUNC_DEF("setGamma", 1, js_set_gamma), JS_CFUNC_DEF("execute", 6, js_execute),
+	JS_CFUNC_DEF("setGamma", 1, js_set_gamma), JS_CFUNC_DEF("execute", 6, js_execute), JS_CFUNC_DEF("registerImage", 4, js_register_image), JS_CFUNC_DEF("freeImage", 1, js_free_image),
 };
 static int render_init(JSContext *ctx, JSModuleDef *m) { return JS_SetModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); }
 /* x87: make doubles behave as IEEE doubles (53-bit mantissa) instead of 80-bit extended, as ECMAScript requires and as SSE2 does */
