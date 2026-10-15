@@ -1,4 +1,4 @@
-// Feature scenario: more of the workbench: the diff editor (SCM), color themes, diagnostics, go to definition, formatting, folding, multi-cursor, word wrap, the Welcome page.
+// Feature scenario: more of the workbench: the diff editor (SCM), color themes, diagnostics, go to definition, formatting, folding, multi-cursor, word wrap, syntax highlighting, the Welcome page.
 import { createRig } from './scenario_lib.mjs';
 import * as std from 'qjs:std';
 export async function run(ctx) { try { await run0(ctx); } catch (e) { ctx.log('more: failed ' + (e && e.stack || e)); } }
@@ -42,6 +42,11 @@ async function run0(ctx) {
 	});
 	await guard('multicursor', async () => {
 		await rig.key('Home', { ctrl: true, rounds: 20 }); await rig.key('f', { ctrl: true, rounds: 30 }); await rig.key('Escape'); await rig.key('End', { shift: true, rounds: 10 }); await rig.key('d', { ctrl: true, rounds: 30 }); const cursors = rig.$$('.cursors-layer .cursor').filter((c) => c.getBoundingClientRect().width > 0).length; log('more: cursors ' + cursors); check('ctrl+d adds a selection (multi-cursor)', cursors >= 1);
+	});
+	await guard('highlight', async () => {
+		write('hl.js', '// comment\nfunction add(a, b) {\n\treturn a + b;\n}\nconst s = "str" + 12;\n'); await openFile('hl.js'); await rig.waitFor(() => rig.$$('.editor-instance .view-line span span').length > 5, 40); await rig.settle(40, 60);
+		const cls = new Set(rig.$$('.editor-instance .view-line span span').map((e) => e.className).filter((c) => /^mtk\d+/.test(c))); check('syntax highlighting: several token colors', cls.size >= 5, [...cls].join(','));
+		const colors = new Set(rig.$$('.editor-instance .view-line span span').map((e) => ctx.env.window.getComputedStyle(e).color)); check('syntax highlighting: several computed colors', colors.size >= 4, [...colors].join(' ')); rig.shot('more_highlight');
 	});
 	await guard('wrap', async () => { await rig.key('z', { alt: true, rounds: 40 }); await rig.settle(20, 30); check('alt+z runs without error', true); });
 	await guard('welcome', async () => {

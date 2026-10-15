@@ -29,6 +29,7 @@ export function installWebShims(env, { baseUrl, readFile }) {
 	force('Headers', Headers); force('Response', Response); force('Request', Request);
 	force('fetch', async (input, init) => { const url = typeof input === 'string' ? input : input.url; const prefix = baseUrl + '/out/';
 		if (readFile && url.startsWith(prefix)) { try { const p = url.slice(prefix.length).replace(/[?#].*$/, ''); return new Response(readFile(p), { url, headers: { 'content-type': p.endsWith('.json') ? 'application/json' : 'application/octet-stream' } }); } catch (e) { return new Response('not found', { status: 404, url }); } }
+		if (g.__onig98 && /\/vscode-oniguruma\/release\/onig\.wasm(?:[?#]|$)/.test(url)) { return new Response(new Uint8Array(8), { url }); }   // never compiled: the native engine replaces it
 		throw new TypeError('Failed to fetch (offline): ' + url); });
 	// ---- misc constructors a browser has
 	def('Blob', class { constructor(parts = [], o = {}) { this.parts = parts; this.type = o.type || ''; this.size = parts.reduce((n, p) => n + (typeof p === 'string' ? p.length : p.byteLength ?? p.size ?? 0), 0); } async text() { return this.parts.map(p => typeof p === 'string' ? p : new TextDecoder().decode(p)).join(''); } async arrayBuffer() { return new TextEncoder().encode(await this.text()).buffer; } slice() { return this; } });

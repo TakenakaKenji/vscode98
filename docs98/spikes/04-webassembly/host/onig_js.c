@@ -123,7 +123,9 @@ done:
 		return 0; }
 
 DEFINE_MODULE(native, onig_engine_native)
+#ifndef ONIG_NO_W2C
 DEFINE_MODULE(wasm2c, onig_engine_wasm2c)
+#endif
 
 static const JSCFunctionListEntry str_funcs[] = { JS_CGETSET_DEF("content", ostr_content, NULL), JS_CGETSET_DEF("utf8Length", ostr_u8len, NULL), JS_CGETSET_DEF("utf16Length", ostr_u16len, NULL), JS_CFUNC_DEF("dispose", 0, ostr_dispose) };
 static const JSCFunctionListEntry scanner_funcs[] = { JS_CFUNC_DEF("findNextMatchSync", 3, scanner_find), JS_CFUNC_DEF("dispose", 0, scanner_dispose) };
@@ -138,5 +140,8 @@ void spike_init_onig(JSContext *ctx) {
 	JS_NewClass(rt, str_cid, &str_class); JS_NewClass(rt, scanner_cid, &scanner_class);
 	JSValue sp = JS_NewObject(ctx); JS_SetPropertyFunctionList(ctx, sp, str_funcs, sizeof str_funcs / sizeof *str_funcs); JS_SetClassProto(ctx, str_cid, sp);
 	JSValue cp = JS_NewObject(ctx); JS_SetPropertyFunctionList(ctx, cp, scanner_funcs, sizeof scanner_funcs / sizeof *scanner_funcs); JS_SetClassProto(ctx, scanner_cid, cp);
-	add_module(ctx, "spike:onig-native", native_init); add_module(ctx, "spike:onig-wasm2c", wasm2c_init);
+	add_module(ctx, "spike:onig-native", native_init);
+#ifndef ONIG_NO_W2C
+	add_module(ctx, "spike:onig-wasm2c", wasm2c_init);
+#endif
 }

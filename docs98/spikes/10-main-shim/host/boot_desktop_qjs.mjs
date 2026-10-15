@@ -22,6 +22,7 @@ import { installWebShims, resolveUrl, absolutizeCssUrls } from '../../08-workben
 import { summarizeRun, runScenario } from '../../08-workbench-boot/host/boot_common.js';
 import './error_stack98.js';
 import { installPreload } from './preload98.js';
+import { ONIG_SHIM_SOURCE } from './onig_shim98.js';
 import { PortTable } from './ports98.js';
 import { encode, decode } from './codec98.js';
 
@@ -87,7 +88,10 @@ log(`[harness] main created a window and asked to load ${load.url} after ${Math.
 const pageFile = fileOf(load.url);
 const BASE = 'vscode-file://vscode-app' + pathToFileURL(appRoot).pathname;
 { const fd = opt('font-dir', nodePath.join(nodePath.dirname(appRoot), 'fonts')); if (os.stat(fd)[1] === 0) { globalThis.__fontRoot = fd.replace(/\\/g, '/'); log('[harness] fonts: ' + globalThis.__fontRoot); } else { log('[harness] no font directory at ' + fd + ': the system font paths of the Linux host are used'); } }
-const env = installEnvironment({ width: W, height: H, opentype, readUrl: (u) => readBytes(fileOf(u)) }); const doc = env.document;
+// native Oniguruma for TextMate grammars (the host has no WebAssembly to run vscode-oniguruma's onig.wasm); older hosts without the module have no syntax highlighting
+try { globalThis.__onig98 = await import('spike:onig-native'); log('[harness] native oniguruma: ' + globalThis.__onig98.engine); } catch (e) { log('[harness] no native oniguruma (' + (e && e.message || e) + '): no syntax highlighting'); }
+const onigShim = globalThis.__onig98 ? new TextEncoder().encode(ONIG_SHIM_SOURCE).buffer : null;
+const env = installEnvironment({ width: W, height: H, opentype, readUrl: (u) => (onigShim && /\/vscode-oniguruma\/release\/main\.js(?:[?#]|$)/.test(u) ? onigShim : readBytes(fileOf(u))) }); const doc = env.document;
 // resources of iframes (webviews): vscode-webview://<id>/<file> is the webview shell of the workbench, https://file+.vscode-resource.vscode-cdn.net/<path> a local file of an extension or the workspace (what a service worker would fetch through the host), data: URLs are decoded
 { const pre = nodePath.join(appRoot, 'out', 'vs', 'workbench', 'contrib', 'webview', 'browser', 'pre'); const plain = env.fetchResource;
   env.fetchResource = (u) => {

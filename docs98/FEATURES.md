@@ -26,6 +26,7 @@ Status: ✅ works in a scenario (and Wine where noted), 🟡 partly, ❌ broken,
 | Extensions view | List built-in extensions, search box, details editor (Details/Features/Changelog tabs) | ✅ | `scenario_ui`; the Marketplace is not configured; README tab needs webviews |
 | Webviews | Markdown preview, extension README (details page) | ✅ | `scenario_webview`: iframes are windows of their own (`frames.js`), the real webview shell (`pre/index.html`) runs; wheel scroll, text selection, Ctrl+C work. No service worker (resources are read directly), no ES-module scripts with `import` in frames |
 | Images | `<img>` (PNG, JPEG baseline/progressive, GIF first frame, BMP, SVG), CSS `background-image: url()` (size/position/repeat), extension icons | ✅ | `tests/images_test.mjs` (exact for lossless formats), `images_render.mjs`; gradients (`linear-gradient`) are not drawn, no animated GIFs, SVG without filters/masks/text |
+| Syntax highlighting | TextMate grammars (JS/TS, JSON, CSS, HTML, Markdown, ...) with native Oniguruma 6.9.8 (no WebAssembly in the host) | ✅ | `scenario_more --only highlight`; module `spike:onig-native`, `10-main-shim/host/onig_shim98.js` replaces `vscode-oniguruma`; Wine builds link it statically. Tokenizes on the main thread (no workers) |
 | Diff editor | Source Control change opens a side-by-side diff | ✅ | `scenario_more` |
 | Themes | Switch color theme (Ctrl+K Ctrl+T) | ✅ | `scenario_more` |
 | Diagnostics | Squiggles, Problems panel | ✅ | `scenario_more` |
