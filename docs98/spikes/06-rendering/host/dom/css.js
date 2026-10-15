@@ -274,7 +274,7 @@ function put(index, list, e) { list.push(e); index.logB.push(list); index.logE.p
 function putKey(index, map, key, e) { let l = map.get(key); if (l === undefined) { l = []; map.set(key, l); } put(index, l, e); }
 function placeEntries(index, base, f, freq, added) {
 	for (const b of base) {
-		const e = { complex: b.complex, decls: b.decls, ua: f.ua, order: f.order, spec: b.spec, pseudoElement: b.pseudoElement, need: b.need, needAny: b.needAny, sel: b.sel, mk: 0 }; index.count++; if (added) { added.push(e); }
+		const e = { complex: b.complex, decls: b.decls, ua: f.ua, order: f.order, spec: b.spec, pseudoElement: b.pseudoElement, need: b.need, needAny: b.needAny, sel: b.sel, mk: 0, w0: b.need.length ? b.need[0] : -1, m0: b.need.length ? b.need[1] : 0, multi: b.keys !== null && b.keys.length > 2 }; index.count++; if (added) { added.push(e); }
 		const keys = b.keys; if (keys === null) { put(index, index.universal, e); } else { for (let i = 0; i < keys.length; i += 2) { const k = keys[i]; if (k === 3) { putKey(index, index.byClass, rarest(keys[i + 1], freq), e); } else { putKey(index, k === 0 ? index.byId : k === 1 ? index.byClass : index.byTag, keys[i + 1], e); } } }
 	}
 }
@@ -376,7 +376,7 @@ export function expandDecls(decls) {
 }
 export function matchedDeclarations(el, index, inlineDecls, pseudo) {
 	const cands = []; const filter = el.__anc;   // ancestor Bloom filter, set by resolveStyles
-	const tok = ++matchToken; const consider = (list) => { if (list) { for (const e of list) { if (e.mk === tok) { continue; } e.mk = tok; if ((e.pseudoElement || null) !== (pseudo || null)) { continue; } const need = e.need; if (filter && need.length) { let ok = true; for (let i = 0; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { ok = false; break; } } if (!ok) { continue; } } if (matchesComplex(el, e.complex)) { cands.push(e); } } } };
+	const tok = ++matchToken; const consider = (list) => { if (list) { outer: for (const e of list) { if (e.multi) { if (e.mk === tok) { continue; } e.mk = tok; } if ((e.pseudoElement || null) !== (pseudo || null)) { continue; } if (filter) { const w = e.w0; if (w >= 0) { if ((filter[w] & e.m0) === 0) { continue; } const need = e.need; for (let i = 2; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { continue outer; } } } } if (matchesComplex(el, e.complex)) { cands.push(e); } } } };
 	const id = el.getAttribute('id'); if (id) { consider(index.byId.get(id)); }
 	const cls = el.classes(); for (let i = 0; i < cls.length; i++) { consider(index.byClass.get(cls[i])); }
 	consider(index.byTag.get(el.localName)); consider(index.universal);
@@ -386,7 +386,7 @@ export function matchedDeclarations(el, index, inlineDecls, pseudo) {
 /** The matched rules of an element, of the element itself and of its ::before and ::after, in one walk over the candidate lists: [main, before, after], each in cascade order. */
 export function matchedDeclarationsAll(el, index) {
 	const out = [[], [], []]; const filter = el.__anc;
-	const tok = ++matchToken; const consider = (list) => { if (list) { for (const e of list) { if (e.mk === tok) { continue; } e.mk = tok; const need = e.need; if (filter && need.length) { let ok = true; for (let i = 0; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { ok = false; break; } } if (!ok) { continue; } } if (filter && e.needAny !== null && anyRejects(filter, e.needAny)) { continue; } const pe = e.pseudoElement; const dst = !pe ? out[0] : pe === 'before' ? out[1] : pe === 'after' ? out[2] : null; if (dst && matchesComplex(el, e.complex)) { dst.push(e); } } } };
+	const tok = ++matchToken; const consider = (list) => { if (list) { outer: for (const e of list) { if (e.multi) { if (e.mk === tok) { continue; } e.mk = tok; } if (filter) { const w = e.w0; if (w >= 0) { if ((filter[w] & e.m0) === 0) { continue; } const need = e.need; for (let i = 2; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { continue outer; } } } if (e.needAny !== null && anyRejects(filter, e.needAny)) { continue; } } const pe = e.pseudoElement; const dst = !pe ? out[0] : pe === 'before' ? out[1] : pe === 'after' ? out[2] : null; if (dst && matchesComplex(el, e.complex)) { dst.push(e); } } } };
 	const id = el.getAttribute('id'); if (id) { consider(index.byId.get(id)); }
 	const cls = el.classes(); for (let i = 0; i < cls.length; i++) { consider(index.byClass.get(cls[i])); }
 	consider(index.byTag.get(el.localName)); consider(index.universal);
