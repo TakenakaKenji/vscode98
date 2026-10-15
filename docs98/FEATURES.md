@@ -7,9 +7,9 @@ Status: ✅ works in a scenario (and Wine where noted), 🟡 partly, ❌ broken,
 | Area | Feature | Status | Test / notes |
 |---|---|---|---|
 | Text boxes | Typing, caret, selection (mouse, keyboard), clipboard, undo/redo, placeholder in every `<input>`/`<textarea>` (quick open, find, settings search, SCM message, rename) | ✅ | `scenario_inputs`; VM confirmation pending (v11) |
-| Explorer | New File, New Folder, rename, delete (to the recycle bin on Windows), context menu | ✅ | `scenario_explorer` (Linux; trash needs a VM check) |
+| Explorer | New File, New Folder, rename, delete (to the recycle bin on Windows), context menu, Reveal in File Explorer | ✅ | `scenario_explorer` (Linux); Wine: new file/folder in 0.3 to 0.4 s since the pipe write-queue fix (v14); before, they waited for the next IPC message (laptop: 15 to 20 s or never) |
 | Search | Find in Files (ripgrep 13.0.0 i686), results tree, replace in files | ✅ | `scenario_search`; `rg.exe` on Win7 pending (v11) |
-| Editor | Typing, undo/redo, cut/copy/paste, find, replace (Ctrl+H, replace all), save, dirty marker, wheel scroll | ✅ | `scenario_editor`, `scenario_misc` |
+| Editor | Typing, undo/redo, cut/copy/paste, find, replace (Ctrl+H, replace all), save, dirty marker, wheel scroll, click to place the caret | ✅ | `scenario_editor`, `scenario_misc` (`--only caret`: the caret went to the end of the line before v14) |
 | Editor | Context menu (right click, Shift+F10 / Menu key) | ✅ | `scenario_misc --only context`; needs `editor.useShadowDOM: false` (seeded) |
 | Editor | Completion, hover, diagnostics (JavaScript via the TS server on QuickJS) | ✅ | `scenario_lang` |
 | Tabs | Switch, close button (a dirty tab prompts to save), several tabs | ✅ | `scenario_misc` |
