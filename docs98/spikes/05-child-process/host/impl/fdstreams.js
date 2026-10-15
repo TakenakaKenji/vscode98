@@ -17,7 +17,7 @@ function startReading(s) {
 		const n = io.read(s._fd, s._rbuf ??= new ArrayBuffer(BUFSZ), 0, BUFSZ);
 		if (n === EAGAIN || n === EINTR) { return; }
 		if (n <= 0) { stopReading(s); if (n < 0 && n !== -104 /*ECONNRESET*/ && n !== -5 /*EIO*/) { s.destroy(errnoError(n, 'read')); } else { s.push(null); } return; }
-		if (!s.push(Buffer.from(new Uint8Array(s._rbuf, 0, n)))) { stopReading(s); }
+		s.push(Buffer.from(new Uint8Array(s._rbuf, 0, n)));   // no backpressure: pausing here relied on the stream calling _read() again, which did not always happen (a child's stderr stopped being read, filled, and blocked the child)
 	});
 }
 function stopReading(s) { if (s._reading) { s._reading = false; if (s._fd >= 0) { io.setReadHandler(s._fd, null); } } }
