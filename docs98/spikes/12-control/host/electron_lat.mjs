@@ -1,17 +1,15 @@
 // Control benchmark: drives a running Electron VS Code (started with --remote-debugging-port) through the same actions as the QuickJS host's
 // scenario_lat2.mjs and prints the wall time of each, from the input event to the DOM state that shows the result (polled every animation frame).
 // Usage: node electron_lat.mjs <port> <workspace dir> [rounds]
-import { chromium } from 'playwright-core';
+import { connectPage } from './cdp_page.mjs';
 import fs from 'node:fs';
 const [port, ws, roundsArg] = process.argv.slice(2); const rounds = Number(roundsArg || 3);
-const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
-const pages = browser.contexts().flatMap((c) => c.pages());
-let page = null; for (const p of pages) { if (/workbench\.html/.test(p.url()) && /ws98/.test(await p.title())) { page = p; } } page ??= pages[0];
+const page = await connectPage(port, (t) => /workbench\.html/.test(t.url) && /ws98/.test(t.title));
 await page.setViewportSize({ width: 1280, height: 800 });   // the headless window starts at 400x270; the QuickJS host runs at 1280x800
 const log = (m) => console.log('ctl: ' + m);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** runs act, then waits (polling every frame) until pred holds in the page; ms from before act to the frame where it held */
-async function timed(act, pred, arg, max = 60000) { const t0 = Date.now(); await act(); await page.waitForFunction(pred, arg, { polling: 'raf', timeout: max }); return Date.now() - t0; }
+async function timed(act, pred, arg, max = 60000) { const t0 = Date.now(); await act(); await page.waitForFunction(pred, arg, { polling: 'raf', timeout: max }); return Date.now() - t0; }   // note: the input is sent over CDP and the wait polls every frame; both add a few ms
 const rect = (sel, text) => page.evaluate(([s, t]) => { const el = [...document.querySelectorAll(s)].find((e) => (!t || (e.getAttribute('aria-label') || e.textContent || '').startsWith(t)) && e.getBoundingClientRect().height > 0); if (!el) { return null; } const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }, [sel, text]);
 const center = (r) => [r.x + r.w / 2, r.y + r.h / 2];
 const menuOpen = () => [...document.querySelectorAll('.monaco-menu')].some((m) => m.getBoundingClientRect().height > 0);
@@ -43,7 +41,7 @@ for (let round = 1; round <= rounds; round++) {
 	  res.dblclick = await timed(() => page.mouse.dblclick(sp.x + cw * 1.5, sp.y + sp.h / 2), () => !!document.querySelector('.editor-instance .selected-text')); await sleep(500);
 	  await page.mouse.click(sp.x + sp.w + 20, sp.y + sp.h / 2); await sleep(500);
 	  // typing: one key, until the line shows it
-	  const ks = []; for (const ch of 'abcde') { ks.push(await timed(() => page.keyboard.type(ch), (s) => [...document.querySelectorAll('.editor-instance .view-line')].some((l) => l.textContent.replace(/ /g, ' ').includes('file' + s)), 'abcde'.slice(0, 'abcde'.indexOf(ch) + 1))); }
+	  const ks = []; for (const ch of 'abcde') { ks.push(await timed(() => page.keyboard.press(ch), (s) => [...document.querySelectorAll('.editor-instance .view-line')].some((l) => l.textContent.replace(/ /g, ' ').includes('file' + s)), 'abcde'.slice(0, 'abcde'.indexOf(ch) + 1))); }
 	  res.key = Math.round(ks.reduce((a, b) => a + b, 0) / ks.length);
 	  for (let i = 0; i < 5; i++) { await page.keyboard.press('Backspace'); } await page.keyboard.press('Control+S'); await sleep(800); }
 	// quick open and command palette
@@ -63,4 +61,4 @@ for (let round = 1; round <= rounds; round++) {
 }
 const keys = Object.keys(results[0]); const med = {}; for (const k of keys) { const v = results.map((r) => r[k]).sort((a, b) => a - b); med[k] = v[Math.floor(v.length / 2)]; }
 log('median ' + JSON.stringify(med));
-await browser.close();
+page.close();
