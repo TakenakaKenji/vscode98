@@ -47,7 +47,7 @@ export class ChildProcess extends EventEmitter {
 	disconnect() { if (!this.connected) { queueMicrotask(() => this.emit('error', Object.assign(new Error('Channel closed'), { code: 'ERR_IPC_CHANNEL_CLOSED' }))); return; } this._chan.destroy(); }
 	_attachChannel(chan) {
 		this._chan = chan; this.channel = chan; this.connected = true; let acc = '';
-		chan.setEncoding?.('utf8'); chan.on('data', (d) => { acc += typeof d === 'string' ? d : d.toString('utf8'); let i; while ((i = acc.indexOf('\n')) >= 0) { const line = acc.slice(0, i); acc = acc.slice(i + 1); if (!line) { continue; } let m; try { m = JSON.parse(line); } catch (e) { console.error(`[ipc parent] dropped a message that is not JSON (${line.length} chars, ${e && e.message}): ${line.slice(0, 120)} ... ${line.slice(-60)}`); continue; } if (m && typeof m.cmd === 'string' && m.cmd.startsWith('NODE_')) { continue; } this.emit('message', m); } });
+		chan.setEncoding?.('utf8'); chan.on('data', (d) => { acc += typeof d === 'string' ? d : d.toString('utf8'); if (TRACE_PIPE) { TRACE_PIPE(`pid ${this.pid} data ${d.length} acc ${acc.length}`); } let i; while ((i = acc.indexOf('\n')) >= 0) { const line = acc.slice(0, i); acc = acc.slice(i + 1); if (!line) { continue; } if (TRACE_PIPE) { TRACE_PIPE(`pid ${this.pid} line ${line.length} ${line.slice(0, 40)}`); } let m; try { m = JSON.parse(line); } catch (e) { console.error(`[ipc parent] dropped a message that is not JSON (${line.length} chars, ${e && e.message}): ${line.slice(0, 120)} ... ${line.slice(-60)}`); continue; } if (m && typeof m.cmd === 'string' && m.cmd.startsWith('NODE_')) { continue; } this.emit('message', m); } });
 		chan.on('error', () => { });
 		chan.on('close', () => { if (this.connected) { this.connected = false; this.channel = undefined; this.emit('disconnect'); this._streamClosed(); } });
 		this._pendingClose++;
@@ -135,6 +135,7 @@ export function spawn(command, args, options) {
 	return cp;
 }
 const HOST_ARGS = () => globalThis.__forkHostArgs || [];
+const TRACE_PIPE = std.getenv('VSCODE98_TRACE_PIPE') ? (m) => { const f = std.open(std.getenv('VSCODE98_TRACE_PIPE') + '.parent.' + (p.getpid ? p.getpid() : os.getpid()), 'a'); if (f) { f.puts(`${Date.now() % 1e7} ${m}\n`); f.close(); } } : null;   // debugging aid: every IPC line received from a child
 export function fork(modulePath, args, options) {
 	if (!Array.isArray(args)) { options = args; args = []; }
 	options = { ...options };

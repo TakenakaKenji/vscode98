@@ -33,17 +33,18 @@ const realExit = P.exit; let exiting = false;
 P.exit = (c) => { if (!exiting) { exiting = true; try { P.emit('exit', c ?? P.exitCode ?? 0); } catch (e) { /* ignore */ } } std.out.flush(); std.err.flush(); std.exit(c ?? P.exitCode ?? 0); };
 
 // ---- IPC channel (child side): JSON lines on the inherited socketpair end
+const TRACE_PIPE = std.getenv('VSCODE98_TRACE_PIPE') ? (m) => { const f = std.open(std.getenv('VSCODE98_TRACE_PIPE') + '.child.' + P.pid, 'a'); if (f) { f.puts(`${Date.now() % 1e7} ${m}\n`); f.close(); } } : null;   // debugging aid: every IPC line sent and received
 const chanFd = std.getenv('NODE_CHANNEL_FD');
 if (chanFd !== undefined) {
 	const fd = Number(chanFd); std.unsetenv('NODE_CHANNEL_FD'); std.unsetenv('NODE_CHANNEL_SERIALIZATION_MODE');
 	const chan = new FdDuplex(fd); P.channel = chan; P.connected = true; let acc = '';
 	chan.on('error', () => { });
 	chan.on('close', () => { if (P.connected) { P.connected = false; P.channel = undefined; P.emit('disconnect'); } });
-	P.send = (msg, handle, opts, cb) => { if (typeof handle === 'function') { cb = handle; } else if (typeof opts === 'function') { cb = opts; } if (!P.connected) { const e = Object.assign(new Error('Channel closed'), { code: 'ERR_IPC_CHANNEL_CLOSED' }); if (cb) { queueMicrotask(() => cb(e)); } else { queueMicrotask(() => P.emit('error', e)); } return false; } return chan.write(JSON.stringify(msg) + '\n', 'utf8', cb ? (e) => cb(e || null) : undefined); };
+	P.send = (msg, handle, opts, cb) => { if (typeof handle === 'function') { cb = handle; } else if (typeof opts === 'function') { cb = opts; } if (!P.connected) { const e = Object.assign(new Error('Channel closed'), { code: 'ERR_IPC_CHANNEL_CLOSED' }); if (cb) { queueMicrotask(() => cb(e)); } else { queueMicrotask(() => P.emit('error', e)); } return false; } const line = JSON.stringify(msg) + '\n'; if (TRACE_PIPE) { TRACE_PIPE(`send ${line.length} ${line.slice(0, 40)}`); } return chan.write(line, 'utf8', cb ? (e) => cb(e || null) : undefined); };
 	P.disconnect = () => { if (P.connected) { chan.destroy(); } };
 	// Like Node, the channel only keeps the process alive once someone listens for 'message' or 'disconnect'.
 	let refd = false; const ensureReading = () => { if (!refd) { refd = true; chan.setEncoding('utf8');
-		chan.on('data', (d) => { acc += d; let i; while ((i = acc.indexOf('\n')) >= 0) { const line = acc.slice(0, i); acc = acc.slice(i + 1); if (!line) { continue; } let m; try { m = JSON.parse(line); } catch (e) { console.error(`[ipc child] dropped a message that is not JSON (${line.length} chars, ${e && e.message}): ${line.slice(0, 120)} ... ${line.slice(-60)}`); continue; } if (m && typeof m.cmd === 'string' && m.cmd.startsWith('NODE_')) { continue; } P.emit('message', m); } });
+		chan.on('data', (d) => { if (TRACE_PIPE) { TRACE_PIPE(`data ${d.length} acc ${acc.length}`); } acc += d; let i; while ((i = acc.indexOf('\n')) >= 0) { const line = acc.slice(0, i); acc = acc.slice(i + 1); if (!line) { continue; } let m; try { m = JSON.parse(line); } catch (e) { console.error(`[ipc child] dropped a message that is not JSON (${line.length} chars, ${e && e.message}): ${line.slice(0, 120)} ... ${line.slice(-60)}`); continue; } if (m && typeof m.cmd === 'string' && m.cmd.startsWith('NODE_')) { continue; } P.emit('message', m); } });
 	 chan.resume(); } };
 	for (const m of ['on', 'once', 'addListener', 'prependListener']) { const orig = P[m]; if (orig) { P[m] = function (ev, ...rest) { const r = orig.call(this, ev, ...rest); if (ev === 'message' || ev === 'disconnect') { ensureReading(); } return r; }; } }
 }
