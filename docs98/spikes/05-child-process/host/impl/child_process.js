@@ -110,7 +110,7 @@ export function spawn(command, args, options) {
 		else if (s && typeof s.fd === 'number') { childFds[i] = s.fd; }
 	}
 	const env = envList(options.env); if (ipcIndex >= 0) { env.push(`NODE_CHANNEL_FD=${ipcIndex}`, 'NODE_CHANNEL_SERIALIZATION_MODE=json'); }
-	const pid = p.spawn({ file, args: [argv0, ...argList], env, cwd: options.cwd, fds: childFds, detached: !!options.detached, verbatim });
+	const pid = p.spawn({ file, args: [argv0, ...argList], env, cwd: options.cwd, fds: childFds, detached: !!options.detached, priority: options.priority, verbatim });
 	for (const fd of toClose) { io.close(fd); }
 	if (pid < 0) {
 		for (const fd of parentEnds) { if (fd >= 0) { io.close(fd); } }

@@ -124,7 +124,7 @@ export class Document extends Node {
 	/** the decoded picture at a URL (relative to the document), or null; cached across documents */
 	__imageByUrl(src) {
 		let url; try { url = new URL(src, this.baseURI).href; } catch { url = src; }
-		let im = imageCache.get(url); if (im === undefined) { try { im = decodeImage(this.__env.fetchResource(url)); } catch (e) { im = null; if (globalThis.__log98) { globalThis.__log98('[image] ' + url.slice(0, 120) + ': ' + (e && (e.message + ' ' + String(e.stack).split('\n').slice(0, 3).join(' | ')))); } } if (imageCache.size > 200) { imageCache.clear(); } imageCache.set(url, im); }
+		let im = imageCache.get(url); if (im === undefined) { const t0 = performance.now(); try { im = decodeImage(this.__env.fetchResource(url)); const ms = performance.now() - t0; if (ms > 30 && globalThis.__log98) { globalThis.__log98('[image] slow decode ' + ms.toFixed(0) + ' ms (' + (im ? im.width + 'x' + im.height : 'failed') + '): ' + url.slice(0, 100)); } } catch (e) { im = null; if (globalThis.__log98) { globalThis.__log98('[image] ' + url.slice(0, 120) + ': ' + (e && (e.message + ' ' + String(e.stack).split('\n').slice(0, 3).join(' | ')))); } } if (imageCache.size > 200) { imageCache.clear(); } imageCache.set(url, im); }
 		return im;
 	}
 	/** the decoded picture of an <img> (loaded synchronously on first use; `load` or `error` is dispatched as a task) or null */

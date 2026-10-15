@@ -71,6 +71,7 @@ static JSValue js_spawn(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	char **args = strv_from_js(ctx, vargs, NULL), **envp = JS_IsUndefined(venv) ? NULL : strv_from_js(ctx, venv, NULL);
 	int nfds = 0; int *fds = NULL; { uint32_t n = 0; JSValue l = JS_GetPropertyStr(ctx, vfds, "length"); JS_ToUint32(ctx, &n, l); JS_FreeValue(ctx, l); nfds = (int)n; fds = calloc(n + 1, sizeof(int)); for (uint32_t i = 0; i < n; i++) { JSValue e = JS_GetPropertyUint32(ctx, vfds, i); int32_t fd; JS_ToInt32(ctx, &fd, e); fds[i] = fd; JS_FreeValue(ctx, e); } }
 	int detached = JS_ToBool(ctx, vdet);
+	int low = 0; { JSValue vp = JS_GetPropertyStr(ctx, o, "priority"); const char *ps = JS_IsString(vp) ? JS_ToCString(ctx, vp) : NULL; low = ps && !strcmp(ps, "low"); if (ps) { JS_FreeCString(ctx, ps); } JS_FreeValue(ctx, vp); }   /* priority: "low" = background work (children inherit it) */
 	char *exe = resolve_exec(file, envp ? envp : environ);
 	int result;
 	if (!exe) { result = -ENOENT; goto done; }
@@ -87,6 +88,7 @@ static JSValue js_spawn(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 		}
 		for (int i = 0; i < nfds; i++) { if (tmp[i] >= 0) { close(tmp[i]); } }
 		if (detached) { setsid(); }
+		if (low) { (void)!nice(10); }
 		if (cwd && chdir(cwd) < 0) { int e = errno; (void)!write(ep[1], &e, sizeof e); _exit(127); }
 		signal(SIGPIPE, SIG_DFL);
 		sigset_t none; sigemptyset(&none); sigprocmask(SIG_SETMASK, &none, NULL);

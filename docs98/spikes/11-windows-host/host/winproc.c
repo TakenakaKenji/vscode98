@@ -346,6 +346,7 @@ static JSValue js_spawn(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	int nargs = 0; char **args = strv_from_js(ctx, vargs, &nargs); char **envp = JS_IsUndefined(venv) ? NULL : strv_from_js(ctx, venv, NULL);
 	int nfds = 0; int *fds = NULL; { uint32_t n = 0; JSValue l = JS_GetPropertyStr(ctx, vfds, "length"); JS_ToUint32(ctx, &n, l); JS_FreeValue(ctx, l); nfds = (int)n; fds = calloc(n + 1, sizeof(int)); for (uint32_t i = 0; i < n; i++) { JSValue e = JS_GetPropertyUint32(ctx, vfds, i); int32_t x = -1; JS_ToInt32(ctx, &x, e); fds[i] = x; JS_FreeValue(ctx, e); } }
 	int detached = JS_ToBool(ctx, vdet), verbatim = JS_ToBool(ctx, vverb); int result = 0;
+	int low = 0; { JSValue vp = JS_GetPropertyStr(ctx, o, "priority"); const char *ps = JS_IsString(vp) ? JS_ToCString(ctx, vp) : NULL; low = ps && !strcmp(ps, "low"); if (ps) { JS_FreeCString(ctx, ps); } JS_FreeValue(ctx, vp); }   /* priority: "low" = background work: below normal priority class, which children inherit */
 	wchar_t *exe = resolve_exe(file, envp, cwd), *wcwd = cwd ? wide(cwd) : NULL, *envblock = NULL, *cmdw = NULL;
 	if (!exe) { result = -E_NOENT; goto done; }
 	/* command line: argv[0] is the program as given, the rest quoted */
@@ -373,6 +374,7 @@ static JSValue js_spawn(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	STARTUPINFOW si; memset(&si, 0, sizeof si); si.cb = sizeof si; si.dwFlags = STARTF_USESTDHANDLES; si.hStdInput = std[0]; si.hStdOutput = std[1]; si.hStdError = std[2];
 	PROCESS_INFORMATION pi; memset(&pi, 0, sizeof pi);
 	DWORD flags = CREATE_UNICODE_ENVIRONMENT | (detached ? DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP : CREATE_NO_WINDOW);
+	if (low) { flags |= 0x00004000; /* BELOW_NORMAL_PRIORITY_CLASS */ }
 	BOOL ok = CreateProcessW(exe, cmdw, NULL, NULL, TRUE, flags, envblock, wcwd, &si, &pi);
 	DWORD err = ok ? 0 : GetLastError();
 	for (int i = 0; i < ninh; i++) { set_inherit(inh[i], 0); }

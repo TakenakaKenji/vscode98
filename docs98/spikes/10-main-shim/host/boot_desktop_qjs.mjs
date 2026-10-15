@@ -58,7 +58,7 @@ Module.registerHooks({ resolve(specifier, context, nextResolve) { if (specifier.
 const mainArgs = ['--user-data-dir', userDataDir, '--extensions-dir', extDir, '--disable-gpu', '--disable-telemetry', ...(opt('log-level') ? ['--log', opt('log-level')] : []), ...(opt('workspace') ? [opt('workspace')] : [])];
 const child = cp.fork(nodePath.join(here, 'run_main.mjs'), [appRoot, ...mainArgs], { serialization: 'json', stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...nodeProcess.env, APP98_ROOT: appRoot, ELECTRON_STUB_LOG: opt('stub-log', nodePath.join(globalThis.__builtins.os.tmpdir(), 'electron-stub.log')) } });
 log('[harness] forked main pid ' + child.pid); const echo = opt('echo-main', '0') === '1'; child.stdout.on('data', (d) => { mainLog.push(String(d)); if (echo) { std.err.puts('[main] ' + String(d)); } }); child.stderr.on('data', (d) => { mainLog.push(String(d)); if (echo) { std.err.puts('[main!] ' + String(d)); } });
-child.on('exit', (c) => { mainLog.push(`[main exited ${c}]`); });
+child.on('exit', (c, sig) => { mainLog.push(`[main exited ${c}]`); log('[harness] main process exited: code ' + c + ' signal ' + sig); });
 // ---- ipcRenderer transport
 const listeners = new Map(), pending = new Map(); let nextInvoke = 1, wcId = 0;
 const ipc = {
