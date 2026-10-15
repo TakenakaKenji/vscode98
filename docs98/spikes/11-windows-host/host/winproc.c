@@ -485,7 +485,8 @@ static int win_collect(HANDLE *out, int max) {
 		Fd *f = slots[i]; if (!f) { continue; }
 		if (f->server_of >= 0) { Fd *pf = slots[f->server_of]; if (pf && !JS_IsUndefined(pf->on_read) && (f->rpending || f->rlen > f->roff)) { all_h[n++] = f->rev; } continue; }
 		if (!JS_IsUndefined(f->on_read)) { if (f->rlen > f->roff || f->reof || f->rerr || f->rpending) { all_h[n++] = f->rev; } else { start_read(f); if (f->rpending || f->reof || f->rerr) { all_h[n++] = f->rev; } } }
-		if (!JS_IsUndefined(f->on_write) && n < cap) { if (f->ovl && f->wpending) { all_h[n++] = f->wev; } else { want_ready = 1; } }
+		if (f->ovl && f->wpending && n < cap) { all_h[n++] = f->wev; }                  /* an overlapped write in flight: its completion sends what was queued behind it, written or not by a handler */
+		else if (!JS_IsUndefined(f->on_write) && n < cap) { want_ready = 1; }
 	}
 	for (Proc *p = procs; p && n < cap; p = p->next) { if (p->watching && p->h) { all_h[n++] = p->h; } }
 	if (want_ready) { SetEvent(ready_ev); all_h[n++] = ready_ev; } else { ResetEvent(ready_ev); }
@@ -530,7 +531,7 @@ static int win_dispatch(JSContext *ctx, HANDLE h) {
 	return 0;
 }
 static int win_active(void) {
-	for (int i = 0; i < MAXSLOT; i++) { Fd *f = slots[i]; if (f && (!JS_IsUndefined(f->on_read) || (!JS_IsUndefined(f->on_write)))) { return 1; } }
+	for (int i = 0; i < MAXSLOT; i++) { Fd *f = slots[i]; if (f && (!JS_IsUndefined(f->on_read) || !JS_IsUndefined(f->on_write) || (f->ovl && (f->wpending || f->wqlen)))) { return 1; } }
 	for (Proc *p = procs; p; p = p->next) { if (p->watching && p->h) { return 1; } }
 	return 0;
 }
