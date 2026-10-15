@@ -214,5 +214,6 @@ The owner moved from the VM to a real Windows 7 laptop (bench 19.3 s, about 2.7 
 - **Reveal in File Explorer / open path / open link**: `shell.showItemInFolder` (`explorer.exe /select,"..."`), `openPath` and `openExternal` (`rundll32 url.dll,FileProtocolHandler`) in the electron stub; `app.getJumpListSettings` stub (main logged a TypeError at startup).
 - **Unhandled rejections** in Node-like processes are reported only when still unhandled a macrotask later (`proc_setup.mjs`); QuickJS reports a rejection the moment it happens, before an `await` one microtask on attaches the handler, which printed thousands of handled ENOENT stats to stderr. IPC readers no longer stop at a message handler that throws.
 - **Event loop**: more than 63 waitable handles are served in turns with a capped wait (`win_collect`/`win_max_timeout`), instead of silently ignoring the rest.
+- Package v14: SHA256 `29ae7d37b089779233c503ffb36e8df95832f1fae8b7014e795b50ebcc9090c4` (joined zip).
 - **Wine/Xvfb in the sandbox**: after a crash of the X server Wine's `CreateWindow` fails with 1400 until Xvfb is restarted (`/tmp/claude-0/wrun.sh` restarts it and stops wineserver gracefully each run).
 
