@@ -10,6 +10,7 @@ typedef struct JSWinWaiter {
 	int (*active)(void);                                  /* nonzero while something can still produce events (keeps the loop alive) */
 	int (*wants_messages)(void);                          /* nonzero while a window exists: the loop then waits with MsgWaitForMultipleObjects and keeps running */
 	void (*pump)(JSContext *ctx);                         /* drain the thread's message queue (window procedures call back into JS) */
+	int (*max_timeout)(void);                             /* >= 0: wait at most this many ms (collect had more handles than fit and serves them in turns), -1: no limit */
 } JSWinWaiter;
 extern JSWinWaiter js_win_waiter;
 #endif

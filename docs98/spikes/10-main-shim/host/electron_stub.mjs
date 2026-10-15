@@ -54,7 +54,7 @@ class App extends EventEmitter {
 	setPath(name, p) { this._paths[name] = p; }
 	getAppPath() { return process.env.APP98_ROOT || process.cwd(); }
 	getName() { return 'code-oss'; } getVersion() { return '1.0.0'; }
-	setAppLogsPath() { } setDesktopName() { } enableSandbox() { } disableHardwareAcceleration() { } setAppUserModelId() { } setUserTasks() { } setBadgeCount() { } addRecentDocument() { } clearRecentDocuments() { } relaunch() { } setJumpList() { } setAsDefaultProtocolClient() { }
+	setAppLogsPath() { } setDesktopName() { } enableSandbox() { } disableHardwareAcceleration() { } setAppUserModelId() { } setUserTasks() { } setBadgeCount() { } addRecentDocument() { } clearRecentDocuments() { } relaunch() { } setJumpList() { return 'ok'; } getJumpListSettings() { return { minItems: 10, removedItems: [] }; } setAsDefaultProtocolClient() { }
 	requestSingleInstanceLock() { return true; } releaseSingleInstanceLock() { }
 	getGPUFeatureStatus() { return {}; } getAppMetrics() { return []; } getGPUInfo() { return Promise.resolve({}); }
 	quit() { log('app.quit'); this.emit('before-quit', { preventDefault() { } }); setImmediate(() => process.exit(0)); } exit(c) { log('app.exit ' + c); process.exit(c ?? 0); }
@@ -167,7 +167,7 @@ function handlePortMessage(m, holder) {
 }
 
 // ---- utility processes: real child processes with `process.parentPort`
-import { fork } from 'node:child_process';
+import { fork, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 const here = fileURLToPath(new URL('.', import.meta.url));
 class UtilityProcess extends EventEmitter {
@@ -207,6 +207,13 @@ export const protocol = recorder('protocol'), crashReporter = recorder('crashRep
 export const powerMonitor = Object.assign(new EventEmitter(), { getSystemIdleState: () => 'active', getSystemIdleTime: () => 0, isOnBatteryPower: () => false, onBatteryPower: false });
 export const systemPreferences = Object.assign(new EventEmitter(), { isAeroGlassEnabled: () => true, getColor: () => '000000', getAccentColor: () => '0078d7', isInvertedColorScheme: () => false, isHighContrastColorScheme: () => false, getUserDefault: () => undefined, getMediaAccessStatus: () => 'granted', canPromptTouchID: () => false });
 export const nativeTheme = Object.assign(new EventEmitter(), { shouldUseDarkColors: true, shouldUseHighContrastColors: false, shouldUseInvertedColorScheme: false, themeSource: 'dark', inForcedColorsMode: false });
-export const shell = recorder('shell', { trashItem(p) { if (winApi && winApi.trash) { return winApi.trash(String(p)) ? Promise.resolve() : Promise.reject(new Error('Could not move to the recycle bin: ' + p)); } return Promise.reject(new Error('no trash on this platform: ' + p)); }, beep() { } }), net = recorder('net'), clipboard = makeClipboard(), safeStorage = recorder('safeStorage'), Notification = recorder('Notification'), powerSaveBlocker = recorder('powerSaveBlocker'), webFrameMain = recorder('webFrameMain'), MenuItem = recorder('MenuItem'), BaseWindow = recorder('BaseWindow'), WebContentsView = recorder('WebContentsView'), autoUpdater = recorder('autoUpdater'), nativeImage = recorder('nativeImage'), Tray = recorder('Tray'), JumpListCategory = recorder('JumpListCategory');
+/** starts a program and forgets it (Explorer, the default browser); failures are logged, not thrown */
+function launch(file, args, verbatim) { try { const c = spawn(file, args, { detached: true, stdio: 'ignore', windowsVerbatimArguments: !!verbatim }); c.on?.('error', (e) => log('launch ' + file + ' failed: ' + e)); return true; } catch (e) { log('launch ' + file + ' failed: ' + e); return false; } }
+const WIN = process.platform === 'win32';
+export const shell = recorder('shell', {
+	showItemInFolder(p) { p = String(p); if (WIN) { launch('explorer.exe', ['/select,"' + p + '"'], true); } else { launch('xdg-open', [path.dirname(p)]); } },
+	openPath(p) { p = String(p); const ok = WIN ? launch('explorer.exe', ['"' + p + '"'], true) : launch('xdg-open', [p]); return Promise.resolve(ok ? '' : 'Could not open ' + p); },
+	openExternal(url) { url = String(url); const ok = WIN ? launch('rundll32.exe', ['url.dll,FileProtocolHandler', url]) : launch('xdg-open', [url]); return ok ? Promise.resolve() : Promise.reject(new Error('Could not open ' + url)); },
+	trashItem(p) { if (winApi && winApi.trash) { return winApi.trash(String(p)) ? Promise.resolve() : Promise.reject(new Error('Could not move to the recycle bin: ' + p)); } return Promise.reject(new Error('no trash on this platform: ' + p)); }, beep() { } }), net = recorder('net'), clipboard = makeClipboard(), safeStorage = recorder('safeStorage'), Notification = recorder('Notification'), powerSaveBlocker = recorder('powerSaveBlocker'), webFrameMain = recorder('webFrameMain'), MenuItem = recorder('MenuItem'), BaseWindow = recorder('BaseWindow'), WebContentsView = recorder('WebContentsView'), autoUpdater = recorder('autoUpdater'), nativeImage = recorder('nativeImage'), Tray = recorder('Tray'), JumpListCategory = recorder('JumpListCategory');
 export const ipcRenderer = recorder('ipcRenderer'), contextBridge = recorder('contextBridge'), webFrame = recorder('webFrame'), webUtils = recorder('webUtils');
 export default { app, BrowserWindow, ipcMain, webContents, session, screen, protocol, crashReporter, Menu, contentTracing, dialog, desktopCapturer, globalShortcut, powerMonitor, systemPreferences, nativeTheme, shell, net, clipboard, utilityProcess, safeStorage, Notification, powerSaveBlocker, webFrameMain, MenuItem, BaseWindow, WebContentsView, autoUpdater, nativeImage, Tray, MessageChannelMain, JumpListCategory };

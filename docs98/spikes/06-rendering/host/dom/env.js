@@ -82,7 +82,7 @@ export class Document extends Node {
 	/** The caret position nearest to a point, as a collapsed Range in a text node (the editor's mouse hit-testing of text needs it): the text under the element at the point whose line contains `y`, nearest in x. */
 	caretRangeFromPoint(x, y) {
 		this.__ensureLayout(); const lay = this.__layout; const el = lay && this.elementFromPoint(x, y); if (!el) { return null; }
-		{ const bx = lay.boxOf.get(el); if (bx) { const r = this.__rect(el); x -= (r.left - bx.ax); y -= (r.top - bx.ay); } }   // fragment positions are in the unscrolled layout space
+		{ let a = el, bx = null; for (; a && a.nodeType === 1; a = a.parentNode) { const b = lay.boxOf.get(a); if (b && b.kind !== 'inline') { bx = b; break; } } if (bx) { const r = this.__rect(a); x -= (r.left - bx.ax); y -= (r.top - bx.ay); } }   // fragment positions are in the unscrolled layout space (an inline box has no position of its own: the nearest block box gives the offset)
 		let best = null, bestD = Infinity;
 		const scan = (n) => { for (const c of n.__children) { if (c.nodeType === 3) { for (const f of lay.fragsByText.get(c) || []) { if (y < f.ay || y >= f.ay + f.asc + f.desc) { continue; } const w = this.__measure(f, f.text); const d = x < f.ax ? f.ax - x : x > f.ax + w ? x - f.ax - w : 0; if (d < bestD) { bestD = d; best = { node: c, f }; } } } else if (c.nodeType === 1) { scan(c); } } };
 		scan(el); const r = new D.Range(this);

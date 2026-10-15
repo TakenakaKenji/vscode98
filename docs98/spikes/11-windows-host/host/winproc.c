@@ -476,18 +476,26 @@ static JSValue js_poll_sync(JSContext *ctx, JSValueConst this_val, int argc, JSV
 }
 
 /* ------------------------------------------------------------------------------------------------------------------------------------ event loop hook */
+/* Every handle that can wake the loop. WaitForMultipleObjects takes at most 64 (63 with a window): with more (the main process with a dozen children, each with three
+ * pipes and a process handle) the handles are served in turns, a window of `max` at a time, and the wait is capped (win_max_timeout) so the others are looked at soon. */
+static HANDLE all_h[1024]; static int rr_next = 0, overflowed = 0, overflow_warned = 0;
 static int win_collect(HANDLE *out, int max) {
-	int n = 0, want_ready = 0;
-	for (int i = 0; i < MAXSLOT && n < max - 2; i++) {
+	int n = 0, want_ready = 0; const int cap = (int)(sizeof all_h / sizeof all_h[0]) - 1;
+	for (int i = 0; i < MAXSLOT && n < cap; i++) {
 		Fd *f = slots[i]; if (!f) { continue; }
-		if (f->server_of >= 0) { Fd *pf = slots[f->server_of]; if (pf && !JS_IsUndefined(pf->on_read) && (f->rpending || f->rlen > f->roff)) { out[n++] = f->rev; } continue; }
-		if (!JS_IsUndefined(f->on_read)) { if (f->rlen > f->roff || f->reof || f->rerr || f->rpending) { out[n++] = f->rev; } else { start_read(f); if (f->rpending || f->reof || f->rerr) { out[n++] = f->rev; } } }
-		if (!JS_IsUndefined(f->on_write)) { if (f->ovl && f->wpending) { out[n++] = f->wev; } else { want_ready = 1; } }
+		if (f->server_of >= 0) { Fd *pf = slots[f->server_of]; if (pf && !JS_IsUndefined(pf->on_read) && (f->rpending || f->rlen > f->roff)) { all_h[n++] = f->rev; } continue; }
+		if (!JS_IsUndefined(f->on_read)) { if (f->rlen > f->roff || f->reof || f->rerr || f->rpending) { all_h[n++] = f->rev; } else { start_read(f); if (f->rpending || f->reof || f->rerr) { all_h[n++] = f->rev; } } }
+		if (!JS_IsUndefined(f->on_write) && n < cap) { if (f->ovl && f->wpending) { all_h[n++] = f->wev; } else { want_ready = 1; } }
 	}
-	for (Proc *p = procs; p && n < max - 2; p = p->next) { if (p->watching && p->h) { out[n++] = p->h; } }
-	if (want_ready) { SetEvent(ready_ev); out[n++] = ready_ev; } else { ResetEvent(ready_ev); }
-	return n;
+	for (Proc *p = procs; p && n < cap; p = p->next) { if (p->watching && p->h) { all_h[n++] = p->h; } }
+	if (want_ready) { SetEvent(ready_ev); all_h[n++] = ready_ev; } else { ResetEvent(ready_ev); }
+	if (n <= max) { memcpy(out, all_h, (size_t)n * sizeof(HANDLE)); overflowed = 0; return n; }
+	if (!overflow_warned) { overflow_warned = 1; fprintf(stderr, "[winproc] %d waitable handles, more than one wait takes (%d): serving them in turns\n", n, max); }
+	overflowed = 1; if (rr_next >= n) { rr_next = 0; }
+	for (int i = 0; i < max; i++) { out[i] = all_h[(rr_next + i) % n]; }
+	rr_next = (rr_next + max) % n; return max;
 }
+static int win_max_timeout(void) { return overflowed ? 10 : -1; }
 static void call_js(JSContext *ctx, JSValue fn, int argc, JSValue *argv) { JSValue r = JS_Call(ctx, fn, JS_UNDEFINED, argc, argv); if (JS_IsException(r)) { js_std_dump_error(ctx); } JS_FreeValue(ctx, r); }
 static int win_dispatch(JSContext *ctx, HANDLE h) {
 	if (h == ready_ev) {                                                          /* write handlers that can fire now */
@@ -614,7 +622,7 @@ void spike_init(JSContext *ctx) {
 	/* Windows' default timer resolution is 15.6 ms: QuickJS clamps setTimeout(0) to 1 ms and waits with WaitForMultipleObjects/Sleep, so every chained zero-delay timer (the workbench and the Node
 	   shims use thousands, setImmediate included) would cost a full tick. Ask for 1 ms for the life of the process; QJS98_TIMER_RES=0 turns it off (for comparisons). */
 	{ const char *tr = getenv("QJS98_TIMER_RES"); if (!tr || tr[0] != '0') { timeBeginPeriod(1); } }
-	js_win_waiter.collect = win_collect; js_win_waiter.dispatch = win_dispatch; js_win_waiter.active = win_active;
+	js_win_waiter.collect = win_collect; js_win_waiter.dispatch = win_dispatch; js_win_waiter.active = win_active; js_win_waiter.max_timeout = win_max_timeout;
 	JSValue g = JS_GetGlobalObject(ctx);
 	JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 1));
 	JS_SetPropertyStr(ctx, g, "__utf8Encode", JS_NewCFunction(ctx, js_utf8_encode, "__utf8Encode", 1));
