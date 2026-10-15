@@ -29,6 +29,14 @@ let stdin; Object.defineProperty(P, 'stdin', { get() { if (!stdin) { stdin = new
 const fmt = globalThis.__builtins.util.format;
 for (const m of ['log', 'info', 'debug']) { console[m] = (...a) => { std.out.puts(fmt(...a) + '\n'); std.out.flush(); }; }
 for (const m of ['error', 'warn', 'trace']) { console[m] = (...a) => { std.out.flush(); std.err.puts(fmt(...a) + '\n'); std.err.flush(); }; }
+// Unhandled rejections, the way Node reports them: QuickJS calls the tracker at the moment a promise rejects without a handler, even when a handler is attached a moment
+// later (an `await` one microtask on). Report only the ones still unhandled once the microtasks have run (a macrotask later): as 'unhandledRejection' when someone listens,
+// else as one line on stderr. Reporting every transient one flooded stderr (thousands of handled ENOENT stats), and a full stderr pipe stalls the process.
+if (!globalThis.__rejection) {
+	const pendingRejections = new Map(); let flushTimer = 0;
+	const flushRejections = () => { flushTimer = 0; const list = [...pendingRejections]; pendingRejections.clear(); for (const [promise, reason] of list) { if (P.listenerCount && P.listenerCount('unhandledRejection') > 0) { P.emit('unhandledRejection', reason, promise); } else { std.err.puts('Unhandled promise rejection: ' + String(reason && reason.stack || reason).split('\n').slice(0, 3).join(' | ') + '\n'); std.err.flush(); } } };
+	globalThis.__rejection = (promise, reason, handled) => { if (handled) { pendingRejections.delete(promise); return; } pendingRejections.set(promise, reason); if (!flushTimer) { flushTimer = os.setTimeout(flushRejections, 0) || 1; } };
+}
 const realExit = P.exit; let exiting = false;
 P.exit = (c) => { if (!exiting) { exiting = true; try { P.emit('exit', c ?? P.exitCode ?? 0); } catch (e) { /* ignore */ } } std.out.flush(); std.err.flush(); std.exit(c ?? P.exitCode ?? 0); };
 
