@@ -6,6 +6,7 @@
 // verify: also run the JavaScript matcher (without the ancestor filter) on every element and record the differences in `mismatches`.
 import * as S from 'spike:style';
 import { setNativeStyleSink } from '../../06-rendering/host/dom/dom.js';
+import { setNativeSelectorParser, parseSelectorJS } from '../../06-rendering/host/dom/selectors.js';
 import { setNativeSheetParser, matchedDeclarationsAll, PROPS, INIT, INH, INIT_VALUES, parseValue, parseLength, parseColor, expandShorthand, expandDecls, finishComputed, computeStyleJS, substituteVars, EMPTY_VARS } from '../../06-rendering/host/dom/css.js';
 import { deepEqual } from '../../06-rendering/host/dom/style_invalidation.js';
 
@@ -43,6 +44,8 @@ function serComplex(c, out) {
 		}
 	}
 }
+/** the serialized form of a complex selector computed in JavaScript (the reference for the one style_selector.c attaches as __nser) */
+export function serializeJS(complex) { const out = []; serComplex(complex, out); return Int32Array.from(out); }
 function serialized(complex) { let s = complex.__nser; if (s === undefined) { const out = []; serComplex(complex, out); s = complex.__nser = Int32Array.from(out); } return s; }
 
 // ---- rule indexes
@@ -102,7 +105,7 @@ function sync(doc) {
 
 // ---- matching
 let out = new Int32Array(4096); S.setOut(out);
-export const stats = { passes: 0, matches: 0, fallbacks: 0, records: 0, freed: 0, brokenIndexes: 0, syncMs: 0, matchMs: 0, verified: 0, computes: 0, computeFallbacks: 0, computeMs: 0, computeVerified: 0, sheets: 0, sheetFallbacks: 0, sheetMs: 0 };
+export const stats = { passes: 0, matches: 0, fallbacks: 0, records: 0, freed: 0, brokenIndexes: 0, syncMs: 0, matchMs: 0, verified: 0, computes: 0, computeFallbacks: 0, computeMs: 0, computeVerified: 0, sheets: 0, sheetFallbacks: 0, sheetMs: 0, selectors: 0, selectorFallbacks: 0, selectorMs: 0 };
 export const mismatches = [];
 const describe = (el) => el.localName + (el.getAttribute('id') ? '#' + el.getAttribute('id') : '') + (el.classes().length ? '.' + el.classes().join('.') : '');
 function verifyOne(el, index, got) {
@@ -189,6 +192,17 @@ function computeNative(el, parentCS, env, pseudo, cands) {
 	return r;
 }
 
+// ---- selector parsing in C (style_selector.c); verify mode compares the objects and the serialized form with the JavaScript parser
+export const selectorMismatches = [];
+const withoutNser = (k, v) => k === '__nser' ? undefined : v;
+setNativeSelectorParser((text) => {
+	const t0 = performance.now(); const r = S.parseSelector(text); stats.selectorMs += performance.now() - t0; stats.selectors++; if (r === null) { stats.selectorFallbacks++; return null; }
+	if (engine.verify) {
+		let ok = false; try { const js = parseSelectorJS(text); ok = JSON.stringify(r, withoutNser) === JSON.stringify(js) && r.every((c, i) => c.__nser && c.__nser.join() === serializeJS(js[i]).join()); } catch { ok = false; }
+		if (!ok && selectorMismatches.length < 200) { selectorMismatches.push(text); }
+	}
+	return r;
+});
 // ---- stylesheet parsing in C (style_sheet.c); verify mode compares it with the JavaScript parser
 export const sheetMismatches = [];
 setNativeSheetParser((text) => { const t0 = performance.now(); const r = S.parseSheet(text); stats.sheetMs += performance.now() - t0; stats.sheets++; if (r === null) { stats.sheetFallbacks++; } return r; }, () => engine.verify ? sheetMismatches : null);

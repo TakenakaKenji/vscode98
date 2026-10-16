@@ -1,10 +1,17 @@
 // CSS selector parser and matcher (Selectors Level 4 subset): type, universal, #id, .class, [attr op value i], combinators (descendant, >, +, ~), and the pseudo-classes
 // VS Code's CSS uses (structural, :not/:is/:where/:has, state flags, :root, :empty). Pseudo-elements are parsed (so the cascade can route them) but matched against their host element.
 const cache = new Map();
+let nativeParser = null;   // spike:style parseSelector (native_style.js): the same objects as parseSelectorJS (compounds shared by text), or null when it leaves the text to JavaScript
+/** Lets a native parser take over selector parsing (see parseSelector). */
+export function setNativeSelectorParser(fn) { nativeParser = fn; }
 export function parseSelector(text) {
 	let r = cache.get(text); if (r) { return r; }
-	r = parseList(new Lexer(text)); if (cache.size > 20000) { cache.clear(); } cache.set(text, r); return r;
+	if (nativeParser !== null) { r = nativeParser(text); }
+	if (!r) { r = parseList(new Lexer(text)); }
+	if (cache.size > 20000) { cache.clear(); } cache.set(text, r); return r;
 }
+/** The JavaScript parser alone (uncached): the reference for the native one. */
+export function parseSelectorJS(text) { return parseList(new Lexer(text)); }
 class Lexer { constructor(s) { this.s = s; this.i = 0; } peek() { return this.s[this.i]; } eof() { return this.i >= this.s.length; } }
 const isIdent = (c) => c !== undefined && /[\w\-\u0080-￿\\]/.test(c);
 const IDENT_RUN = /[\w\-\u0080-\uffff]+/y;   // an identifier without escapes, in one match

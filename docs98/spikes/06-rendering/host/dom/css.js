@@ -300,16 +300,33 @@ function baseOf(rule) {
 	const cached = baseEntries.get(rule);   // the parsed selectors, expanded declarations and ancestor-filter bits of a rule only change when the rule is edited (declarations replaced, selector text set): the rebuilds after a stylesheet change reuse them
 	if (cached !== undefined && cached.src === rule.__decls && cached.sel === rule.selectorText) { return cached.base; }
 	let base, list; try { list = rule.selectors; } catch { noteMissing('css: unparsable selector'); base = null; }
-	if (list) { const decls = expandRuleDecls(rule), sel = rule.selectorText; base = list.map((complex) => ({ complex, decls, spec: complex.spec, pseudoElement: complex.parts[complex.parts.length - 1].compound.pseudoElement, need: needOf(complex), needAny: needAnyOf(complex), sel, keys: bucketKeys(complex.parts[complex.parts.length - 1].compound) })); }
+	if (list) { const src = rule.__decls, sel = rule.selectorText; base = list.map((complex) => new RuleBase(complex, src, sel)); }
 	baseEntries.set(rule, { src: rule.__decls, sel: rule.selectorText, base }); return base;
 }
+/**
+ * The cascade-independent part of an index entry. The expanded declarations and the ancestor-filter bits are made on first use: of the ~13,000 workbench rules only ~1,500 ever
+ * match, and the native matcher reads neither (startup parsed and expanded all of them). `src` is the declaration list the base was made for (a later edit makes a new base).
+ */
+class RuleBase {
+	constructor(complex, src, sel) { this.complex = complex; this.src = src; this.sel = sel; this.spec = complex.spec; const subject = complex.parts[complex.parts.length - 1].compound; this.pseudoElement = subject.pseudoElement; this.keys = bucketKeys(subject); this._decls = null; this._need = null; this._needAny = undefined; }
+	get decls() { return this._decls ??= expandDeclsOf(this.src); }
+	get need() { return this._need ??= needOf(this.complex); }
+	get needAny() { if (this._needAny === undefined) { this._needAny = needAnyOf(this.complex); } return this._needAny; }
+}
+/** An index entry: a base plus cascade data (origin, order) and its native entry id; the ancestor-filter fields (w0, m0, need, needAny) are filled by initFilter on first use. */
+class IndexEntry {
+	constructor(b, ua, order, multi) { this.b = b; this.complex = b.complex; this.ua = ua; this.order = order; this.spec = b.spec; this.pseudoElement = b.pseudoElement; this.sel = b.sel; this.mk = 0; this.w0 = -2; this.m0 = 0; this.need = null; this.needAny = null; this.multi = multi; this.ni = -1; }
+	get decls() { return this.b.decls; }
+}
+/** fills the ancestor-filter fields of an entry; returns w0 (-1: no requirement) */
+function initFilter(e) { const need = e.b.need; e.need = need; e.needAny = e.b.needAny; e.m0 = need.length ? need[1] : 0; return e.w0 = need.length ? need[0] : -1; }
 function countKeys(base, freq, d = 1) { for (const b of base) { const k = b.keys; if (k !== null) { for (let i = 0; i < k.length; i += 2) { if (k[i] === 3) { for (const cl of k[i + 1]) { freq.set(cl, (freq.get(cl) || 0) + d); } } else if (k[i] === 1) { freq.set(k[i + 1], (freq.get(k[i + 1]) || 0) + d); } } } } }   // how many rules use each class
 /** files an entry under a bucket and logs where, so that the entries of the last rules can be taken out again (they are the last element of each of their buckets) */
 function put(index, list, e) { list.push(e); index.logB.push(list); index.logE.push(e); if (index.nat !== null) { index.nat.push(list.__nb, e.ni); } }
 function putKey(index, map, key, e) { let l = map.get(key); if (l === undefined) { l = []; if (index.nat !== null) { l.__nb = index.nat.bucket(map === index.byId ? 0 : map === index.byClass ? 1 : 2, key); } map.set(key, l); } put(index, l, e); }
 function placeEntries(index, base, f, freq, added) {
 	for (const b of base) {
-		const e = { complex: b.complex, decls: b.decls, ua: f.ua, order: f.order, spec: b.spec, pseudoElement: b.pseudoElement, need: b.need, needAny: b.needAny, sel: b.sel, mk: 0, w0: b.need.length ? b.need[0] : -1, m0: b.need.length ? b.need[1] : 0, multi: b.keys !== null && b.keys.length > 2, ni: -1 }; if (index.nat !== null) { e.ni = index.nat.entry(e); } index.count++; if (added) { added.push(e); }
+		const e = new IndexEntry(b, f.ua, f.order, b.keys !== null && b.keys.length > 2); if (index.nat !== null) { e.ni = index.nat.entry(e); } index.count++; if (added) { added.push(e); }
 		const keys = b.keys; if (keys === null) { put(index, index.universal, e); } else { for (let i = 0; i < keys.length; i += 2) { const k = keys[i]; if (k === 3) { putKey(index, index.byClass, rarest(keys[i + 1], freq), e); } else { putKey(index, k === 0 ? index.byId : k === 1 ? index.byClass : index.byTag, keys[i + 1], e); } } }
 	}
 }
@@ -398,7 +415,7 @@ export function ancestorFilter(el, parentFilter) {
 }
 const push = (m, k, e) => { const l = m.get(k); if (l) { l.push(e); } else { m.set(k, [e]); } };
 const declCache = new WeakMap();
-function expandRuleDecls(rule) { const key = rule.__decls; let c = declCache.get(key); if (c) { return c; } c = expandDecls(rule.__decls); declCache.set(key, c); return c; }
+function expandDeclsOf(src) { let c = declCache.get(src); if (c) { return c; } c = expandDecls(src); declCache.set(src, c); return c; }
 /** declarations → list of { name (longhand), value, important, pending? } (pending: the shorthand value contains var() and is expanded at computed-value time) */
 export function expandDecls(decls) {
 	const out = [];
@@ -412,7 +429,7 @@ export function expandDecls(decls) {
 }
 export function matchedDeclarations(el, index, inlineDecls, pseudo) {
 	const cands = []; const filter = el.__anc;   // ancestor Bloom filter, set by resolveStyles
-	const tok = ++matchToken; const consider = (list) => { if (list) { outer: for (const e of list) { if (e.multi) { if (e.mk === tok) { continue; } e.mk = tok; } if ((e.pseudoElement || null) !== (pseudo || null)) { continue; } if (filter) { const w = e.w0; if (w >= 0) { if ((filter[w] & e.m0) === 0) { continue; } const need = e.need; for (let i = 2; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { continue outer; } } } } if (matchesComplex(el, e.complex)) { cands.push(e); } } } };
+	const tok = ++matchToken; const consider = (list) => { if (list) { outer: for (const e of list) { if (e.multi) { if (e.mk === tok) { continue; } e.mk = tok; } if ((e.pseudoElement || null) !== (pseudo || null)) { continue; } if (filter) { let w = e.w0; if (w === -2) { w = initFilter(e); } if (w >= 0) { if ((filter[w] & e.m0) === 0) { continue; } const need = e.need; for (let i = 2; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { continue outer; } } } } if (matchesComplex(el, e.complex)) { cands.push(e); } } } };
 	const id = el.getAttribute('id'); if (id) { consider(index.byId.get(id)); }
 	const cls = el.classes(); for (let i = 0; i < cls.length; i++) { consider(index.byClass.get(cls[i])); }
 	consider(index.byTag.get(el.localName)); consider(index.universal);
@@ -422,7 +439,7 @@ export function matchedDeclarations(el, index, inlineDecls, pseudo) {
 /** The matched rules of an element, of the element itself and of its ::before and ::after, in one walk over the candidate lists: [main, before, after], each in cascade order. */
 export function matchedDeclarationsAll(el, index) {
 	const out = [[], [], []]; const filter = el.__anc;
-	const tok = ++matchToken; const consider = (list) => { if (list) { outer: for (const e of list) { if (e.multi) { if (e.mk === tok) { continue; } e.mk = tok; } if (filter) { const w = e.w0; if (w >= 0) { if ((filter[w] & e.m0) === 0) { continue; } const need = e.need; for (let i = 2; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { continue outer; } } } if (e.needAny !== null && anyRejects(filter, e.needAny)) { continue; } } const pe = e.pseudoElement; const dst = !pe ? out[0] : pe === 'before' ? out[1] : pe === 'after' ? out[2] : null; if (dst && matchesComplex(el, e.complex)) { dst.push(e); } } } };
+	const tok = ++matchToken; const consider = (list) => { if (list) { outer: for (const e of list) { if (e.multi) { if (e.mk === tok) { continue; } e.mk = tok; } if (filter) { let w = e.w0; if (w === -2) { w = initFilter(e); } if (w >= 0) { if ((filter[w] & e.m0) === 0) { continue; } const need = e.need; for (let i = 2; i < need.length; i += 2) { if ((filter[need[i]] & need[i + 1]) === 0) { continue outer; } } } if (e.needAny !== null && anyRejects(filter, e.needAny)) { continue; } } const pe = e.pseudoElement; const dst = !pe ? out[0] : pe === 'before' ? out[1] : pe === 'after' ? out[2] : null; if (dst && matchesComplex(el, e.complex)) { dst.push(e); } } } };
 	const id = el.getAttribute('id'); if (id) { consider(index.byId.get(id)); }
 	const cls = el.classes(); for (let i = 0; i < cls.length; i++) { consider(index.byClass.get(cls[i])); }
 	consider(index.byTag.get(el.localName)); consider(index.universal);
