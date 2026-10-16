@@ -14,6 +14,8 @@ Every error that cost real time, grouped by kind. Format: **what happened** → 
 
 **A5. Benchmarks on a shared CPU.** Style profiles taken while the 11-scenario suite ran in the background disagreed by ±20 %, and an earlier control run was skewed by a leftover Electron instance. → *Pin CPUs; nothing else running; median of 5.*
 
+**A7. Optimising a step without checking it is on the critical path (spike 13 phase 3a, v18).** The first style pass was 4.9 s of a 20 s launch, so cutting it to ~2 s was announced as "launch should be 2 to 3 s faster". It was 2.6 s less renderer CPU, and the owner measured exactly the same launch: at 15 s both versions showed the same workbench; the renderer had simply waited longer for the other processes. The profile was of the style pass, not of the launch. → *Before optimising something "for startup", get a timeline of the whole launch (busy and waiting per process) and check the step is on its critical path; promise only what the timeline supports.*
+
 **A6. Comparing absolute pass counts across builds (spike 9).** A faster boot changed timer interleaving, so the number of layout passes went *up* (131 → 163) while time went down. → *Compare per-pass costs and per-action latencies, not pass counts.*
 
 ## B. Wrong hypotheses while debugging

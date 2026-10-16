@@ -230,3 +230,15 @@ Fixed in three layers (package v17):
 
 Under Wine, 7 processes after a 2-minute boot; left 10 s after Alt+F4: v16 4; v17 0 with the job, 0 with the per-child fallback (`QJS98_JOB=children`), 0 without a job (`QJS98_JOB=0`, the JS layers alone; before the `process.exit` fix that left 2, the extension host and the JSON language server it had started). Left 10 s after `kill -9` of the first process (a crash): 0 with the job, 0 without it (the disconnects cascade). **Confirmed on the laptop with v17: all processes end when the window closes.** (Its log: 7 processes at 30 s, 666 MB in total; stable after 25.8 s; first style pass 4986 ms, 4841 ms of it the rule index.) Linux scenario suite with these changes: 11 of 11 pass, no processes left afterwards. Package v17: SHA256 `ea8be7b8a8a176005037a7c0e264fa9d480b873b95f00f8a57b082b95deb5bcc` (joined zip); the unpacked package boots under Wine and leaves 0 processes after closing. Detached launches: a detached and an attached `notepad.exe` started by a script that then exits: with the job (both modes) only the detached one is left, without it both.
 
+### Round 12: v18 (startup rule index) on the laptop: same times
+
+The owner: "all times are exactly the same" as v17 (launch, file open, caret, menus, New File/Folder). The log confirms the change worked where it was aimed and shows why the launch did not change:
+
+| From `results/desktop.txt` | v17 | v18 |
+|---|---|---|
+| First style pass (rule index) | 4986 ms (4841) | 2380 ms (2099) |
+| All rule-index time of the session | 5732 ms | 2790 ms |
+| State at t = 15 s | 433 elements, 35 layout passes, 15 paints | 433 elements, 38 layout passes, 18 paints |
+| "Total until stable" | 25.8 s | 23.2 s |
+
+At 15 s both versions show the same workbench: the renderer saved ~2.6 s of CPU and then waited that much longer for something else. **The launch is not limited by the renderer's CPU**; its critical path is elsewhere (main process start, storage, the extension host, IPC round trips: not measured yet). Interactions were not expected to change (v18 only touched startup work), which the report to the owner did not say clearly enough. Next: a launch timeline (per process: busy vs waiting, what the renderer waits on) before any further startup work.
