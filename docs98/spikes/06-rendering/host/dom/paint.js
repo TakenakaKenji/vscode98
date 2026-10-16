@@ -254,7 +254,7 @@ class Painter {
 /** the canvas background (html or body colour), then the root box, at offset (x, y) inside a w x h viewport */
 function paintRoot(p, doc, x, y, w, h) {
 	const lay = doc.__layout; const rb = lay.rootBox; let bg = rb.v['background-color']; if (!(bg && bg[3] > 0)) { const body = doc.body && lay.boxOf.get(doc.body); if (body && body.v['background-color'] && body.v['background-color'][3] > 0) { bg = body.v['background-color']; } }
-	if (bg && bg[3] > 0) { p.fillRect(x, y, w, h, bg); }
+	if (bg && bg[3] > 0) { p.fillRect(x, y, w, h, bg); } else if (doc.__baseBackground) { p.fillRect(x, y, w, h, doc.__baseBackground); }   // the window's own background (Electron's BrowserWindow backgroundColor) where the page sets none
 	const saveBg = rb.v['background-color']; rb.v['background-color'] = [0, 0, 0, 0]; const body = doc.body && lay.boxOf.get(doc.body); const saveBodyBg = body && body.v['background-color']; if (body && !(saveBg && saveBg[3] > 0)) { body.v['background-color'] = [0, 0, 0, 0]; }
 	p.paintBox(rb, x, y, 1); rb.v['background-color'] = saveBg; if (body && saveBodyBg) { body.v['background-color'] = saveBodyBg; }
 }

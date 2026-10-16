@@ -10,8 +10,10 @@ import { zoom, ScaledBackend } from '../../06-rendering/host/dom/zoom.js';
 import { createInputDriver, editable } from '../../06-rendering/host/dom/input_driver.js';
 
 /** opens the window and keeps it in sync with the document; returns { id, repaint(), close() } */
-export function openWindow(ctx, { width, height, title = 'vscode98', exact = false, fps = 30, onClose } = {}) {
-	const { doc, env, log } = ctx; const id = win.create(width, height, title); let W = width, H = height;
+export function openWindow(ctx, { width, height, title = 'vscode98', exact = false, fps = 30, onClose, background = null } = {}) {
+	const { doc, env, log } = ctx; const id = win.create(width, height, title); ctx.timelineMark?.('harness: window created');
+	if (background) { const px = new Uint8Array(width * height * 4); for (let i = 0; i < px.length; i += 4) { px[i] = background[0]; px[i + 1] = background[1]; px[i + 2] = background[2]; px[i + 3] = 255; } win.present(id, px, width, height, 0, 0, width, height); }   // the window shows its background colour at once, not white, while the first style pass runs
+	let W = width, H = height;
 	let paintedPasses = -1, paintedGen = -1, backend = null, lastPaint = 0, forced = true, paints = 0, paintMs = 0;
 	const repaint = () => { forced = true; };
 	// the clipboard of the text controls is the system clipboard (the window's text is CRLF on Windows, the DOM's LF)
@@ -23,6 +25,7 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 		if (!backend || backend.w !== W || backend.h !== H) { backend = new NativeBackend(W, H, { exact }); } else { backend.reset(); }
 		const z = zoom.factor; const r = paintDocument(doc, z === 1 ? W : Math.round(W / z), z === 1 ? H : Math.round(H / z), z === 1 ? backend : new ScaledBackend(backend, z));
 		win.present(id, r.px, W, H, 0, 0, W, H); paints++; paintMs += performance.now() - t0; lastPaint = performance.now();
+		if (paints <= 40 && ctx.timelineMark) { ctx.timelineMark(`harness: paint ${paints} (${doc.getElementsByTagName('*').length} elements, ${Math.round(performance.now() - t0)} ms)`); }   // the launch timeline: when the window first showed something, and what
 	}
 	// any layout pass since the last paint counts: code that reads geometry runs layout itself and clears doc.__dirty, so `__dirty` alone misses most changes
 	const tick = () => {

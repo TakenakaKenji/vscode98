@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import '../../06-rendering/host/dom/intl_shim.js';
 import * as opentype from '../../../../node_modules/opentype.js/dist/opentype.mjs';
 import { installEnvironment } from '../../06-rendering/host/dom/env.js';
+import { parseColor } from '../../06-rendering/host/dom/css.js';
 import { parseFragment, missing } from '../../06-rendering/host/dom/dom.js';
 import { unsupported } from '../../06-rendering/host/dom/layout.js';
 import { paintDocument, toPPM, unpainted } from '../../06-rendering/host/dom/paint.js';
@@ -44,7 +45,7 @@ console.error ??= (...a) => { std.err.puts(a.map(String).join(' ') + '\n'); };
 for (const m of ['group', 'groupCollapsed', 'groupEnd', 'table', 'time', 'timeEnd', 'timeLog', 'count', 'countReset', 'dir', 'dirxml', 'assert', 'clear', 'profile', 'profileEnd', 'timeStamp']) { console[m] ??= () => { }; }   // the extension host's output is replayed with console.group()
 
 async function main() {
-const t00 = performance.now(); const mainLog = []; log('[harness] start');
+const t00 = performance.now(); const mainLog = []; { const d = new Date(Date.now() - t00), p2 = (n) => String(n).padStart(2, '0'); log(`[harness] start (process started at ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}.${p2(Math.floor(d.getMilliseconds() / 10))})`); }
 // --timeline <dir>: every process of the app records its event loop (busy / waiting) and VS Code's startup marks there; the merged table is printed when the workbench is stable
 const timelineDir = opt('timeline'); const t00Epoch = Date.now() - t00; let timelinePrinted = false; if (timelineDir) { startTimeline(timelineDir, nodeProcess.env); }   // printed when the workbench is stable, or when the window is closed before that
 // --code-cache <dir> (default <user-data-dir>/code-cache; 0 = off): bytecode of the large ES modules (05-child-process/host/esm.c), for this process and every one it starts
@@ -134,11 +135,13 @@ const tImport = performance.now();
 log('[harness] page scripts: ' + JSON.stringify(scripts));
 for (const s of scripts) { try { await import(s); log('[harness] imported ' + s + ' after ' + Math.round(performance.now() - t00) + ' ms (' + Math.round(performance.now() - tImport) + ' ms for the import)'); } catch (e) { log('[harness] import failed ' + s + ': ' + (e && e.stack || e)); note('import ' + s, e); } }
 const tLoaded = performance.now(); const rssAfterImport = rss();
-const ctx = { env, doc, note, rss, layoutTiming, styleNative, opt, log, W, H, consoleLog };
+const ctx = { env, doc, note, rss, layoutTiming, styleNative, opt, log, W, H, consoleLog, timelineMark: timelineDir ? timelineMark : null };
+// the BrowserWindow's backgroundColor (main: the theme's background, #1E1E1E by default): what Electron shows before the page paints and where it sets no background
+const windowBackground = (() => { try { const c = createOpts?.options?.backgroundColor; return c ? parseColor(String(c)) : null; } catch { return null; } })(); if (windowBackground) { doc.__baseBackground = windowBackground; }
 let winHost = null;
 if (opt('window', '0') === '1') {                      // a real window (Win32/GDI through spike:win): the document is painted whenever it changes, input goes to the DOM
 	const { openWindow } = await import('../../11-windows-host/host/window_host98.mjs');
-	winHost = openWindow(ctx, { width: W, height: H, title: 'vscode98', exact: opt('backend') === 'native-exact', onClose: () => { if (timelineDir && !timelinePrinted) { timelineMark('harness: window closed'); try { timelineReport(timelineDir, log, t00Epoch); } catch (e) { log('timeline: ' + e); } } try { child.kill(); } catch { /* gone */ } } });
+	winHost = openWindow(ctx, { width: W, height: H, title: 'vscode98', background: windowBackground, exact: opt('backend') === 'native-exact', onClose: () => { if (timelineDir && !timelinePrinted) { timelineMark('harness: window closed'); try { timelineReport(timelineDir, log, t00Epoch); } catch (e) { log('timeline: ' + e); } } try { child.kill(); } catch { /* gone */ } } });
 	log('[harness] window opened'); timelineMark('harness: window opened');
 	{ const seen = new Map(); liveNote = (k, m) => { const key = k + m.split('\n')[0].slice(0, 120); const n = (seen.get(key) || 0) + 1; seen.set(key, n); if (n <= 2) { log('[error] ' + k + ': ' + m.split('\n').slice(0, 6).join(' | ').slice(0, 600)); } }; }   // errors of the renderer (window events, paints, rejections) as they happen
 	// progress and memory every --status-every seconds (default 15), and a BMP of the window (open it with Paint) at the times given by --shot-at (default 60,150,300)

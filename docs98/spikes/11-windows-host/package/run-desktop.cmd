@@ -17,6 +17,8 @@ if not exist "%HERE%\userdata" mkdir "%HERE%\userdata"
 rem the previous run's log is kept as desktop-prev.txt (the second start reads the code cache written by the first: compare the two)
 if exist "%HERE%\results\desktop.txt" move /y "%HERE%\results\desktop.txt" "%HERE%\results\desktop-prev.txt" >nul
 echo Starting ... (log: %HERE%\results\desktop.txt)
-"%Q%" --stack-size 0 "%JF%/docs98/spikes/05-child-process/host/fork_main.mjs" "%JF%/s11" "%JF%/docs98/spikes/10-main-shim/host/boot_desktop_qjs.mjs" "%HERE%\app" --layout native --backend native --window 1 --width %W% --height %H% --user-data-dir "%HERE%\userdata" --extensions-dir "%HERE%\userdata\extensions" --workspace "%HERE%\sample" --seconds 20 --stable 300 --echo-main 1 --debug-input 1 --timeline "%HERE%\results\timeline" > "%HERE%\results\desktop.txt" 2>&1
+rem the time of the double-click, to compare with the harness start in the log (anything Windows does before the program runs)
+echo [cmd] started at %TIME% > "%HERE%\results\desktop.txt"
+"%Q%" --stack-size 0 "%JF%/docs98/spikes/05-child-process/host/fork_main.mjs" "%JF%/s11" "%JF%/docs98/spikes/10-main-shim/host/boot_desktop_qjs.mjs" "%HERE%\app" --layout native --backend native --window 1 --width %W% --height %H% --user-data-dir "%HERE%\userdata" --extensions-dir "%HERE%\userdata\extensions" --workspace "%HERE%\sample" --seconds 20 --stable 300 --echo-main 1 --debug-input 1 --timeline "%HERE%\results\timeline" >> "%HERE%\results\desktop.txt" 2>&1
 echo Exited. Log: %HERE%\results\desktop.txt
 endlocal
