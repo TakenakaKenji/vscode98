@@ -7,8 +7,7 @@ import { splitDecls, CSSStyleDeclaration, noteMissing } from './dom.js';
 export function stripComments(t) { return t.indexOf('/*') < 0 ? t : t.replace(/\/\*[\s\S]*?\*\//g, ''); }
 function readBlock(t, i) { /* t[i] === '{' → index after matching '}' */ let d = 0, q = 0; const n = t.length; for (; i < n; i++) { const c = t.charCodeAt(i); if (q !== 0) { if (c === 92) { i++; } else if (c === q) { q = 0; } continue; } if (c === 34 || c === 39) { q = c; } else if (c === 123) { d++; } else if (c === 125) { d--; if (d === 0) { return i + 1; } } } return n; }
 function readPrelude(t, i) { let d = 0, q = 0; const n = t.length; for (; i < n; i++) { const c = t.charCodeAt(i); if (q !== 0) { if (c === 92) { i++; } else if (c === q) { q = 0; } continue; } if (c === 34 || c === 39) { q = c; } else if (c === 40) { d++; } else if (c === 41) { d--; } else if (d === 0 && (c === 123 || c === 59)) { return i; } } return n; }
-export function parseDeclarations(text) { const __t0 = performance.now(); try { return parseDeclarations0(text); } finally {  } }
-function parseDeclarations0(text) {
+export function parseDeclarations(text) {
 	const out = [];
 	for (const d of splitDecls(stripComments(text))) { const colon = d.indexOf(':'); if (colon <= 0) { continue; } let n = d.slice(0, colon).trim(), v = d.slice(colon + 1).trim(), imp = false; if (/!\s*important\s*$/i.test(v)) { v = v.replace(/!\s*important\s*$/i, '').trim(); imp = true; } if (!n.startsWith('--')) { n = n.toLowerCase(); } if (v !== '') { out.push({ name: n, value: v, important: imp }); } }
 	return out;
