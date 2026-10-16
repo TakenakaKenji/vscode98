@@ -2,7 +2,7 @@
 
 **Question:** spike 12 showed that style computation is 65 to 87 % of every slow interaction of the vscode98 host. How much of it can move to C, and how much can the JavaScript that stays do better?
 
-**Status (2026-10-16):** phase 1 done (selector matching in C, on by default), plus three JavaScript fixes in the computed-value step found by profiling. Interactions are **1.6 to 4.4 times faster** than in spike 12 (context menu 779 → 272 ms, open file 981 → 223 ms, new file 802 → 356 ms) and now **2.4 to 8.6 times** slower than Electron instead of 3 to 23 times. Phase 2 (computed values in C) not started. Package v15 carries it.
+**Status (2026-10-16):** phase 1 (selector matching in C) and phase 2 (the computed-value step in C) done, both on by default. Phase 1 plus three JavaScript fixes made interactions 1.6 to 4.4 times faster than in spike 12 (package v15). Phase 2, measured the same day on the same machine, makes them up to 1.8 times faster again (1.0 for a keystroke, which has almost no style work) (context menu 521 → 293 ms, New File 682 → 449 ms, command palette 643 → 460 ms): **3.0 to 9.2 times stock Electron 1.142 on that machine instead of 3.4 to 14.5 times** (see [the phase 2 benchmark](#phase-2-benchmark-same-machine-same-day)). Package v16 carries phase 2.
 
 ## Where the style time went (before)
 
@@ -35,7 +35,7 @@ Matching cost: **~12 ms per full workbench restyle (12 µs per element, ~20 time
 
 Result: **full workbench restyle 585 → ~130 ms** (native matching), or 585 → ~460 ms with the JavaScript matcher. The layout dump and the painted pixels of the workbench snapshot are identical before and after.
 
-## Interaction benchmark (spike 12's control, same sandbox, 2 CPUs)
+## Interaction benchmark after phase 1 (spike 12's control, same sandbox, 2 CPUs; the 2.1 GHz machine of spike 12)
 
 `10-main-shim/host/scenario_ctl.mjs --rounds 5 --split 1`, median of 5, ms. "Before" is the vscode98 column of [spike 12](../12-control/README.md) (3 rounds, 2026-10-15). "JS matcher" is today's code with `--style js` (it has the computed-value fixes but matches selectors in JavaScript).
 
@@ -57,6 +57,40 @@ Result: **full workbench restyle 585 → ~130 ms** (native matching), or 585 →
 
 Style is now 35 to 70 % of a slow action instead of 65 to 87 % (e.g. context menu: 184 of 271 ms; open file: 100 of 223 ms). The rest is the workbench's own JavaScript (the `event` column: up to 130 ms for opening a menu, ~90 ms for a click in the editor), layout (40 to 80 ms) and paint (12 to 60 ms). Over the run the native matcher served 44803 elements (23 µs each including the conversion back to JavaScript objects) and the node sync 1115 passes (0.17 ms each).
 
+## Phase 2: the computed-value step in C
+
+Files: `07-native-render/host/style_compute.c` (included by `style.c`, same module `spike:style`), `native_style.js` (`engine.compute`). Hooks: `css.js` (`computeStyle` asks `env.styleEngine.compute` first; `computeStyleJS` is the reference; `finishComputed` is shared; `VarScope` and `varsEqual` accept native scopes), `dom.js` (inline style declarations carry a version).
+
+- **What C does per element:** the cascade over the matched rules' declaration blocks and the inline style (the winning declaration per property, `!important` included); the custom properties, in the order they were first declared, into a scope of their own (as `VarScope`: own entries over the parent's scope, flattened past depth 12, equal pairs remembered); `var()` substitution with the semantics of `substituteVars`/`VAR_RE` (leftmost match, fallbacks, nesting depth 10, 50 replacements) and a cache per scope; the global keywords (`initial`, `inherit`, `unset`, `revert`, `revert-layer`); font-size (keywords, `smaller`/`larger`, lengths against the parent) and color first; then every other declared property. JavaScript-compatible `trim()` (ECMAScript white space, not only ASCII).
+- **Values stay JavaScript objects.** C keeps a value cache keyed like `parseValueCached` (property, value, and font size and color when the value depends on them); on a miss it calls `css.js parseValue` (and `parseLength`, `parseColor`, `expandShorthand` for a shorthand whose value had `var()`). So a value is, by construction, the object the JavaScript engine would have produced. C writes the values into the `out` object that JavaScript pre-fills with the initial and inherited values; `finishComputed` (border widths, `currentcolor`, font-weight keywords, overflow, blockification, anchor bookkeeping) runs on it in JavaScript.
+- **Declaration blocks** are sent once per declaration list (`css.js` caches one per rule) and freed when the list is garbage-collected; an inline style's block is rebuilt only when the declaration's version changes. Custom-property scopes are freed when their JavaScript wrapper (`NativeVars`) is collected.
+- **Left to JavaScript:** values with `anchor()`/`anchor-size()` (C returns -2 and `computeStyleJS` runs). A JavaScript `VarScope` parent (from such an element) gets a flat native copy.
+- **Modes:** `--style native` (default: both phases), `--style match` (native matching, computed values in JavaScript), `--style js`, `--style verify` (both, every element compared with the JavaScript matcher and with `computeStyleJS`).
+
+Full restyle of the captured workbench (1016 elements, 1 CPU): **~130 → ~80 ms**, of which the computed-value step **~95 → ~36 ms**; layout dump and pixels identical to the engine before phase 1. What is left of the 36 ms is mostly building the ~200-property JavaScript object per element and `finishComputed`; the rest of the 80 ms is the walk (`layoutPropsDiffer`, `inheritedChanged`) and the matcher.
+
+### Phase 2 benchmark (same machine, same day)
+
+The container was moved to a different machine between the phase 1 and phase 2 measurements (a 2.8 GHz Xeon instead of the 2.1 GHz one), and absolute numbers differ between the two (QuickJS ran relatively slower on the new one). So everything below was measured on the new machine on 2026-10-16, back to back: stock Electron 1.142 (re-run, own `HOME`), our host with phase 1 only (`--style match`), and with phases 1 and 2 (`--style native`); 2 CPUs, median of 5 rounds, ms.
+
+| Action | Electron 1.142 | phase 1 (`match`) | **phases 1 + 2 (`native`)** | phase 2 gain | native / Electron | native: style / layout / paint |
+|---|---|---|---|---|---|---|
+| Explorer context menu | 36 | 521 | **293** | 1.8 x | 8.1 x | 129 / 74 / 26 |
+| Menu bar: open File | 36 | 347 | **211** | 1.6 x | 5.9 x | 103 / 72 / 29 |
+| Open file (explorer click) | 61 | 331 | **292** | 1.1 x | 4.8 x | 90 / 65 / 16 |
+| Switch to another file | 64 | 355 | **295** | 1.2 x | 4.6 x | 109 / 90 / 14 |
+| Click in text: caret moves | 68 | 263 | **216** | 1.2 x | 3.2 x | 59 / 70 / 15 |
+| Double click: word selected | 39 | 134 | **125** | 1.1 x | 3.2 x | 14 / 42 / 14 |
+| Keystroke to screen | 19 | 75 | **75** | 1.0 x | 3.9 x | 5 / 12 / 16 |
+| Quick Open (Ctrl+P) | 43 | 300 | **273** | 1.1 x | 6.3 x | 72 / 59 / 20 |
+| Command palette | 50 | 643 | **460** | 1.4 x | 9.2 x | 121 / 113 / 23 |
+| New File: input box | 47 | 186 | **141** | 1.3 x | 3.0 x | 49 / 28 / 16 |
+| New File: Enter to row | 65 | 682 | **449** | 1.5 x | 6.9 x | 113 / 98 / 46 |
+| New Folder: input box | 30 | 177 | **125** | 1.4 x | 4.2 x | 54 / 27 / 16 |
+| New Folder: Enter to row | 47 | 525 | **397** | 1.3 x | 8.4 x | 84 / 81 / 55 |
+
+Style is now 28 to 45 % of the slower actions (it was 65 to 87 % in spike 12; a keystroke and a double click spend 5 to 14 ms in style). The rest: layout (native, but run on every pass: 30 to 110 ms), the workbench's own JavaScript on QuickJS (the `event` column, ~90 to 125 ms for a menu or a click in the editor), and paint.
+
 ## Correctness
 
 | Check | Result |
@@ -65,7 +99,10 @@ Style is now 35 to 70 % of a slow action instead of 65 to 87 % (e.g. context men
 | The 11 feature scenarios (`inputs explorer search editor settings tour lang misc ui webview more`) with `--style native` | all pass; 0 fallbacks |
 | `style_fuzz.mjs` 200 seeds × 25 steps, Node (JavaScript matcher) | 0 mismatching passes |
 | `style_fuzz.mjs` on QuickJS, `FUZZ_NATIVE=1` | 0 mismatching passes, 91310 elements, 0 differences from the JavaScript matcher |
-| Workbench snapshot: layout dump and pixels, old engine vs new | identical |
+| Workbench snapshot: layout dump and pixels, old engine vs new | identical (after phase 1 and after phase 2) |
+| Phase 2, workbench snapshot with `--style verify` | 3537 computed styles (elements and pseudo-elements), 0 differences from `computeStyleJS`, 0 left to JavaScript |
+| Phase 2, `scenario_lat` on the desktop workbench with `--style verify` | 19531 computed styles, 0 differences, 0 left to JavaScript |
+| Phase 2, `style_fuzz.mjs` on QuickJS (`FUZZ_NATIVE=1`, 200 seeds × 25 steps: custom properties, inline styles, inheritance, `::before`, mutations) | 376018 computed styles, 0 differences from `computeStyleJS`, 0 mismatching passes |
 
 Known deliberate differences from the JavaScript matcher: none observed. (The C ancestor filter hashes lower-case tag names on both sides; the JavaScript one hashes `localName` as is for elements and lower case for selectors, which can only make it reject more, e.g. camelCase SVG tags.)
 
@@ -78,6 +115,7 @@ Known deliberate differences from the JavaScript matcher: none observed. (The C 
 
 ## Next
 
-- **Phase 2:** the computed-value step (`computeStyle`, ~100 ms of the remaining ~130 ms per full restyle) in C, feeding the native layout directly instead of building ~200-property JavaScript objects.
+- **Phase 3:** let the native layout read the computed values from C directly (today `layout_pack.js` reads them back from the JavaScript objects and packs them into typed arrays), and skip building the ~200-property object for elements whose values nobody reads in JavaScript; move `finishComputed` and the layout-change check (`layoutPropsDiffer`) to C with them.
+- **Layout per pass** is now as large as style in many actions (30 to 110 ms): it runs over the whole tree on every pass that is not style-only; incremental layout (relayout only dirty subtrees) is the next big lever after style.
 - **The first style pass at startup** is ~2.5 s for the workbench, almost all of it the rule index (13296 rules): stylesheet parsing ~0.55 s, selector parsing ~0.4 to 0.7 s, declaration expansion ~0.2 s, invalidation analysis ~0.5 s, native entries ~0.2 to 0.3 s. The next startup target (a cached, prebuilt index is the obvious candidate).
 - The workbench's own JavaScript per action (`event` column) and layout are now a larger share; menus spend ~100 to 130 ms in event handling before any style work.

@@ -105,8 +105,8 @@ const env = installEnvironment({ width: W, height: H, opentype, readUrl: (u) => 
   };
   env.fetchDocument = env.fetchResource; }
 let layoutTiming = null; if (opt('layout', 'js') === 'native') { const m = await import('../../07-native-render/host/native_layout.js'); env.layoutEngine = m.engine; layoutTiming = m.timing; }
-// selector matching in C by default (07-native-render/host/native_style.js, module spike:style); --style js: the JavaScript matcher; --style verify: both, differences logged
-let styleNative = null; if (opt('style', 'native') !== 'js') { try { styleNative = await import('../../07-native-render/host/native_style.js'); env.styleEngine = styleNative.engine; styleNative.engine.verify = opt('style', 'native') === 'verify'; } catch (e) { styleNative = null; log('[harness] no native style engine (' + (e && e.message || e) + '): JavaScript matching'); } }
+// selector matching in C by default (07-native-render/host/native_style.js, module spike:style); --style js: the JavaScript matcher; --style match: native matching, computed values in JavaScript; --style verify: both, differences logged
+let styleNative = null; if (opt('style', 'native') !== 'js') { try { styleNative = await import('../../07-native-render/host/native_style.js'); env.styleEngine = styleNative.engine; styleNative.engine.verify = opt('style', 'native') === 'verify'; if (opt('style', 'native') === 'match') { styleNative.engine.compute = null; } } catch (e) { styleNative = null; log('[harness] no native style engine (' + (e && e.message || e) + '): JavaScript matching'); } }
 installWebShims(env, { baseUrl: BASE, readFile: (p) => readBytes(nodePath.join(appRoot, 'out', p)) });
 Object.assign(env.window.location, { href: load.url });
 const html = std.loadFile(pageFile).replace(/<!doctype[^>]*>/i, '').replace(/<!--[\s\S]*?-->/g, '');
@@ -157,7 +157,7 @@ if (globalThis.__packVerify) { log('pack verify: ' + JSON.stringify(globalThis._
 log('style-only passes (previous layout kept): ' + (doc.__styleOnlyPasses || 0) + ' of ' + (doc.__passStats || []).length + (doc.__verifyStyleOnly ? '; verified ' + (doc.__styleOnlyChecked || 0) + ' boxes, mismatches ' + JSON.stringify(doc.__styleOnlyMismatches || []) : ''));
 summarizeRun(ctx, { tImport, tLoaded, done, t00, errors, consoleLog, rssAfterImport, missing, unsupported });
 if (opt('scenario')) { const sc = await import(opt('scenario')); await sc.run(ctx); }
-if (styleNative) { log('native style: ' + JSON.stringify(styleNative.stats) + ' C ' + JSON.stringify(styleNative.engine.nativeStats()) + ' mismatches ' + styleNative.mismatches.length + (styleNative.mismatches.length ? '\n  ' + styleNative.mismatches.slice(0, 30).join('\n  ') : '')); }
+if (styleNative) { log('native style: ' + JSON.stringify(styleNative.stats) + ' C ' + JSON.stringify(styleNative.engine.nativeStats()) + ' mismatches ' + styleNative.mismatches.length + (styleNative.mismatches.length ? '\n  ' + styleNative.mismatches.slice(0, 30).join('\n  ') : '') + '; compute mismatches ' + styleNative.computeMismatches.length + (styleNative.computeMismatches.length ? '\n  ' + styleNative.computeMismatches.slice(0, 30).join('\n  ') : '')); }
 log('--- main process output (last 40 lines)\n' + mainLog.join('').split('\n').slice(-40).join('\n'));
 if (opt('ppm')) { let backend; if (opt('backend', 'js').startsWith('native')) { const { NativeBackend } = await import('../../07-native-render/host/native_backend.js'); backend = new NativeBackend(W, H, { exact: opt('backend') === 'native-exact' }); } const r = paintDocument(doc, W, H, backend); const u8 = toPPM(r.px, r.w, r.h); const f = std.open(opt('ppm'), 'wb'); f.write(u8.buffer, u8.byteOffset, u8.byteLength); f.close(); log('painted ' + JSON.stringify(r.stats)); }
 if (winHost) { log('[harness] window mode: close the window to exit'); return; }

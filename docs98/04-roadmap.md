@@ -33,7 +33,7 @@ Small experiments to de-risk the three components before committing.
 | Node shim | Can the extension host boot on a minimal `fs`/`child_process`/`net` shim? **Spike 3 added:** 24 of 34 built-in extensions load via `require()` and activate on QuickJS-ng (4 more load fully and stop at `child_process.fork` for their language server) → [spikes/03-extension-loading/](spikes/03-extension-loading/README.md). **Spike 2 had answered:** yes to the point of the renderer handshake and first RPC burst, with `fs`/`path`/`os`/`events`/logger shims only; `require`/extension loading, `net`, `child_process` and native modules are still untested **Spike 5 (child processes, 2026-10-12):** `child_process` (spawn/fork+IPC/exec/sync), `net`, `readline` and a native ES-module resolver/loader with sync `require(esm)` on QuickJS-ng; tsserver, the JSON/CSS/HTML/Markdown servers and the git extension run; 29 of 34 built-in extensions activate. Linux only; the Windows loop cannot wait on pipes/sockets → [spikes/05-child-process/](spikes/05-child-process/README.md) |
 | Build | Can we produce a downleveled, single-bundle build of the workbench? Partly answered by spike 1: esbuild lowers the workbench to ES2015 cleanly, ES5 is impossible; behavior of lowered code unverified. **Not needed so far:** QuickJS-ng runs the ES2024 bundles unmodified; revisit only if an engine below ES2024 is ever needed |
 | Control benchmark (spike 12) | How far is the host from stock Electron VS Code on the same machine? **Done 2026-10-15:** 3 to 23 times slower per interaction, 8 to 18 times slower to start, 20 to 25 % less memory; style 65 to 87 % of every slow interaction → [spikes/12-control/](spikes/12-control/README.md) |
-| Native style engine (spike 13) | How much of the style cost can move to C? **Phase 1 done 2026-10-16:** selector matching in C plus computed-value fixes in JavaScript; interactions 1.6 to 4.4 times faster, now 2.4 to 8.6 times Electron; phase 2 (computed values in C) open → [spikes/13-native-style/](spikes/13-native-style/README.md) |
+| Native style engine (spike 13) | How much of the style cost can move to C? **Phase 1 done 2026-10-16:** selector matching in C plus computed-value fixes in JavaScript; interactions 1.6 to 4.4 times faster, then 2.4 to 8.6 times Electron. **Phase 2 done 2026-10-16:** the computed-value step in C; up to 1.8 times faster again; 3.0 to 9.2 times Electron on the (different) machine of that day → [spikes/13-native-style/](spikes/13-native-style/README.md) |
 
 **Exit criterion:** decisions D-004 (JS engine), D-005 (render strategy), D-006 (process/IPC model) recorded in [05-decisions.md](05-decisions.md).
 
@@ -51,9 +51,10 @@ Implement components A, B, C to the point where VS Code starts without Electron 
 
 | Work item | State |
 |---|---|
-| Interaction latency | 2.4 to 8.6 times Electron on the sandbox (spike 13); laptop numbers for v15 pending |
+| Interaction latency | 3.0 to 9.2 times Electron 1.142 on the sandbox machine of 2026-10-16 with phases 1 and 2 (spike 13); laptop numbers for v15/v16 pending |
 | Startup | ~20 s on the laptop; first style pass ~2.5 s on the sandbox, mostly building the index of 13,296 rules (cached index is the next candidate) |
-| Computed style values in C | spike 13 phase 2, not started |
+| Computed style values in C | done 2026-10-16 (spike 13 phase 2, package v16): computed-value step ~95 → ~36 ms per full workbench restyle; interactions up to 1.8 times faster |
+| Layout per pass | 30 to 110 ms per slow action after phase 2 (layout runs over the whole tree on every pass that is not style-only): incremental layout is the next lever |
 | Feature gaps | see [FEATURES.md](FEATURES.md): debugging and timeline not tested, Shadow DOM, native `<select>` popup, gradients, grid/float/table layout |
 | Real-hardware control benchmark | proposed (AutoHotkey input-to-pixel timer), not built |
 

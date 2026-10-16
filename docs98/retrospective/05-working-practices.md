@@ -9,6 +9,7 @@ Concrete rules from the sessions so far. Each one exists because ignoring it cos
 3. **Pin CPUs and never benchmark while something else runs.** `taskset -c 0-1` for both contenders. A test suite in the background, a leftover Electron instance or a Wine session doubles some numbers and not others. [Startup index profile and restyle timings were noisy while the scenario suite ran.]
 4. **Profile with a copy, not with the repo.** `/tmp/claude-0/mkprof.py` copies the spike sources and adds phase timers; the repo never carries instrumentation that could be committed by accident. Same for `--restyle N` style microbenchmarks on the captured workbench (`run_replay_qjs.mjs /tmp/claude-0/workbench.json --restyle 5`).
 5. **The sandbox is ~2.4 to 3.4 times faster than the owner's Windows 7 laptop** for our engine. Quote laptop expectations from that, and say they are estimates.
+5b. **The sandbox machine can change between sessions** (2026-10-16: a 2.8 GHz Xeon replaced the 2.1 GHz one after a container restart, and QuickJS ran relatively slower on it). Check `/proc/cpuinfo` at the start of a performance session, never compare absolute numbers across sessions, and measure A/B on the same machine the same day: the previous engine (`--style match`, `--style js`, `--layout js`) and stock Electron re-run there (with its own `HOME`).
 
 ## Correctness
 

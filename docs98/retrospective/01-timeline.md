@@ -53,9 +53,11 @@ The owner pointed out that stock VS Code 1.70.2 on the same laptop was much fast
 
 [Spike 13](../spikes/13-native-style/README.md): selector matching in C (element-tree mirror, compiled selectors, the rule index), plus layered custom properties, a monotonic cascade and a cheap layout-change check in JavaScript. Full restyle 585 → ~130 ms with identical output. **Per interaction 1.6 to 4.4 times faster than spike 12, now 2.4 to 8.6 times Electron.** On the way: the Linux host's random "exit code 0" (poll `EINTR`), exceptions in timers ending the event loop, and a broken sqlite stand-in were found and fixed. Package v15.
 
+Phase 2 the same day: the computed-value step (cascade, custom properties, `var()`, keywords, values through a native cache that asks `css.js parseValue` on a miss) in C, checked element by element against `computeStyleJS` (0 differences over 376,018 fuzzed styles). On a new sandbox machine, measured back to back with Electron re-run there: up to 1.8 times faster than phase 1 alone, 3.0 to 9.2 times Electron. Package v16.
+
 ## Where we are
 
 - Works: nearly every feature in [FEATURES.md](../FEATURES.md) in scenarios; the owner confirmed boot, editing, explorer operations, menus and reveal-in-explorer on the laptop (v14).
-- Slow: interactions are 2.4 to 8.6 times Electron; startup ~20 s on the laptop (the first style pass alone is ~2.5 s on the sandbox, mostly building the index of 13,296 rules).
+- Slow: interactions are 3.0 to 9.2 times Electron after spike 13 phase 2 (measured on the sandbox machine of 2026-10-16; phase 1 alone was 2.4 to 8.6 times on the earlier machine); startup ~20 s on the laptop (the first style pass alone is ~2.5 s on the sandbox, mostly building the index of 13,296 rules).
 - Not done: computed style values in C (phase 2), a cached rule index for startup, XP/98 (Vista-only imports in QuickJS), ConPTY-free terminal details, debugging, Marketplace.
 - Docs that had lagged the work were brought up to date on 2026-10-16: D-003 to D-006 accepted (with D-005's "no grid/float/table" claim corrected) and D-010/D-011 recorded in [05-decisions.md](../05-decisions.md); Phases 0 and 1 marked done and Phase 2 in progress with its success criteria in [04-roadmap.md](../04-roadmap.md); the Windows 7 column of the feasibility table in [03-targets-and-limits.md](../03-targets-and-limits.md) filled in; the performance row of [FEATURES.md](../FEATURES.md) updated.
