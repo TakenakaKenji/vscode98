@@ -72,7 +72,7 @@ The pattern: the app catches an exception or gets `undefined`, and a feature sim
 - A container restart killed background tasks mid-profile; work was safe only because it had just been committed.
 - Stale test-profile state (Backups, `code.lock`, orphaned processes) caused false scenario failures → `runsc.sh` cleans it.
 - Profiling instrumentation was once added to the repo files and had to be stripped before committing → profile on a copy (`/tmp/claude-0/mkprof.py`).
-- Documentation drift: decisions D-003 to D-006 stayed "proposed", the roadmap's phase table and the targets feasibility table were not updated after the spikes answered them.
+- Documentation drift: decisions D-003 to D-006 stayed "proposed", the roadmap's phase table, the targets feasibility table and the performance row of FEATURES.md were not updated after the spikes answered them (all corrected 2026-10-16). → *Update the decision log, roadmap and feature table in the same commit as the spike README.*
 
 ## H. Scope and direction
 

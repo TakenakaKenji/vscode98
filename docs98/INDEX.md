@@ -73,7 +73,7 @@ Start here. Every doc in `docs98/` is listed below with a one-line summary. Upda
 - **Spike 4 (measured):** syntax highlighting does not need a general `WebAssembly`: native Oniguruma or wasm2c-translated `onig.wasm` give identical results at about V8 speed per call; a wasm3 interpreter works but costs 2.6× (x86-64) to 4.9× (x86-32) end-to-end tokenization time vs native. Tokenizing 8,482 lines: V8 1.4 s, QuickJS+native 4.6 s, +wasm2c 4.1 s, +wasm3 12.1 s.
 - **Spike 5 (measured):** `fork()` with a JSON-lines IPC channel, `spawn`, `net` and Node-style ES-module resolution (+ sync `require(esm)`, CJS interop, `registerHooks` resolve) run on QuickJS-ng with a small native layer; real tsserver is 6.0× slower than on Node (1.12 s vs 6.73 s, same answers), idle child 4 MB vs 39 MB RSS; 29 of 34 built-in extensions activate. QuickJS's Windows poll loop only waits on stdin and worker ports, so pipes/sockets need a host-owned loop there; JS UTF-8 decoding made IPC 60× slower until made native.
 - Build targets are ES2024 (no downleveling today).
-- Open proposals: D-003 (custom host), D-004/5/6 (engine, render, IPC), D-008 (scope out AI/cloud features) in [05-decisions.md](05-decisions.md).
+- Decisions (as of 2026-10-16) in [05-decisions.md](05-decisions.md): all accepted. D-003 custom host, D-004 QuickJS-ng, D-005 own DOM/CSS/layout with native layout/raster/matching, D-006 VS Code's own process model on native transports, D-008 AI/cloud out of scope, D-009 i586/x87 baseline, D-010 control benchmark as the performance yardstick, D-011 native parts behind the JavaScript reference with identical-output gates.
 
 ## Conventions
 
