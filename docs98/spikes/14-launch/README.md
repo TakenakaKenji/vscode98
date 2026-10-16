@@ -2,7 +2,7 @@
 
 **Question:** round 12 showed that v18 removed 2.6 s of the window process's CPU at startup and the laptop's launch did not change. Where does the launch actually go, process by process, and what is on its critical path?
 
-**Status (2026-10-16):** the timeline is built into every process and printed by the desktop harness (`--timeline <dir>`, on in `run-desktop.cmd` from package v19). Its first run answered the question: **compiling the 42.7 MB workbench bundle** (`workbench.desktop.main.js`) is the largest single piece of the launch, with the window process at 100 % CPU and the other processes idle. A bytecode cache for large ES modules removes most of it from the second start on: the workbench is started 5.9 s sooner on the sandbox and 8.3 s sooner under Wine. Package v19 carries both; laptop numbers pending.
+**Status (2026-10-16):** the timeline is built into every process and printed by the desktop harness (`--timeline <dir>`, on in `run-desktop.cmd` from package v19). Its first run answered the question: **compiling the 42.7 MB workbench bundle** (`workbench.desktop.main.js`) is the largest single piece of the launch, with the window process at 100 % CPU and the other processes idle. A bytecode cache for large ES modules removes most of it from the second start on: the workbench is started 5.9 s sooner on the sandbox and 8.3 s sooner under Wine. Package v19 carries both (SHA256 `3b73fd1a434fa0c50ff4d7dca602482756d345fe8e1bfc61f2e023cd43b481cd`, joined zip; the 11 feature scenarios pass with the cache on; no processes left after closing); laptop numbers pending.
 
 ## The timeline
 
@@ -38,6 +38,8 @@ This also explains round 12: the style pass that v18 shortened comes after this,
 | Sandbox: window process busy, whole boot | 16.0 s | 16.1 s | 10.1 s |
 | Wine (Windows exe, suite running alongside): `code/didStartWorkbench` | | 13.49 s | 5.16 s |
 | Wine: total until stable | | 23.0 s | 16.6 s |
+| Wine, nothing else running (package v19 unpacked): `code/didStartWorkbench` | | 9.26 s | 4.79 s |
+| Wine, nothing else running: total until stable | | 22.0 s | 16.4 s |
 
 ## What is left (warm cache, Wine)
 
