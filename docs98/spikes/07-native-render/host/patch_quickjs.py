@@ -2,7 +2,7 @@
 """Writes a copy of QuickJS-ng's quickjs.c with the hooks of the sampling profiler (prof98.h, included at the end). Usage: patch_quickjs.py <in> <out>
 - the C call paths link a frame into rt->current_stack_frame only after its cur_func is set (stock QuickJS links it first), behind a compiler barrier, so a
   sample never reads a frame that is half set up;
-- C function names are recorded where C functions are created; bytecode about to be freed is reported (samples naming it are resolved first);
+- C function names are recorded where C functions are created, and the names methods and anonymous functions get at run time; bytecode about to be freed is reported (samples naming it are resolved first);
 - labels for the garbage collector and the parser; the ring of raw samples is drained from js_poll_interrupts when half full; sampling stops before the
   runtime is freed."""
 import sys
@@ -29,6 +29,7 @@ decl = ('#include "dtoa.h"\n'
         'static void pf_reg(JSContext *ctx, const void *func, int magic, const char *name);\n'
         'static void pf_bytecode_freed(JSRuntime *rt, struct JSFunctionBytecode *b);\n'
         'static void pf_poll(JSContext *ctx);\n'
+        'static void pf_name_hint(JSContext *ctx, JSValueConst func, JSAtom name, int flags);\n'
         'static void pf_runtime_freed(JSRuntime *rt);\n'
         'static inline void pf_barrier(void);\n'
         'int js98_pf_tag_push(const char *label);\n'
@@ -50,6 +51,9 @@ sub("            sf->prev_frame = rt->current_stack_frame;\n            rt->curr
 sub("    p->u.cfunc.magic = magic;\n", "    p->u.cfunc.magic = magic;\n    pf_reg(ctx, (const void *)func, magic, name);\n", "JSValue JS_NewCFunction3(")
 sub("    s->magic = magic;\n", "    s->magic = magic;\n    pf_reg(ctx, (const void *)func, magic, name);\n", "JSValue JS_NewCFunctionData2(")
 sub("    s->magic = magic;\n", "    s->magic = magic;\n    pf_reg(ctx, (const void *)func, magic, name);\n", "JSValue JS_NewCClosure(")
+# names that methods and anonymous functions get at run time (QuickJS leaves their bytecode unnamed)
+sub("{\n    JSValue name_str;\n\n    name_str = js_get_function_name(ctx, name);\n", "{\n    JSValue name_str;\n\n    pf_name_hint(ctx, func_obj, name, flags);\n    name_str = js_get_function_name(ctx, name);\n", "static int js_method_set_properties(")
+sub("{\n    if (name != JS_ATOM_NULL\n", "{\n    pf_name_hint(ctx, obj, name, 0);\n    if (name != JS_ATOM_NULL\n", "static int JS_DefineObjectName(")
 sub("{\n    int i;\n\n", "{\n    int i;\n\n    pf_bytecode_freed(rt, b);\n", "static void free_function_bytecode(JSRuntime *rt, JSFunctionBytecode *b)\n{")
 sub("    ctx->interrupt_counter = JS_INTERRUPT_COUNTER_INIT;\n", "    ctx->interrupt_counter = JS_INTERRUPT_COUNTER_INIT;\n    pf_poll(ctx);\n", "static no_inline __exception int __js_poll_interrupts(")
 sub("    gc_decref(rt);\n", "    int pf_t = js98_pf_tag_push(\"[gc]\");\n    gc_decref(rt);\n", "void JS_RunGC(JSRuntime *rt)\n{")

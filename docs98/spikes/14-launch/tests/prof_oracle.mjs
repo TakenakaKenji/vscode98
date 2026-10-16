@@ -1,6 +1,6 @@
 // Oracle for the sampling profiler (07-native-render/host/prof98.h): functions that burn known shares of CPU time, a native call (JSON.parse), a
 // closure called through a C function (Array.prototype.map), a deep recursion (deeper than the 64 recorded frames), many short-lived functions
-// (their bytecode is freed while the profiler runs) and a garbage collection. Prints the measured share of each and checks it against the profile.
+// (their bytecode is freed while the profiler runs), a method, a getter and an arrow function (QuickJS names them only at run time) and a garbage collection. Prints the measured share of each and checks it against the profile.
 // Usage: QJS98_PROFILE=2 QJS98_TIMELINE=<dir> qjs-spike7 prof_oracle.mjs <dir>
 import * as std from 'qjs:std';
 import * as os from 'qjs:os';
@@ -17,10 +17,13 @@ function mapper(v) { return spin(1) + v; }
 function viaMap() { return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19].map(mapper).length; }
 function deep(n) { return n === 0 ? spin(200) : deep(n - 1) + 0; }
 function shortLived() { const end = now() + 200; let k = 0; while (now() < end) { k += new Function('x', 'return x + ' + (k % 1000))(k) & 1; } return k; }
+class Shape { method() { return spin(100); } get area() { return spin(100); } }
+const arrow = () => spin(100);
 const shares = {};
 function timed(name, fn) { const t = now(); fn(); shares[name] = now() - t; }
 timed('burnA', burnA); timed('burnB', burnB); timed('outer/inner', outer); timed('JSON.parse', parseMany); timed('mapper via map', viaMap);
 timed('deep', () => deep(200)); timed('shortLived', shortLived);
+timed('method', () => new Shape().method()); timed('get area', () => new Shape().area); timed('arrow', arrow);
 let keep = []; for (let i = 0; i < 300000; i++) { const o = { i }; o.self = o; keep.push(o); } keep = null;
 timed('gc', () => std.gc());
 const total = Object.values(shares).reduce((a, b) => a + b, 0);
@@ -43,7 +46,8 @@ const rows = [
 	['burnA (incl)', shares.burnA, ms(find(incl, /^burnA /))], ['burnB (incl)', shares.burnB, ms(find(incl, /^burnB /))],
 	['inner (incl)', shares['outer/inner'], ms(find(incl, /^inner /))], ['parseMany (incl; JSON.parse ' + ms(find(self, /^\[native\] parse$/)).toFixed(0) + ' self, [gc] inside it ' + ms(find(incl, /^\[gc\]$/) - gcUnderStdGc).toFixed(0) + ')', shares['JSON.parse'], ms(find(incl, /^parseMany /))],
 	['mapper (incl)', shares['mapper via map'], ms(find(incl, /^mapper /))], ['deep (incl, cut stacks)', shares.deep, ms(find(incl, /^deep /))],
-	['shortLived (incl)', shares.shortLived, ms(find(incl, /^shortLived /))], ['[gc] under std.gc()', shares.gc, gcUnderStdGc],
+	['shortLived (incl)', shares.shortLived, ms(find(incl, /^shortLived /))],
+	['method (named at run time)', shares.method, ms(find(incl, /^method /))], ['get area (named at run time)', shares['get area'], ms(find(incl, /^get area /))], ['arrow (named at run time)', shares.arrow, ms(find(incl, /^arrow /))], ['[gc] under std.gc()', shares.gc, gcUnderStdGc],
 ];
 print(`samples ${n}, interval ${prof.intervalMs} ms, clock ${prof.clock}, dropped ${prof.dropped}, names ${prof.names.length}, stacks ${prof.stacks.length}; measured total ${total.toFixed(0)} ms`);
 let bad = 0;

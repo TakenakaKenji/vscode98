@@ -96,6 +96,7 @@ static void pf_take(void) {
 		}
 		n++;
 	}
+	if (n == 0) { r->kind[0] = PF_K_TAG; r->p[0] = "[host]"; r->magic[0] = 0; n = 1; }   /* C code of the host outside any JavaScript call (the event loop, module loading) */
 	r->n = (uint16_t)n; r->cut = sf != NULL;
 	pf_barrier(); pf_head = h + 1;
 }
@@ -155,13 +156,35 @@ static const char *pf_reg_find(const void *p, int32_t magic) {
 	return NULL;
 }
 static const char *pf_base(const char *f) { const char *b = f; for (const char *q = f; *q; q++) { if (*q == '/' || *q == '\\') { b = q + 1; } } return b; }
+/* names given at run time to unnamed bytecode (methods, `const f = () => ...`): bytecode -> name; entries of freed bytecode are marked dead */
+typedef struct { const void *p; char *name; uint8_t used; } PfHint;   /* used: 0 empty, 1 live, 2 dead */
+static PfHint *pf_hints; static int pf_hintcap, pf_hintn;
+static PfHint *pf_hint_find(const void *p) {
+	if (!pf_hintcap) { return NULL; }
+	for (uint32_t j = pf_hash(p, 0, 7) & (pf_hintcap - 1); pf_hints[j].used; j = (j + 1) & (pf_hintcap - 1)) { if (pf_hints[j].used == 1 && pf_hints[j].p == p) { return &pf_hints[j]; } }
+	return NULL;
+}
+static void pf_name_hint(JSContext *ctx, JSValueConst func, JSAtom name, int flags) {
+	if (pf_state <= 0 || ctx->rt != pf_rt || name == JS_ATOM_NULL || JS_VALUE_GET_TAG(func) != JS_TAG_OBJECT || !pf_is_main()) { return; }
+	JSObject *o = JS_VALUE_GET_OBJ(func); if (!js_class_has_bytecode(o->class_id)) { return; }
+	JSFunctionBytecode *b = o->u.func.function_bytecode; if (b->func_name != JS_ATOM_NULL || pf_hint_find(b)) { return; }
+	char a[160], buf[180]; JS_AtomGetStrRT(ctx->rt, a, sizeof a, name); if (!*a) { return; }
+	snprintf(buf, sizeof buf, "%s%s", flags & JS_PROP_HAS_GET ? "get " : flags & JS_PROP_HAS_SET ? "set " : "", a);
+	if ((pf_hintn + 1) * 2 > pf_hintcap) {
+		PfHint *old = pf_hints; int oc = pf_hintcap, c = oc ? oc * 2 : 16384; pf_hints = calloc((size_t)c, sizeof(PfHint)); if (!pf_hints) { abort(); } pf_hintcap = c; pf_hintn = 0;
+		for (int i = 0; i < oc; i++) { if (old[i].used == 1) { uint32_t j = pf_hash(old[i].p, 0, 7) & (c - 1); while (pf_hints[j].used) { j = (j + 1) & (c - 1); } pf_hints[j] = old[i]; pf_hintn++; } else if (old[i].used == 2) { free(old[i].name); } }
+		free(old);
+	}
+	uint32_t j = pf_hash(b, 0, 7) & (pf_hintcap - 1); while (pf_hints[j].used) { j = (j + 1) & (pf_hintcap - 1); }
+	pf_hints[j].p = b; pf_hints[j].name = strdup(buf); pf_hints[j].used = 1; pf_hintn++;
+}
 static int pf_id(JSRuntime *rt, int kind, const void *p, int32_t magic) {
 	PfKey *k = pf_key_find(p, magic, kind); if (k) { return k->id; }
 	char buf[480], a[160], f[260];
 	if (kind == PF_K_BC) {
 		const JSFunctionBytecode *b = p;
 		JS_AtomGetStrRT(rt, a, sizeof a, b->func_name); JS_AtomGetStrRT(rt, f, sizeof f, b->filename);
-		if (b->func_name == JS_ATOM_NULL) { a[0] = 0; }
+		if (b->func_name == JS_ATOM_NULL) { PfHint *h = pf_hint_find(b); snprintf(a, sizeof a, "%s", h ? h->name : ""); }
 		snprintf(buf, sizeof buf, "%s %s:%d:%d", *a ? a : "(anonymous)", pf_base(f), b->line_num, b->col_num);
 	} else if (kind == PF_K_CF) {
 		const char *nm = pf_reg_find(p, magic); if (nm && *nm) { snprintf(buf, sizeof buf, "[native] %s", nm); } else { snprintf(buf, sizeof buf, "[native %p/%d]", p, (int)magic); }
@@ -200,6 +223,8 @@ static void pf_drain(void) {
 		int n = 0; for (int i = 0; i < r->n; i++) { ids[n++] = pf_id(rt, r->kind[i], r->p[i], r->magic[i]); }
 		if (r->cut) { ids[n++] = -1; }
 		int s = pf_stack_id(ids, n);
+		/* the same stack as the sample before, within 100 ms of where that run started (an idle process, a long C call): one entry with the summed weight */
+		if (pf_samplen >= 3 && pf_samples[pf_samplen - 2] == (uint32_t)s && r->t - pf_samples[pf_samplen - 3] < 100) { pf_samples[pf_samplen - 1] += r->w; pf_barrier(); pf_tail++; continue; }
 		if (pf_samplen + 3 > pf_samplecap) { size_t c = pf_samplecap ? pf_samplecap * 2 : 65536; pf_samples = realloc(pf_samples, c * sizeof(uint32_t)); if (!pf_samples) { abort(); } pf_samplecap = c; }
 		pf_samples[pf_samplen++] = r->t; pf_samples[pf_samplen++] = (uint32_t)s; pf_samples[pf_samplen++] = r->w;
 		pf_barrier(); pf_tail++;
@@ -265,6 +290,7 @@ static void pf_bytecode_freed(JSRuntime *rt, JSFunctionBytecode *b) {
 	if (rt != pf_rt || !pf_is_main()) { return; }
 	pf_drain();
 	PfKey *k = pf_key_find(b, 0, PF_K_BC); if (k) { k->kind = PF_K_DEAD; }   /* the address may be reused by another function */
+	PfHint *h = pf_hint_find(b); if (h) { h->used = 2; }
 }
 static void pf_poll(JSContext *ctx) { if (ctx->rt == pf_rt && pf_head - pf_tail >= PF_RING / 2 && pf_is_main()) { pf_drain(); } }
 

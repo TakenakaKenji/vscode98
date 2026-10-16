@@ -1,8 +1,10 @@
 // The launch timeline of all processes (--timeline <dir> of boot_desktop_qjs.mjs). Every QuickJS process of the app writes <dir>/<pid>.json every ~2 s
 // (07-native-render/host/timeline98.h: per 100 ms of wall time, how long its event loop waited and how long it was blocked in a synchronous call, plus a label
-// and VS Code's performance marks from __timelineInfo below); this merges them into one table on the harness's clock.
+// and VS Code's performance marks from __timelineInfo below); this merges them into one table on the harness's clock, followed by the sampling profile when
+// QJS98_PROFILE is set (profile_report98.js).
 import * as std from 'qjs:std';
 import * as os from 'qjs:os';
+import { profileReport } from './profile_report98.js';
 
 const harnessMarks = [];
 /** a mark of the harness itself (window opened, workbench stable ...) */
@@ -26,7 +28,7 @@ const pad = (s, n) => (String(s) + ' '.repeat(n)).slice(0, n); const rpad = (s, 
 export function timelineReport(dir, log, t0) {
 	if (globalThis.__timelineDump) { globalThis.__timelineDump(); }
 	const [names] = os.readdir(dir); const procs = [];
-	for (const n of (names || []).filter(x => x.endsWith('.json'))) { try { const p = JSON.parse(std.loadFile(dir + '/' + n)); p.info = p.info || {}; p.label = p.info.label || ('pid ' + p.pid); procs.push(p); } catch { /* being rewritten */ } }
+	for (const n of (names || []).filter(x => x.endsWith('.json') && !x.endsWith('.prof.json'))) { try { const p = JSON.parse(std.loadFile(dir + '/' + n)); p.info = p.info || {}; p.label = p.info.label || ('pid ' + p.pid); procs.push(p); } catch { /* being rewritten */ } }
 	if (!procs.length) { log('launch timeline: no data (QJS98_TIMELINE not set in the processes?)'); return; }
 	procs.sort((a, b) => a.t0 - b.t0); const now = Date.now(); const rows = Math.ceil((now - t0) / 1000);
 	const labels = new Map(); for (const p of procs) { const k = labels.get(p.label) || 0; labels.set(p.label, k + 1); p.col = k ? `${p.label}#${k + 1}` : p.label; }
@@ -60,4 +62,6 @@ export function timelineReport(dir, log, t0) {
 	{ const seen = new Set(); for (let i = marks.length - 1; i >= 0; i--) { const k = marks[i].join('|'); if (seen.has(k)) { marks.splice(i, 1); } else { seen.add(k); } } }   // a process can report a mark twice (the main process's marks also reach it through the window configuration)
 	marks.sort((a, b) => a[0] - b[0]); log(`  marks (${marks.length} phase marks, ${skipped} finer ones not shown; seconds from the harness start):`);
 	for (const [t, col, name] of marks) { log(`    ${rpad(((t - t0) / 1000).toFixed(2), 7)}  ${pad(col, 14)} ${name}`); }
+	// with QJS98_PROFILE set: where each process spent its busy time
+	try { profileReport(dir, log, t0, procs); } catch (e) { log('profile: ' + e); }
 }
