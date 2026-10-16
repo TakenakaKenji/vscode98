@@ -24,6 +24,7 @@
 #include "quickjs.h"
 #include "quickjs-libc.h"
 #include "winhook.h"
+static HANDLE g_job; static int job_breakaway, job_children; static BOOL (WINAPI *job_assign)(HANDLE, HANDLE);   /* job_init() */
 
 /* errno values as JS sees them (Linux numbering, matching the constants hard-coded in fdstreams.js) */
 enum { E_NOENT = 2, E_2BIG = 7, E_NOEXEC = 8, E_IO = 5, E_BADF = 9, E_AGAIN = 11, E_NOMEM = 12, E_ACCES = 13, E_EXIST = 17, E_NOTDIR = 20, E_ISDIR = 21, E_INVAL = 22, E_MFILE = 24,
@@ -375,8 +376,19 @@ static JSValue js_spawn(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	PROCESS_INFORMATION pi; memset(&pi, 0, sizeof pi);
 	DWORD flags = CREATE_UNICODE_ENVIRONMENT | (detached ? DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP : CREATE_NO_WINDOW);
 	if (low) { flags |= 0x00004000; /* BELOW_NORMAL_PRIORITY_CLASS */ }
-	BOOL ok = CreateProcessW(exe, cmdw, NULL, NULL, TRUE, flags, envblock, wcwd, &si, &pi);
-	DWORD err = ok ? 0 : GetLastError();
+	BOOL ok = FALSE; DWORD err = 0;
+	if (detached && job_breakaway) {   /* things the app launches for the user (Explorer, the browser) outlive it */
+		ok = CreateProcessW(exe, cmdw, NULL, NULL, TRUE, flags | CREATE_BREAKAWAY_FROM_JOB, envblock, wcwd, &si, &pi); err = ok ? 0 : GetLastError();
+	}
+	int assign = 0;
+	if (!ok && !detached && job_children) {   /* see job_init */
+		ok = CreateProcessW(exe, cmdw, NULL, NULL, TRUE, flags | CREATE_SUSPENDED | CREATE_BREAKAWAY_FROM_JOB, envblock, wcwd, &si, &pi); err = ok ? 0 : GetLastError(); assign = ok;
+	}
+	if (!ok) { ok = CreateProcessW(exe, cmdw, NULL, NULL, TRUE, flags, envblock, wcwd, &si, &pi); err = ok ? 0 : GetLastError(); }
+	if (assign) {
+		if (!job_assign(g_job, pi.hProcess) && getenv("QJS98_JOB_LOG")) { fprintf(stderr, "[job] child %lu not assigned (error %lu)\n", pi.dwProcessId, GetLastError()); }
+		ResumeThread(pi.hThread);
+	}
 	for (int i = 0; i < ninh; i++) { set_inherit(inh[i], 0); }
 	if (nul != INVALID_HANDLE_VALUE) { CloseHandle(nul); }
 	if (!ok) { result = -errno_from_win(err); goto done; }
@@ -617,9 +629,31 @@ static const JSCFunctionListEntry funcs[] = {
 	JS_CFUNC_DEF("soError", 1, js_noop_ok), JS_CFUNC_DEF("sockPort", 1, js_noop_ok),
 };
 static int proc_init(JSContext *ctx, JSModuleDef *m) { return JS_SetModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); }
+/* Every process of the app (window host, main, utility processes, language servers, terminals) is one qjs-win-x86.exe or a child of one. Closing the window used to end
+   only the window host and the main process; the rest stayed behind. The first process puts itself into a job object that kills every member when its last handle
+   closes: the handle is not inheritable, so that is when the first process exits, however it exits. Children inherit the membership (QJS98_IN_JOB tells our own
+   children not to make another); detached spawns (Explorer, the browser) break away. Windows 7 cannot nest jobs, and its Program Compatibility Assistant puts
+   programs started from Explorer into a job of its own, so assigning ourselves can fail; then each direct child is started suspended, outside that job
+   (CREATE_BREAKAWAY_FROM_JOB, which the PCA job allows) and assigned to ours before it runs (job_children). Where neither works, the JS-level cleanup (exit on
+   IPC disconnect) is all there is. QJS98_JOB=0 turns it off, QJS98_JOB=children forces the fallback (for tests). Resolved at run time: jobs are Windows 2000+. */
+static void job_init(void) {
+	const char *e = getenv("QJS98_JOB"); if (e && e[0] == '0') { return; }
+	if (getenv("QJS98_IN_JOB")) { job_breakaway = 1; return; }
+	HMODULE k = GetModuleHandleW(L"kernel32.dll");
+	typedef HANDLE (WINAPI *Create)(LPSECURITY_ATTRIBUTES, LPCWSTR); typedef BOOL (WINAPI *SetInfo)(HANDLE, JOBOBJECTINFOCLASS, LPVOID, DWORD); typedef BOOL (WINAPI *Assign)(HANDLE, HANDLE);
+	Create create = (Create)GetProcAddress(k, "CreateJobObjectW"); SetInfo setInfo = (SetInfo)GetProcAddress(k, "SetInformationJobObject"); Assign assign = (Assign)GetProcAddress(k, "AssignProcessToJobObject");
+	if (!create || !setInfo || !assign) { return; }
+	job_assign = assign;
+	HANDLE j = create(NULL, NULL); if (!j) { return; }
+	JOBOBJECT_EXTENDED_LIMIT_INFORMATION li; memset(&li, 0, sizeof li); li.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK;
+	if (!setInfo(j, JobObjectExtendedLimitInformation, &li, sizeof li)) { CloseHandle(j); return; }
+	if ((e && !strcmp(e, "children")) || !assign(j, GetCurrentProcess())) { job_children = 1; }
+	g_job = j; job_breakaway = 1; _putenv("QJS98_IN_JOB=1");   /* before any JavaScript reads the environment */
+	if (getenv("QJS98_JOB_LOG")) { fprintf(stderr, job_children ? "[job] created; children are assigned one by one (error %lu)\n" : "[job] created\n", GetLastError()); }
+}
 void spike_init_esm(JSContext *ctx);
 void spike_init(JSContext *ctx) {
-	spike_init_esm(ctx); g_ctx = ctx; ready_ev = CreateEvent(NULL, TRUE, FALSE, NULL);
+	spike_init_esm(ctx); g_ctx = ctx; job_init(); ready_ev = CreateEvent(NULL, TRUE, FALSE, NULL);
 	/* Windows' default timer resolution is 15.6 ms: QuickJS clamps setTimeout(0) to 1 ms and waits with WaitForMultipleObjects/Sleep, so every chained zero-delay timer (the workbench and the Node
 	   shims use thousands, setImmediate included) would cost a full tick. Ask for 1 ms for the life of the process; QJS98_TIMER_RES=0 turns it off (for comparisons). */
 	{ const char *tr = getenv("QJS98_TIMER_RES"); if (!tr || tr[0] != '0') { timeBeginPeriod(1); } }

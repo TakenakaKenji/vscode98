@@ -65,6 +65,8 @@ export const app = lenient(new App(), 'app');
 // the real main waits for 'ready'; emit it after its module graph has registered listeners
 const IS_MAIN = process.type === 'browser';   // the same module is also loaded (as `electron`) inside utility processes, where none of the main-process behaviour applies
 if (IS_MAIN) { setImmediate(() => { log('EMIT ready'); app.emit('ready'); }); }
+// the window host owns the main process: when its channel closes (the window was closed, or the host died), quit like Electron does when its last window goes
+if (IS_MAIN) { process.on('disconnect', () => { log('host disconnected'); app.quit(); }); }
 
 // ---- ipcMain: messages arrive from the renderer harness
 class IpcMain extends EventEmitter {
@@ -171,6 +173,8 @@ function handlePortMessage(m, holder) {
 import { fork, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 const here = fileURLToPath(new URL('.', import.meta.url));
+const liveUtilities = new Set();   // killed when main exits, as Electron does with its utility processes
+process.on('exit', () => { for (const u of liveUtilities) { try { u._child.kill(); } catch { /* gone */ } } });
 class UtilityProcess extends EventEmitter {
 	constructor(modulePath, args, options) {
 		super(); this.pid = undefined; this._killed = false;
@@ -179,7 +183,8 @@ class UtilityProcess extends EventEmitter {
 		this._child = fork(fileURLToPath(new URL('./util_child_main.mjs', import.meta.url)), args, { execArgv, env: { ...(options.env || process.env), UTIL_TARGET: modulePath, APP98_ROOT: process.env.APP98_ROOT, ELECTRON_STUB_LOG: (process.env.ELECTRON_STUB_LOG || '') + '.' + options.serviceName }, serialization: 'json', stdio, cwd: process.cwd(), priority: /^extensionHost/.test(options.serviceName || '') ? 'low' : undefined });   // the extension host and the language servers it starts yield to the UI (renderer) on machines with few cores
 		this.stdout = this._child.stdout; this.stderr = this._child.stderr; if (process.env.UTILITY_OUT) { for (const [st, tag] of [[this.stdout, 'out'], [this.stderr, 'err']]) { st?.on('data', (d) => fs.appendFileSync(process.env.UTILITY_OUT, `[${options.serviceName} ${tag}] ${d}`)); } } this.holder = holderOf((m) => this._child.send(clean(m)));
 		this._child.once('spawn', () => { this.pid = this._child.pid; this.emit('spawn'); });
-		this._child.on('exit', (code, signal) => { log(`utility ${options.serviceName} exit ${code} ${signal}`); this.emit('exit', code ?? 0); });
+		liveUtilities.add(this);
+		this._child.on('exit', (code, signal) => { liveUtilities.delete(this); log(`utility ${options.serviceName} exit ${code} ${signal}`); this.emit('exit', code ?? 0); });
 		this._child.on('error', (e) => { log('utility error ' + e); if (this.listenerCount('error')) { this.emit('error', 'FatalError', e.message); } });   // Electron's 'error' is for V8 fatal errors; an EventEmitter without a listener would throw
 		this._child.on('message', (m0) => { const m = decode(m0); if (handlePortMessage(m, this.holder)) { return; } if (m.t === 'upm') { this.emit('message', m.data); } });
 	}

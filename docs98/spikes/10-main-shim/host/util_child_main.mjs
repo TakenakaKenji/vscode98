@@ -34,6 +34,9 @@ process.on('message', (m0) => {
 	else if (m.t === 'portMsg') { table.deliver(m); }
 	else if (m.t === 'portClose') { const p = table.ports.get(m.id); if (p) { p._closed = true; p.dispatchEvent({ type: 'close' }); } }
 });
+// as in Electron, a utility process does not outlive the main process: when the channel to it closes (main exited or was killed), exit
+const exit = process.exit;   // the extension host replaces process.exit (extensions may not end it)
+process.on('disconnect', () => { TRACE?.('main disconnected'); exit.call(process, 0); });
 if (TRACE) {
 	process.on('uncaughtException', (e) => TRACE('uncaughtException ' + (e && e.stack || e)));
 	process.on('unhandledRejection', (e) => TRACE('unhandledRejection ' + (e && e.stack || e)));

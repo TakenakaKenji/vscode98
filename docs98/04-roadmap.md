@@ -51,7 +51,7 @@ Implement components A, B, C to the point where VS Code starts without Electron 
 
 | Work item | State |
 |---|---|
-| Interaction latency | 3.0 to 9.2 times Electron 1.142 on the sandbox machine of 2026-10-16 with phases 1 and 2 (spike 13); laptop numbers for v15/v16 pending |
+| Interaction latency | 3.0 to 9.2 times Electron 1.142 on the sandbox machine of 2026-10-16 with phases 1 and 2 (spike 13); laptop with v16: launch 20 s, open file 2 s, caret/selection/New File/Folder under 1 s, menus about 1 s ([round 11](spikes/11-windows-host/README.md)) |
 | Startup | ~20 s on the laptop; first style pass ~2.5 s on the sandbox, mostly building the index of 13,296 rules (cached index is the next candidate) |
 | Computed style values in C | done 2026-10-16 (spike 13 phase 2, package v16): computed-value step ~95 → ~36 ms per full workbench restyle; interactions up to 1.8 times faster |
 | Layout per pass | 30 to 110 ms per slow action after phase 2 (layout runs over the whole tree on every pass that is not style-only): incremental layout is the next lever |

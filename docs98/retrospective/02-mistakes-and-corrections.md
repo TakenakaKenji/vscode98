@@ -49,6 +49,7 @@ The pattern: the app catches an exception or gets `undefined`, and a feature sim
 - An exception in a timer, interval, `queueMicrotask` or `nextTick` ended QuickJS's event loop instead of reaching `uncaughtException` (found 10-16).
 - QuickJS exits on any unhandled rejection (spike 8) → a tracker; later it reported thousands of transient ones that flooded stderr (round 10) → report only if still unhandled a macrotask later.
 - `zoom` computed as "" (factor 0) → menus at 0,0 (round 5); `Intl` absent → the TypeScript compiler died after 40 s (spike 2); `TextDecoder('utf-16le')` absent → Monaco rendered nothing (spike 6).
+- Process lifetime (reported in rounds 10 and 11, fixed in v17): Windows does not end a process's children with it, and Electron's "utility processes die with main" was never reproduced, so closing the window left 4 of 7 processes running. A job object with kill-on-close fixes it at the OS level; the JS-level fix (exit on IPC `disconnect`) first did nothing in the extension host because VS Code replaces `process.exit` there, which only a trace (`UTIL_TRACE`: "main disconnected" with no exit after it) showed.
 - The top-level-await stall of the stock `qjs` loop hit three times (spikes 2, 5, 8) before it was written down as a rule.
 → *Lenient stubs find the API surface, but things that go through interop helpers need real objects; match the reference runtime's error semantics; when a feature "does nothing", look for a swallowed exception first.*
 
