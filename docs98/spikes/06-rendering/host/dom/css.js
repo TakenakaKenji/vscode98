@@ -270,11 +270,11 @@ function baseOf(rule) {
 }
 function countKeys(base, freq, d = 1) { for (const b of base) { const k = b.keys; if (k !== null) { for (let i = 0; i < k.length; i += 2) { if (k[i] === 3) { for (const cl of k[i + 1]) { freq.set(cl, (freq.get(cl) || 0) + d); } } else if (k[i] === 1) { freq.set(k[i + 1], (freq.get(k[i + 1]) || 0) + d); } } } } }   // how many rules use each class
 /** files an entry under a bucket and logs where, so that the entries of the last rules can be taken out again (they are the last element of each of their buckets) */
-function put(index, list, e) { list.push(e); index.logB.push(list); index.logE.push(e); }
-function putKey(index, map, key, e) { let l = map.get(key); if (l === undefined) { l = []; map.set(key, l); } put(index, l, e); }
+function put(index, list, e) { list.push(e); index.logB.push(list); index.logE.push(e); if (index.nat !== null) { index.nat.push(list.__nb, e.ni); } }
+function putKey(index, map, key, e) { let l = map.get(key); if (l === undefined) { l = []; if (index.nat !== null) { l.__nb = index.nat.bucket(map === index.byId ? 0 : map === index.byClass ? 1 : 2, key); } map.set(key, l); } put(index, l, e); }
 function placeEntries(index, base, f, freq, added) {
 	for (const b of base) {
-		const e = { complex: b.complex, decls: b.decls, ua: f.ua, order: f.order, spec: b.spec, pseudoElement: b.pseudoElement, need: b.need, needAny: b.needAny, sel: b.sel, mk: 0, w0: b.need.length ? b.need[0] : -1, m0: b.need.length ? b.need[1] : 0, multi: b.keys !== null && b.keys.length > 2 }; index.count++; if (added) { added.push(e); }
+		const e = { complex: b.complex, decls: b.decls, ua: f.ua, order: f.order, spec: b.spec, pseudoElement: b.pseudoElement, need: b.need, needAny: b.needAny, sel: b.sel, mk: 0, w0: b.need.length ? b.need[0] : -1, m0: b.need.length ? b.need[1] : 0, multi: b.keys !== null && b.keys.length > 2, ni: -1 }; if (index.nat !== null) { e.ni = index.nat.entry(e); } index.count++; if (added) { added.push(e); }
 		const keys = b.keys; if (keys === null) { put(index, index.universal, e); } else { for (let i = 0; i < keys.length; i += 2) { const k = keys[i]; if (k === 3) { putKey(index, index.byClass, rarest(keys[i + 1], freq), e); } else { putKey(index, k === 0 ? index.byId : k === 1 ? index.byClass : index.byTag, keys[i + 1], e); } } }
 	}
 }
@@ -297,7 +297,8 @@ export function buildRuleIndex(doc, env, prev) {
 		while (p < nm) { const r = flat[p].rule; if (r !== prev.rules[p] || r.__decls !== prev.decls[p] || r.selectorText !== prev.sels[p]) { break; } p++; }
 		if (p > 0 && updateInPlace(prev, flat, p)) { return prev; }
 	}
-	const index = { byId: new Map(), byClass: new Map(), byTag: new Map(), universal: [], count: 0, rules: [], decls: [], sels: [], freq: new Map(), logB: [], logE: [], markLog: [], markCount: [], update: null };
+	const index = { byId: new Map(), byClass: new Map(), byTag: new Map(), universal: [], count: 0, rules: [], decls: [], sels: [], freq: new Map(), logB: [], logE: [], markLog: [], markCount: [], update: null, nat: env && env.styleEngine ? env.styleEngine.newIndex() : null };   // nat: the native mirror of the index (native_style.js), fed by put/updateInPlace
+	if (index.nat !== null) { index.universal.__nb = index.nat.bucket(3, null); }
 	for (const f of flat) { addRule(index, f, baseOf(f.rule), null); }
 	return index;
 }
@@ -313,9 +314,9 @@ function updateInPlace(prev, flat, p) {
 	for (let j = p; j < n0; j++) { if (!kept.has(j)) { removedRules.push(prev.rules[j]); } }
 	// take out the entries of rules p.. (the last ones logged), then put the new tail in
 	const lp = prev.markLog[p] ?? prev.logB.length;
-	for (let k = prev.logB.length - 1; k >= lp; k--) { if (prev.logB[k].pop() !== prev.logE[k]) { return false; } }   // (the index is damaged only if this fires halfway: callers rebuild from `flat` then, nothing else holds it)
+	for (let k = prev.logB.length - 1; k >= lp; k--) { if (prev.nat !== null) { prev.nat.pop(prev.logB[k].__nb); } if (prev.logB[k].pop() !== prev.logE[k]) { return false; } }   // (the index is damaged only if this fires halfway: callers rebuild from `flat` then, nothing else holds it)
 	for (let i = n0 - 1; i >= p; i--) { const c = baseEntries.get(prev.rules[i]); if (c && c.base) { countKeys(c.base, prev.freq, -1); } }
-	prev.count = prev.markCount[p] ?? prev.count; prev.logB.length = lp; prev.logE.length = lp; prev.rules.length = p; prev.decls.length = p; prev.sels.length = p; prev.markLog.length = p; prev.markCount.length = p;
+	prev.count = prev.markCount[p] ?? prev.count; if (prev.nat !== null) { prev.nat.truncate(prev.count); } prev.logB.length = lp; prev.logE.length = lp; prev.rules.length = p; prev.decls.length = p; prev.sels.length = p; prev.markLog.length = p; prev.markCount.length = p;
 	const added = []; for (let i = p; i < flat.length; i++) { addRule(prev, flat[i], baseOf(flat[i].rule), added); }
 	prev.update = { added, addedRules, removedRules }; return true;
 }

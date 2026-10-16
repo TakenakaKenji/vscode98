@@ -34,7 +34,8 @@ async function run0(ctx) {
 	const rectOf = (sel, text) => { const el = [...doc.querySelectorAll(sel)].find((e) => (!text || (e.getAttribute('aria-label') || e.textContent || '').startsWith(text)) && e.getBoundingClientRect().height > 0); if (!el) { return null; } const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, el }; };
 	const center = (r) => [r.x + r.w / 2, r.y + r.h / 2];
 	const menuOpen = () => [...doc.querySelectorAll('.monaco-menu')].some((m) => m.getBoundingClientRect().height > 0);
-	const esc = async () => { keyOn(active(), 'Escape', 'Escape', 27); for (let i = 0; i < 2000 && menuOpen(); i++) { await sleep(1); tick(); } await settle(4); };
+	// Escape until no menu is open (a File menu left open under the explorer would take the next click on a row: its Exit item quits the app)
+	const esc = async () => { for (let k = 0; k < 4; k++) { keyOn(active(), 'Escape', 'Escape', 27); for (let i = 0; i < 500 && menuOpen(); i++) { await sleep(1); tick(); } if (!menuOpen()) { break; } } if (menuOpen()) { log('ctl: a menu is still open after Escape'); } await settle(4); };
 	const lineHas = (re) => [...doc.querySelectorAll('.editor-instance .view-line')].some((l) => re.test(l.textContent));
 	{ const x = doc.querySelector('.onboarding-a-close-btn'); if (x) { x.dispatchEvent(new MouseEvent('click', { bubbles: true })); } }
 	std.open(ws + '/caret.txt', 'w').puts('second file\n'); std.open(ws + '/two.txt', 'w').puts('another file here\n');
@@ -46,7 +47,7 @@ async function run0(ctx) {
 		{ const r = rectOf('.explorer-folders-view .monaco-list-row', 'hello.txt'); const [x, y] = center(r); res.context = await timed('context', () => click(x, y, { button: 2, buttons: 2 }), menuOpen); await esc(); }
 		{ const f = rectOf('.menubar .menubar-menu-button', 'File'), e = rectOf('.menubar .menubar-menu-button', 'Edit'); const [fx, fy] = center(f), [ex, ey] = center(e);
 		  res.menubar = await timed('menubar', () => click(fx, fy), menuOpen);
-		  res.menuMove = await timed('menuMove', () => move(ex, ey), () => { const b = [...doc.querySelectorAll('.menubar .menubar-menu-button')].find((x) => /Edit/.test(x.textContent)); const f = [...doc.querySelectorAll('.menubar .menubar-menu-button')].find((x) => /File/.test(x.textContent)); const isOpen = (x) => !!x && (x.classList.contains('open') || x.getAttribute('aria-expanded') === 'true'); return isOpen(b) && !isOpen(f) && menuOpen(); });
+		  res.menuMove = await timed('menuMove', () => move(ex, ey), () => { const b = [...doc.querySelectorAll('.menubar .menubar-menu-button')].find((x) => /Edit/.test(x.textContent)); const f = [...doc.querySelectorAll('.menubar .menubar-menu-button')].find((x) => /File/.test(x.textContent)); const isOpen = (x) => !!x && (x.classList.contains('open') || x.getAttribute('aria-expanded') === 'true'); return isOpen(b) && !isOpen(f) && menuOpen(); }, 3000);
 		  await esc(); }
 		{ const r = rectOf('.explorer-folders-view .monaco-list-row', 'caret.txt'); const [x, y] = center(r); res.openFile = await timed('openFile', () => click(x, y), () => lineHas(/second.file/)); }
 		{ const r = rectOf('.explorer-folders-view .monaco-list-row', 'two.txt'); const [x, y] = center(r); res.switchFile = await timed('switchFile', () => click(x, y), () => lineHas(/another.file/)); }

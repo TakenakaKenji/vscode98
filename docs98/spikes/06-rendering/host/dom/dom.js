@@ -58,6 +58,9 @@ export class EventTarget {
 	}
 	__parentForEvents() { return null; }
 }
+// the native style engine (07-native-render/host/native_style.js) mirrors the element tree: every node invalidated is added to this set, which it drains before each style pass
+let nativeStyleSink = null;
+export function setNativeStyleSink(set) { nativeStyleSink = set; }
 function reportError(e) { if (globalThis.__log98) { globalThis.__log98('[event listener error] ' + (e && (e + '\n' + (e.stack || '')))); return; } if (globalThis.console) { console.error('[event listener error]', e && (e.stack || e.message || e)); } }
 
 // ---- nodes ------------------------------------------------------------------------------------------------------------------------------------
@@ -82,7 +85,7 @@ export class Node extends EventTarget {
 	contains(o) { for (let n = o; n; n = n.parentNode) { if (n === this) { return true; } } return false; }
 	getRootNode() { let n = this; while (n.parentNode) { n = n.parentNode; } return n; }
 	__parentForEvents() { return this.parentNode ?? (this.nodeType === 9 ? this.defaultView : null); }
-	__invalidate(kind, what, arg, extra) { const d = this.nodeType === 9 ? this : this.ownerDocument; if (d) { d.__dirty = true; if (d.__parentDoc) { d.__parentDoc.__paintGen = (d.__parentDoc.__paintGen | 0) + 1; } d.__styleDirty = d.__styleDirty || kind === 'style'; const log = (d.__dirtyLog ??= []); if (log.length < 200000) { log.push([kind, what, this, arg, extra]); } else { d.__logOverflow = true; } } }   // the log (cleared by every layout pass) says what made the pass necessary
+	__invalidate(kind, what, arg, extra) { if (nativeStyleSink !== null) { nativeStyleSink.add(this); } const d = this.nodeType === 9 ? this : this.ownerDocument; if (d) { d.__dirty = true; if (d.__parentDoc) { d.__parentDoc.__paintGen = (d.__parentDoc.__paintGen | 0) + 1; } d.__styleDirty = d.__styleDirty || kind === 'style'; const log = (d.__dirtyLog ??= []); if (log.length < 200000) { log.push([kind, what, this, arg, extra]); } else { d.__logOverflow = true; } } }   // the log (cleared by every layout pass) says what made the pass necessary
 	insertBefore(node, ref) {
 		if (node.nodeType === 11) { for (const c of [...node.__children]) { this.insertBefore(c, ref); } return node; }
 		if (ref && ref.parentNode !== this) { throw new DOMException('The node before which the new node is to be inserted is not a child of this node.', 'NotFoundError'); }

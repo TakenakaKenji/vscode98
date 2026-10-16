@@ -51,22 +51,23 @@ export function resolveStyles(doc, env, log) {
 	if (plan) { for (const el of plan.marks.keys()) { for (let a = el; a && a.nodeType === 1 && a.__dd !== passId; a = a.parentNode) { a.__dd = passId; } } }
 	info.planMs = performance.now() - t0 - indexMs;
 	if (plan && globalThis.__styleDebug) { globalThis.__styleDebug(plan, log, planInv || index.inv); }
+	const NS = env.styleEngine || null;   // native selector matching (07-native-render/host/native_style.js); its matcher needs no ancestor filter from here
 	let layoutChanged = false; const changed = [];   // restyled elements, and whether any of them changed in a way layout reads
 	const walk = (el, parentCS, parentAnc, forced, prev) => {
 		let lvl = forced; if (plan) { const m = plan.marks.get(el); if (m !== undefined && m > lvl) { lvl = m; } } if (full) { lvl = 3; }
 		let cs = el.__cs, anc = el.__anc, childForced = 0; el.__prev = prev;
 		if (lvl > 0 || !cs) {
-			const rematch = lvl >= 2 || !cs || !el.__cands; anc = ancestorFilter(el, parentAnc); el.__anc = anc;
+			const rematch = lvl >= 2 || !cs || !el.__cands; anc = NS !== null ? null : ancestorFilter(el, parentAnc); el.__anc = anc;
 			const oldCs = cs, ob = el.__before, oa = el.__after;
-			let cands, pc; if (rematch) { const all = matchedDeclarationsAll(el, index); cands = all[0]; pc = el.__pcands = [all[1], all[2]]; } else { cands = el.__cands; pc = el.__pcands ??= [matchedDeclarations(el, index, null, 'before'), matchedDeclarations(el, index, null, 'after')]; }
+			let cands, pc; if (rematch) { const all = NS !== null ? NS.matchAll(el, index) : matchedDeclarationsAll(el, index); cands = all[0]; pc = el.__pcands = [all[1], all[2]]; } else { cands = el.__cands; pc = el.__pcands ??= NS !== null ? NS.matchAll(el, index).slice(1) : [matchedDeclarations(el, index, null, 'before'), matchedDeclarations(el, index, null, 'after')]; }
 			const ncs = computeStyle(el, parentCS, index, env, null, cands); info.recomputed++; if (rematch) { info.rematched++; }
 			['before', 'after'].forEach((pe, i) => { const pcs = pc[i].length ? computeStyle(el, ncs, index, env, pe, pc[i]) : null; const c = pcs && pcs.values.content; el['__' + pe] = (c && c !== 'none' && c !== 'normal') ? pcs : null; });
 			el.__cands = cands; childForced = lvl === 3 ? 3 : (inheritedChanged(cs, ncs, INH) ? 1 : 0); el.__cs = cs = ncs; changed.push(el);
 			if (!layoutChanged && (!oldCs || layoutPropsDiffer(oldCs.values, ncs.values) || pseudoDiffers(ob, el.__before) || pseudoDiffers(oa, el.__after))) { layoutChanged = true; }
-		} else if (el.__dd !== passId) { return; } else { anc = ancestorFilter(el, parentAnc); el.__anc = anc; }   // ancestors on the way to a marked element: their filter is rebuilt too, a cached one may predate a class change that no rule cared about then
+		} else if (el.__dd !== passId) { return; } else { anc = NS !== null ? null : ancestorFilter(el, parentAnc); el.__anc = anc; }   // ancestors on the way to a marked element: their filter is rebuilt too, a cached one may predate a class change that no rule cared about then
 		let pe = null; for (const c of el.__children) { if (c.nodeType === 1) { walk(c, cs, anc, childForced, pe); pe = c; } }
 	};
-	if (root) { setMatchMemo(passId); try { walk(root, null, null, 0); } finally { setMatchMemo(0); } } doc.__styleCount = total; doc.__styleReady = true; { const ae = doc.__activeElement && doc.__activeElement.isConnected ? doc.__activeElement : null; doc.__styledActive = ae; doc.__styledChain = []; for (let a = ae; a && a.nodeType === 1; a = a.parentNode) { doc.__styledChain.push(a); } } doc.__logOverflow = false; info.ms = performance.now() - t0; doc.__styleInfo = info;
+	if (root) { if (NS !== null) { NS.beginPass(doc); } setMatchMemo(passId); try { walk(root, null, null, 0); } finally { setMatchMemo(0); } } doc.__styleCount = total; doc.__styleReady = true; { const ae = doc.__activeElement && doc.__activeElement.isConnected ? doc.__activeElement : null; doc.__styledActive = ae; doc.__styledChain = []; for (let a = ae; a && a.nodeType === 1; a = a.parentNode) { doc.__styledChain.push(a); } } doc.__logOverflow = false; info.ms = performance.now() - t0; doc.__styleInfo = info;
 	doc.__styleResult = { layoutChanged: layoutChanged || !!root === false, changed };
 	if (doc.__verifyStyles) { verifyStyles(doc, env, index); }
 }

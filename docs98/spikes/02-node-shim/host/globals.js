@@ -56,9 +56,19 @@ globalThis.__processListeners = listeners;
 
 // ---- timers (on os.setTimeout), microtask, structuredClone, misc ---------------------------------------------------------------------------
 let timerId = 0; const timers = new Map();
-globalThis.setTimeout = (fn, ms = 0, ...args) => { const id = ++timerId; timers.set(id, os.setTimeout(() => { timers.delete(id); fn(...args); }, ms)); return { id, ref() { return this; }, unref() { return this; }, hasRef: () => true, refresh() { return this; }, [Symbol.toPrimitive]: () => id }; };
+// An exception thrown by a timer callback ends QuickJS's event loop (js_os_poll returns -1 after printing it), and with it the process, with exit code 0; one thrown by a
+// queueMicrotask/nextTick job ends it too. Node gives it to the 'uncaughtException' listeners and goes on (VS Code's processes all have one). Without a listener the
+// error is printed and the process still goes on (Node would exit with code 1).
+function reportUncaught(e) {
+	const P = globalThis.process;
+	if (P && typeof P.listenerCount === 'function' && P.listenerCount('uncaughtException') > 0) { try { P.emit('uncaughtException', e, 'uncaughtException'); return; } catch (e2) { e = e2; } }
+	try { std.err.puts('Uncaught ' + (e && e.stack ? (String(e.stack).startsWith(String(e)) ? e.stack : e + '\n' + e.stack) : String(e)) + '\n'); } catch { /* ignore */ }
+}
+const guarded = (fn, args) => { try { fn(...args); } catch (e) { reportUncaught(e); } };
+{ const nativeQueueMicrotask = globalThis.queueMicrotask; globalThis.queueMicrotask = (fn) => nativeQueueMicrotask(() => { try { fn(); } catch (e) { reportUncaught(e); } }); }
+globalThis.setTimeout = (fn, ms = 0, ...args) => { const id = ++timerId; timers.set(id, os.setTimeout(() => { timers.delete(id); guarded(fn, args); }, ms)); return { id, ref() { return this; }, unref() { return this; }, hasRef: () => true, refresh() { return this; }, [Symbol.toPrimitive]: () => id }; };
 globalThis.clearTimeout = (t) => { const id = t && typeof t === 'object' ? t.id : t; const h = timers.get(id); if (h !== undefined) { os.clearTimeout(h); timers.delete(id); } };
-globalThis.setInterval = (fn, ms = 0, ...args) => { const id = ++timerId; const tick = () => { timers.set(id, os.setTimeout(() => { fn(...args); if (timers.has(id)) { tick(); } }, ms)); }; tick(); return { id, ref() { return this; }, unref() { return this; }, [Symbol.toPrimitive]: () => id }; };
+globalThis.setInterval = (fn, ms = 0, ...args) => { const id = ++timerId; const tick = () => { timers.set(id, os.setTimeout(() => { guarded(fn, args); if (timers.has(id)) { tick(); } }, ms)); }; tick(); return { id, ref() { return this; }, unref() { return this; }, [Symbol.toPrimitive]: () => id }; };
 globalThis.clearInterval = globalThis.clearTimeout;
 globalThis.setImmediate = (fn, ...a) => globalThis.setTimeout(fn, 0, ...a);
 globalThis.clearImmediate = globalThis.clearTimeout;

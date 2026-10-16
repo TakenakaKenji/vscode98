@@ -37,9 +37,11 @@ function makeSqlite() {
 		throw unsupported(sql);
 	}
 	const splitSql = (sql) => sql.split(/;(?=(?:[^']*'[^']*')*[^']*$)/).map(s => s.trim()).filter(Boolean);
-	class Database {
+	// EventEmitters themselves: sqlite3.js copies EventEmitter.prototype onto these with for...in, which sees none of the (non-enumerable) methods of our class-based EventEmitter;
+	// without them Statement#on fails in every transaction of the storage service (prepare() → stmt.on('error')) and the main process stops writing state
+	class Database extends EventEmitter {
 		constructor(file, mode, cb) {
-			if (typeof mode === 'function') { cb = mode; }
+			super(); if (typeof mode === 'function') { cb = mode; }
 			this.file = file; this.st = openStore(file); this.open = false; this.lastID = 0;
 			tick(() => { this.open = true; this.emit?.('open'); cb?.call(this, null); });
 		}
@@ -47,8 +49,8 @@ function makeSqlite() {
 		close(cb) { tick(() => { this.open = false; this.emit?.('close'); cb?.call(this, null); }); return this; }
 		serialize(cb) { cb?.(); return this; } parallelize(cb) { cb?.(); return this; } configure() { return this; } wait(cb) { tick(() => cb?.call(this, null)); return this; } interrupt() { } loadExtension(f, cb) { tick(() => cb?.(new Error('loadExtension is not supported'))); return this; }
 	}
-	class Statement {
-		constructor(db, sql, errBack) { this.db = db; this.sql = sql; this.params = []; this.finalized = false; if (errBack) { tick(() => errBack.call(this, null)); } }
+	class Statement extends EventEmitter {
+		constructor(db, sql, errBack) { super(); this.db = db; this.sql = sql; this.params = []; this.finalized = false; if (errBack) { tick(() => errBack.call(this, null)); } }
 		_args(args) { const cb = typeof args[args.length - 1] === 'function' ? args.pop() : undefined; let params = args.length ? args : this.params; if (params.length === 1 && Array.isArray(params[0])) { params = params[0]; } return { params, cb }; }
 		bind(...args) { const { params, cb } = this._args(args); this.params = params; if (cb) { tick(() => cb.call(this, null)); } return this; }
 		run(...args) { const { params, cb } = this._args(args); tick(() => { try { const r = execOne(this.db.st, this.sql, params); cb?.call(Object.assign(this, { lastID: 0, changes: r.changes }), null); } catch (e) { cb ? cb.call(this, e) : this.emit?.('error', e); } }); return this; }
@@ -58,7 +60,7 @@ function makeSqlite() {
 		reset(cb) { tick(() => cb?.call(this, null)); return this; }
 		finalize(cb) { this.finalized = true; tick(() => cb?.call(this, null)); return this; }
 	}
-	class Backup { }
+	class Backup extends EventEmitter { }
 	return { Database, Statement, Backup, cached: { objects: {}, Database(f, a, b) { return new Database(f, a, b); } }, OPEN_READONLY: 1, OPEN_READWRITE: 2, OPEN_CREATE: 4, OPEN_FULLMUTEX: 0x10000, OPEN_URI: 0x40, OPEN_SHAREDCACHE: 0x20000, OPEN_PRIVATECACHE: 0x40000, VERSION: '3.45.0', SOURCE_ID: 'emulated', VERSION_NUMBER: 3045000, LIMIT_LENGTH: 0, LIMIT_SQL_LENGTH: 1, LIMIT_COLUMN: 2, LIMIT_EXPR_DEPTH: 3, LIMIT_COMPOUND_SELECT: 4, LIMIT_VDBE_OP: 5, LIMIT_FUNCTION_ARG: 6, LIMIT_ATTACHED: 7, LIMIT_LIKE_PATTERN_LENGTH: 8, LIMIT_VARIABLE_NUMBER: 9, LIMIT_TRIGGER_DEPTH: 10, LIMIT_WORKER_THREADS: 11 };
 }
 

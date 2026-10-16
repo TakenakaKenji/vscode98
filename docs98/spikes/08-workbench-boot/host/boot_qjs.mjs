@@ -22,6 +22,8 @@ async function main() {
 const t00 = performance.now();
 const env = installEnvironment({ width: W, height: H, opentype, readUrl }); const doc = env.document;
 let layoutTiming = null; if (opt('layout', 'js') === 'native') { const m = await import('../../07-native-render/host/native_layout.js'); env.layoutEngine = m.engine; layoutTiming = m.timing; }
+// --style native: selector matching in C (07-native-render/host/native_style.js, module spike:style); --style verify: also the JavaScript matcher, differences logged
+let styleNative = null; if (opt('style', 'js') !== 'js') { try { styleNative = await import('../../07-native-render/host/native_style.js'); env.styleEngine = styleNative.engine; styleNative.engine.verify = opt('style', 'js') === 'verify'; } catch (e) { styleNative = null; ((m) => { std.out.puts(m + '\n'); std.out.flush(); })('[harness] no native style engine (' + (e && e.message || e) + '): JavaScript matching'); } }
 installWebShims(env, { baseUrl: BASE, readFile: (p) => readBytes(webDir + '/' + p) });
 preparePage(doc, parseFragment, { html: std.loadFile(webDir + '/vs/code/browser/workbench/workbench.html'), base: BASE, readText: (p) => std.loadFile(p), webDir });
 globalThis._VSCODE_FILE_ROOT = BASE + '/out/';
@@ -33,7 +35,7 @@ doc.__passStats = []; if (opt('verify', '0') === '1') { doc.__verifyStyles = tru
 const tImport = performance.now(); std.out.puts('importing the workbench...\n'); std.out.flush();
 try { await import(webDir + '/vs/code/browser/workbench/workbench.js'); } catch (e) { note('import', e); }
 const tLoaded = performance.now(); std.out.puts(`imported after ${Math.round(tLoaded - tImport)} ms\n`); std.out.flush(); const rssAfterImport = rss();
-const ctx = { env, doc, note, rss, layoutTiming, opt, log: (m) => { std.out.puts(m + '\n'); std.out.flush(); }, W, H };
+const ctx = { env, doc, note, rss, layoutTiming, styleNative, opt, log: (m) => { std.out.puts(m + '\n'); std.out.flush(); }, W, H };
 globalThis.__scenarioDetail = opt('detail', '0') !== '0';   // --detail 1: per-pass lines in scenarios; --detail 2: also the large level-3 marks of the style planner and why (see style_invalidation.js)
 if (opt('detail', '0') === '2') { const d = (el) => el.localName + (el.id ? '#' + el.id : '') + '.' + String(el.getAttribute('class') || '').split(' ').slice(0, 3).join('.'); globalThis.__styleDebug = (plan) => { const big = [...plan.marks].filter(([el, l]) => l === 3 && el.getElementsByTagName('*').length > 100).map(([el]) => [el.getElementsByTagName('*').length, d(el), plan.why.get(el)]); if (big.length) { ctx.log('BIGMARK ' + JSON.stringify(big)); } }; }
 await runScenario(ctx, { seconds, label: 'boot' });
