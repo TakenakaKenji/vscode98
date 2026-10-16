@@ -37,7 +37,7 @@ Concrete rules from the sessions so far. Each one exists because ignoring it cos
 ## Packaging for the owner
 
 19. **The package is a product; test the package, not the tree.** Boot it under Wine from the unpacked folder before sending (`wrun15.sh qjs-win-x86.exe --style verify`). [v12 had no syntax highlighting because `vscode-textmate` was not in `needmods.txt`; the tree had it.]
-20. Zip the `vscode98-win-desktop` folder, `split -b 14M -d -a 1` into `.partN`, a `join-parts.cmd` that joins and prints the SHA256, report the SHA256 in the message. Remove `userdata/` and `results/` from the package dir first.
+20. Zip the `vscode98-win-desktop` folder (from v20 its `userdata/code-cache` is part of the package: `package_desktop.sh` prebuilds it under Wine; remove everything else under `userdata/` and `results/`), `split -b 14M -d -a 1` into `.partN`, a `join-parts.cmd` that joins and prints the SHA256, report the SHA256 in the message. Remove `userdata/` and `results/` from the package dir first.
 21. **Ask for the same measurements each round** (load time, file open, caret, double click, switch file, menu open/move, new file/folder, plus any functional failures) so rounds are comparable; record them in `11-windows-host/README.md` under a new round.
 
 ## Talking to the owner

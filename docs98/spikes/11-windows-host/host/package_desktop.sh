@@ -28,4 +28,13 @@ for d in fonts-inter fonts-dejavu-core fonts-liberation; do [ -f /usr/share/doc/
 mkdir -p "$OUT/sample" && printf 'hello vscode98\nline two\n' > "$OUT/sample/hello.txt" && printf '# sample\n' > "$OUT/sample/README.md"
 sed 's/\r$//; s/$/\r/' "$S/11-windows-host/package/run-desktop.cmd" > "$OUT/run-desktop.cmd"
 sed 's/\r$//; s/$/\r/' "$S/11-windows-host/package/run-bench.cmd" > "$OUT/run-bench.cmd"; cp "$S/11-windows-host/package/bench.js" "$OUT/bench.js"
+# the bytecode cache (05-child-process/host/esm.c, spike 14): boot the package once, headless, under Wine with the executable that ships, and keep only userdata/code-cache,
+# so that the first start on the target reads the large bundles instead of compiling them (the cache renames the module paths to wherever the package is unpacked).
+# PREBUILD_CACHE=0 skips it (the first start then writes the cache itself); the log of the boot is <outDir>.prebuild.log.
+if [ "${PREBUILD_CACHE:-1}" != 0 ] && command -v wine >/dev/null && command -v winepath >/dev/null; then
+  export WINEDEBUG=-all; W=$(winepath -w "$OUT"); WJ=$(winepath -w "$OUT/js" | tr '\\' /)
+  ( cd "$OUT" && timeout 1200 wine "./qjs-win-$ARCH.exe" --stack-size 0 "$WJ/docs98/spikes/05-child-process/host/fork_main.mjs" "$WJ/s11" "$WJ/docs98/spikes/10-main-shim/host/boot_desktop_qjs.mjs" "$W\\app" --layout native --backend native --user-data-dir "$W\\userdata" --extensions-dir "$W\\userdata\\extensions" --workspace "$W\\sample" --seconds 120 --stable 300 ) > "$OUT.prebuild.log" 2>&1 || true
+  if [ -d "$OUT/userdata/code-cache" ]; then mv "$OUT/userdata/code-cache" "$OUT/code-cache.tmp"; rm -rf "$OUT/userdata" "$OUT/results"; mkdir -p "$OUT/userdata"; mv "$OUT/code-cache.tmp" "$OUT/userdata/code-cache"; fi
+  echo "code cache: $(ls "$OUT/userdata/code-cache" 2>/dev/null | wc -l) files, $(du -sh "$OUT/userdata/code-cache" 2>/dev/null | cut -f1) (prebuilt under Wine; log $OUT.prebuild.log)"
+fi
 echo "desktop package: $OUT ($(du -sh "$OUT" | cut -f1))"

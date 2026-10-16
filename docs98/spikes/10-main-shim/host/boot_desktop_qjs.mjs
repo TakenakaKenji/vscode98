@@ -46,7 +46,7 @@ for (const m of ['group', 'groupCollapsed', 'groupEnd', 'table', 'time', 'timeEn
 async function main() {
 const t00 = performance.now(); const mainLog = []; log('[harness] start');
 // --timeline <dir>: every process of the app records its event loop (busy / waiting) and VS Code's startup marks there; the merged table is printed when the workbench is stable
-const timelineDir = opt('timeline'); const t00Epoch = Date.now() - t00; let timelinePrinted = false;   // printed when the workbench is stable, or when the window is closed before that if (timelineDir) { startTimeline(timelineDir, nodeProcess.env); }
+const timelineDir = opt('timeline'); const t00Epoch = Date.now() - t00; let timelinePrinted = false; if (timelineDir) { startTimeline(timelineDir, nodeProcess.env); }   // printed when the workbench is stable, or when the window is closed before that
 // --code-cache <dir> (default <user-data-dir>/code-cache; 0 = off): bytecode of the large ES modules (05-child-process/host/esm.c), for this process and every one it starts
 const codeCacheDir = opt('code-cache', opt('user-data-dir') ? nodePath.join(opt('user-data-dir'), 'code-cache') : '0');
 if (codeCacheDir !== '0' && globalThis.__codeCacheDir) { try { os.mkdir(nodePath.dirname(codeCacheDir)); } catch { /* exists */ } os.mkdir(codeCacheDir); globalThis.__codeCacheDir(codeCacheDir); nodeProcess.env.QJS98_CODE_CACHE = codeCacheDir; }
@@ -162,7 +162,7 @@ const done = performance.now();
 if (globalThis.__packVerify) { log('pack verify: ' + JSON.stringify(globalThis.__packStats)); }
 log('style-only passes (previous layout kept): ' + (doc.__styleOnlyPasses || 0) + ' of ' + (doc.__passStats || []).length + (doc.__verifyStyleOnly ? '; verified ' + (doc.__styleOnlyChecked || 0) + ' boxes, mismatches ' + JSON.stringify(doc.__styleOnlyMismatches || []) : ''));
 summarizeRun(ctx, { tImport, tLoaded, done, t00, errors, consoleLog, rssAfterImport, missing, unsupported });
-if (globalThis.__codeCacheDir) { const c = globalThis.__codeCacheDir(); log(`code cache: ${c.dir ?? 'off'}; this process: ${c.hits} modules read from the cache, ${c.writes} written`); }
+if (globalThis.__codeCacheDir) { const c = globalThis.__codeCacheDir(); log(`code cache: ${c.dir ?? 'off'}; this process: ${c.hits} modules read from the cache (${c.renamed} compiled under another path), ${c.writes} written`); }
 if (timelineDir) { timelineMark('harness: workbench stable'); timelineReport(timelineDir, log, t00Epoch); timelinePrinted = true; }
 if (opt('scenario')) { const sc = await import(opt('scenario')); await sc.run(ctx); }
 if (styleNative) { log('native style: ' + JSON.stringify(styleNative.stats) + ' C ' + JSON.stringify(styleNative.engine.nativeStats()) + ' mismatches ' + styleNative.mismatches.length + (styleNative.mismatches.length ? '\n  ' + styleNative.mismatches.slice(0, 30).join('\n  ') : '') + '; compute mismatches ' + styleNative.computeMismatches.length + (styleNative.computeMismatches.length ? '\n  ' + styleNative.computeMismatches.slice(0, 30).join('\n  ') : '') + '; selector mismatches ' + styleNative.selectorMismatches.length + (styleNative.selectorMismatches.length ? '\n  ' + styleNative.selectorMismatches.slice(0, 10).map(t => JSON.stringify(t.slice(0, 200))).join('\n  ') : '') + '; sheet mismatches ' + styleNative.sheetMismatches.length + (styleNative.sheetMismatches.length ? '\n  ' + styleNative.sheetMismatches.slice(0, 5).map(t => JSON.stringify(t.slice(0, 200))).join('\n  ') : '')); }

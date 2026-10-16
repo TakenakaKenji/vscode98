@@ -2,7 +2,7 @@
 
 **Question:** round 12 showed that v18 removed 2.6 s of the window process's CPU at startup and the laptop's launch did not change. Where does the launch actually go, process by process, and what is on its critical path?
 
-**Status (2026-10-16):** the timeline is built into every process and printed by the desktop harness (`--timeline <dir>`, on in `run-desktop.cmd` from package v19). Its first run answered the question: **compiling the 42.7 MB workbench bundle** (`workbench.desktop.main.js`) is the largest single piece of the launch, with the window process at 100 % CPU and the other processes idle. A bytecode cache for large ES modules removes most of it from the second start on: the workbench is started 5.9 s sooner on the sandbox and 8.3 s sooner under Wine. Package v19 carries both (SHA256 `3b73fd1a434fa0c50ff4d7dca602482756d345fe8e1bfc61f2e023cd43b481cd`, joined zip; the 11 feature scenarios pass with the cache on; no processes left after closing); laptop (round 13): launch 20 s on the first start, **12 s on the second**.
+**Status (2026-10-17):** package v20 ships the cache (prebuilt under Wine, module paths rewritten on load), so the first start after unzipping no longer compiles. Earlier, **2026-10-16:** the timeline is built into every process and printed by the desktop harness (`--timeline <dir>`, on in `run-desktop.cmd` from package v19). Its first run answered the question: **compiling the 42.7 MB workbench bundle** (`workbench.desktop.main.js`) is the largest single piece of the launch, with the window process at 100 % CPU and the other processes idle. A bytecode cache for large ES modules removes most of it from the second start on: the workbench is started 5.9 s sooner on the sandbox and 8.3 s sooner under Wine. Package v19 carries both (SHA256 `3b73fd1a434fa0c50ff4d7dca602482756d345fe8e1bfc61f2e023cd43b481cd`, joined zip; the 11 feature scenarios pass with the cache on; no processes left after closing); laptop (round 13): launch 20 s on the first start, **12 s on the second**.
 
 ## The timeline
 
@@ -40,6 +40,15 @@ This also explains round 12: the style pass that v18 shortened comes after this,
 | Wine: total until stable | | 23.0 s | 16.6 s |
 | Wine, nothing else running (package v19 unpacked): `code/didStartWorkbench` | | 9.26 s | 4.79 s |
 | Wine, nothing else running: total until stable | | 22.0 s | 16.4 s |
+
+## The cache in the package (v20)
+
+The laptop's round 13: the first start after unzipping still compiled (20 s), the second read the cache (12 s); the owner always tests a fresh unzip, and a user's first launch matters too. The cache was tied to the install folder because the module name is compiled into the bytecode. Now:
+
+- **The key is the hash of the source only**, and the file records the name the module was compiled under. When the name differs, `bc_rename` (`esm.c`) rewrites that one string in the bytecode's atom table (QuickJS-ng `JS_WriteObjectAtoms` layout: version byte, checksum, leb128 count, per atom a type byte and `JS_WriteString`: leb128(len << 1 | wide) and 8-bit or UTF-16 units); every other use refers to the atom by index. The checksum is set to QuickJS's "not checked" value (`0xFFFFFFFF`); a malformed buffer still fails in `JS_ReadObject` and falls back to compiling.
+- **`package_desktop.sh` prebuilds it**: when Wine is installed it boots the package once, headless, with the executable that ships (the cache header names the build), and keeps only `userdata/code-cache` (8 files, 32 MB; the zip grows from ~80 to 92.8 MB). `PREBUILD_CACHE=0` skips this.
+
+Checks: the 11 feature scenarios run from a hard-linked copy of the app at another path with a cache built from the original path (every large module renamed on load): all pass. Wine, v20 unpacked to another folder than the one the cache was built in, nothing else running: `code/didStartWorkbench` 3.94 s on the first start and 3.94 s on the second (v19 the same day on that machine: first start compiled, ~9 s); the window renders as before; no processes left after closing.
 
 ## What is left (warm cache, Wine)
 
