@@ -6,7 +6,8 @@
 // verify: also run the JavaScript matcher (without the ancestor filter) on every element and record the differences in `mismatches`.
 import * as S from 'spike:style';
 import { setNativeStyleSink } from '../../06-rendering/host/dom/dom.js';
-import { matchedDeclarationsAll } from '../../06-rendering/host/dom/css.js';
+import { matchedDeclarationsAll, PROPS, INIT, INH, INIT_VALUES, parseValue, parseLength, parseColor, expandShorthand, expandDecls, finishComputed, computeStyleJS, substituteVars, EMPTY_VARS } from '../../06-rendering/host/dom/css.js';
+import { deepEqual } from '../../06-rendering/host/dom/style_invalidation.js';
 
 const NF_ELEM = 1, NF_DOC = 2, NF_HOVER = 4, NF_ACTIVE = 8, NF_CHECKED = 16, NF_EMPTY = 32;
 const COMB = { ' ': 0, '>': 1, '+': 2, '~': 3 };
@@ -101,7 +102,7 @@ function sync(doc) {
 
 // ---- matching
 let out = new Int32Array(4096); S.setOut(out);
-export const stats = { passes: 0, matches: 0, fallbacks: 0, records: 0, freed: 0, brokenIndexes: 0, syncMs: 0, matchMs: 0, verified: 0 };
+export const stats = { passes: 0, matches: 0, fallbacks: 0, records: 0, freed: 0, brokenIndexes: 0, syncMs: 0, matchMs: 0, verified: 0, computes: 0, computeFallbacks: 0, computeMs: 0, computeVerified: 0 };
 export const mismatches = [];
 const describe = (el) => el.localName + (el.getAttribute('id') ? '#' + el.getAttribute('id') : '') + (el.classes().length ? '.' + el.classes().join('.') : '');
 function verifyOne(el, index, got) {
@@ -111,8 +112,87 @@ function verifyOne(el, index, got) {
 		if (!same && mismatches.length < 200) { const ga = new Set(a), wb = new Set(b); mismatches.push(`${describe(el)}${q ? (q === 1 ? '::before' : '::after') : ''}: only native: ${a.filter(e => !wb.has(e)).map(e => e.sel).join(' ; ') || '-'}; only js: ${b.filter(e => !ga.has(e)).map(e => e.sel).join(' ; ') || '-'}${ga.size === wb.size && a.every(e => wb.has(e)) ? ' (order differs)' : ''}`); if (mismatches.length <= 20 && globalThis.__log98) { globalThis.__log98('[native style] mismatch ' + mismatches[mismatches.length - 1]); } }
 	}
 }
+
+// ---- computed values (phase 2, style_compute.c): the cascade, custom properties, var() and the values in C; css.js computeStyleJS is the reference
+const PNAMES = Object.keys(PROPS); const PIDX = new Map(PNAMES.map((n, i) => [n, i]));
+const SHORTHANDS = []; const SHIDX = new Map();
+const cur = { rootFontSize: 16, vw: 0, vh: 0 };   // the environment of the element being computed, for the parse callback
+/** C asks for the JavaScript value of a declaration it has not seen before (it caches the answer like css.js parseValueCached) */
+function parseCb(mode, a, b, str, fs, color) {
+	if (mode === 0) { const v = parseValue(PROPS[PNAMES[a]], str, { fontSize: fs, rootFontSize: cur.rootFontSize, vw: cur.vw, vh: cur.vh }, color); return v === undefined ? null : v; }
+	if (mode === 1) { const l = parseLength(str, { fontSize: fs, rootFontSize: cur.rootFontSize, vw: cur.vw, vh: cur.vh }); return l !== null && typeof l === 'object' && l.pct !== undefined ? l.pct / 100 * fs : (typeof l === 'number' ? l : null); }   // font-size against the parent's
+	if (mode === 2) { return parseColor(str, color) ?? null; }
+	const ex = expandShorthand(SHORTHANDS[a], str).find(([n]) => n === PNAMES[b]); return ex ? String(ex[1]) : null;   // a longhand of a shorthand whose value had var()
+}
+S.computeInit(PNAMES, Int32Array.from(PNAMES, (n) => (PROPS[n].inh ? 1 : 0)), Int32Array.from(PNAMES, (n) => (PROPS[n].kind === 'len' ? 1 : 0)), PNAMES.map((n) => INIT[n]), PROPS.color.init, parseCb);
+const blockReg = typeof FinalizationRegistry === 'function' ? new FinalizationRegistry((b) => S.declFree(b)) : null;
+const scopeReg = typeof FinalizationRegistry === 'function' ? new FinalizationRegistry((h) => S.scopeUnref(h)) : null;
+/** a declaration list (css.js expandDecls) as a native block; cached on the list (the rule lists are cached per rule by css.js) */
+function makeBlock(decls) {
+	const f = [], vals = [];
+	for (let i = 0; i < decls.length; i++) {
+		const d = decls[i], n = d.name; let p = -1, c = -1;
+		if (n.charCodeAt(0) === 45 && n.charCodeAt(1) === 45) { c = atom(n); } else { p = PIDX.get(n); if (p === undefined) { continue; } }   // unknown properties never reach a computed value
+		let sh = 0; if (d.pendingShorthand) { sh = SHIDX.get(d.pendingShorthand); if (sh === undefined) { sh = SHORTHANDS.length; SHORTHANDS.push(d.pendingShorthand); SHIDX.set(d.pendingShorthand, sh); } sh++; }
+		f.push(p, c, d.important ? 1 : 0, sh); vals.push(d.value);
+	}
+	return S.declBlock(Int32Array.from(f), vals);
+}
+function blockOf(decls) { let b = decls.__nb; if (b === undefined) { b = decls.__nb = makeBlock(decls); if (blockReg) { blockReg.register(decls, b); } } return b; }
+/** the inline style's block, rebuilt only when the declaration changed (dom.js CSSStyleDeclaration bumps __map.__ver) */
+function inlineBlockOf(el) {
+	const m = el.__style.__map; const ver = m.__ver | 0;
+	if (m.__nb !== undefined) { if (m.__nbv === ver) { return m.__nb; } if (blockReg) { blockReg.unregister(m); } S.declFree(m.__nb); }
+	const inl = []; for (const [k, e] of m) { inl.push({ name: k, value: e.v, important: e.important }); }
+	const b = makeBlock(expandDecls(inl)); m.__nb = b; m.__nbv = ver; if (blockReg) { blockReg.register(m, b, m); } return b;
+}
+/** the custom properties of a computed style held by C (css.js VarScope's interface) */
+class NativeVars {
+	constructor(h, owned) { this.h = h; this.native = true; this.parent = null; this.depth = 0; this.flatMap = null; this.eqTo = null; this.map = null; if (owned && scopeReg) { scopeReg.register(this, h); } }
+	get(k) { return S.varGet(this.h, k); }
+	has(k) { return S.varGet(this.h, k) !== undefined; }
+	toMap() { if (this.map === null) { const a = S.varEntries(this.h); const m = new Map(); for (let i = 0; i < a.length; i += 2) { m.set(a[i], a[i + 1]); } this.map = m; } return this.map; }
+	substitute(value) { return substituteVars(value, this); }
+	equals(o) { return S.varsEqual(this.h, o.h); }
+	get size() { return this.toMap().size; }
+	[Symbol.iterator]() { return this.toMap()[Symbol.iterator](); }
+}
+const EMPTY_NATIVE = new NativeVars(0, false);
+/** the native scope of a parent's custom properties (a JavaScript VarScope, from an element JavaScript computed, gets a flat native copy) */
+function scopeOf(vars) {
+	if (vars.native) { return vars.h; } if (vars === EMPTY_VARS) { return 0; }
+	if (vars.__nh === undefined) { const m = vars.toMap(); vars.__nh = S.scopeFrom(Int32Array.from([...m.keys()], (k) => atom(k)), [...m.values()]); if (scopeReg) { scopeReg.register(vars, vars.__nh); } }
+	return vars.__nh;
+}
+let blk = new Int32Array(64);
+export const computeMismatches = [];
+function sameVars(a, b) { const ma = a.toMap(), mb = b.toMap(); if (ma.size !== mb.size) { return false; } for (const [k, v] of ma) { if (mb.get(k) !== v) { return false; } } return true; }
+function verifyCompute(el, parentCS, env, pseudo, cands, got) {
+	const want = computeStyleJS(el, parentCS, env, pseudo, cands); stats.computeVerified++;
+	let diff = null; for (const k of Object.keys(want.values)) { if (!deepEqual(got.values[k], want.values[k])) { diff = `${k}: ${JSON.stringify(got.values[k])} (native) vs ${JSON.stringify(want.values[k])} (js)`; break; } }
+	if (diff === null && !sameVars(got.vars, want.vars)) { diff = 'custom properties differ'; }
+	if (diff !== null && computeMismatches.length < 200) { computeMismatches.push(`${describe(el)}${pseudo ? '::' + pseudo : ''}: ${diff}`); if (computeMismatches.length <= 20 && globalThis.__log98) { globalThis.__log98('[native style] compute mismatch ' + computeMismatches[computeMismatches.length - 1]); } }
+}
+function computeNative(el, parentCS, env, pseudo, cands) {
+	const t0 = performance.now();
+	const pv = parentCS ? parentCS.values : null, pvars = parentCS ? parentCS.vars : EMPTY_NATIVE; const ps = scopeOf(pvars);
+	const n = cands.length; if (blk.length < n) { blk = new Int32Array(n * 2); } for (let i = 0; i < n; i++) { blk[i] = blockOf(cands[i].decls); }
+	const ib = !pseudo && el.__style && el.__style.__map.size ? inlineBlockOf(el) : -1;
+	const out = { ...INIT_VALUES }; if (pv) { for (let i = 0; i < INH.length; i++) { const k = INH[i]; out[k] = pv[k]; } }
+	cur.rootFontSize = env.rootFontSize ?? 16; cur.vw = env.vw; cur.vh = env.vh;
+	const sc = S.compute(blk, n, ib, ps, pv, out, cur.rootFontSize, cur.vw, cur.vh);
+	if (sc === -2) { stats.computeFallbacks++; return undefined; }
+	const vars = sc === ps ? (parentCS ? pvars : EMPTY_NATIVE) : new NativeVars(sc, true);
+	finishComputed(el, out, out.color, undefined);
+	const r = { values: out, vars, cands }; stats.computes++; stats.computeMs += performance.now() - t0;
+	if (engine.verify) { verifyCompute(el, parentCS, env, pseudo, cands, r); }
+	return r;
+}
+
 export const engine = {
 	verify: false,
+	/** computeStyle's computed-value step in C (css.js calls it; undefined: use computeStyleJS) */
+	compute: computeNative,
 	newIndex() { return new NativeIndex(); },
 	/** called by resolveStyles before its walk */
 	beginPass(doc) {
@@ -128,6 +208,6 @@ export const engine = {
 		if (this.verify) { verifyOne(el, index, r); }
 		return r;
 	},
-	nativeStats() { return S.stats(); },
+	nativeStats() { return Object.assign(S.stats(), S.computeStats()); },
 };
 setNativeStyleSink(dirty);

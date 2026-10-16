@@ -337,10 +337,13 @@ static JSValue js_stats(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 static JSValue js_parent_of(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { int32_t nid; if (JS_ToInt32(ctx, &nid, argv[0]) || nid <= 0 || nid >= capnodes) { return JS_NewInt32(ctx, -1); } return JS_NewInt32(ctx, nodes[nid].flags ? nodes[nid].parent : -1); }
 static JSValue js_kids_of(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { int32_t nid; JSValue a = JS_NewArray(ctx); if (JS_ToInt32(ctx, &nid, argv[0]) || nid <= 0 || nid >= capnodes) { return a; } for (int k = 0; k < nodes[nid].nkids; k++) { JS_SetPropertyUint32(ctx, a, (uint32_t)k, JS_NewInt32(ctx, nodes[nid].kids[k])); } return a; }
 
+#include "style_compute.c"   /* phase 2: the computed-value step */
+
 static const JSCFunctionListEntry sfuncs[] = {
 	JS_CFUNC_DEF("atom", 1, js_atom), JS_CFUNC_DEF("sync", 4, js_sync), JS_CFUNC_DEF("pass", 2, js_pass), JS_CFUNC_DEF("idxNew", 0, js_idx_new), JS_CFUNC_DEF("idxFree", 1, js_idx_free),
 	JS_CFUNC_DEF("bucket", 3, js_bucket), JS_CFUNC_DEF("entry", 9, js_entry), JS_CFUNC_DEF("push", 3, js_push), JS_CFUNC_DEF("pop", 2, js_pop), JS_CFUNC_DEF("truncate", 2, js_truncate),
 	JS_CFUNC_DEF("setOut", 1, js_set_out), JS_CFUNC_DEF("match", 2, js_match), JS_CFUNC_DEF("stats", 0, js_stats), JS_CFUNC_DEF("parentOf", 1, js_parent_of), JS_CFUNC_DEF("kidsOf", 1, js_kids_of),
+	STYLE_COMPUTE_FUNCS
 };
 static int style_init(JSContext *ctx, JSModuleDef *m) { return JS_SetModuleExportList(ctx, m, sfuncs, sizeof sfuncs / sizeof sfuncs[0]); }
 void spike_init_style(JSContext *ctx) {

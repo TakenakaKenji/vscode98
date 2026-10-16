@@ -411,8 +411,8 @@ export function substituteVars(value, vars, depth = 0) {
  * ancestor: a scope per element that declares any is a small Map instead of a copy of all of them. Lookup walks the chain; a long chain is flattened.
  */
 export class VarScope {
-	constructor(parent, own) { this.parent = parent; this.own = own; this.depth = parent ? parent.depth + 1 : 0; this.flatMap = null; this.eqTo = null; this.substCache = null; if (this.depth > 12) { this.flatten(); } }
-	get(k) { for (let sc = this; sc !== null; sc = sc.parent) { if (sc.flatMap !== null) { return sc.flatMap.get(k); } const v = sc.own.get(k); if (v !== undefined) { return v === null ? undefined : v; } } return undefined; }
+	constructor(parent, own) { this.parent = parent; this.own = own; this.depth = parent ? parent.depth + 1 : 0; this.flatMap = null; this.eqTo = null; this.substCache = null; this.native = false; if (this.depth > 12) { this.flatten(); } }
+	get(k) { for (let sc = this; sc !== null; sc = sc.parent) { if (sc.native) { return sc.get(k); } if (sc.flatMap !== null) { return sc.flatMap.get(k); } const v = sc.own.get(k); if (v !== undefined) { return v === null ? undefined : v; } } return undefined; }
 	has(k) { return this.get(k) !== undefined; }
 	/** all defined custom properties as one Map (cached) */
 	toMap() { if (this.flatMap === null) { const m = this.parent ? new Map(this.parent.toMap()) : new Map(); for (const [k, v] of this.own) { if (v === null) { m.delete(k); } else { m.set(k, v); } } this.flatMap = m; } return this.flatMap; }
@@ -427,15 +427,24 @@ const sameOwn = (a, b) => { if (a.size !== b.size) { return false; } for (const 
 /** do two custom-property scopes define the same properties with the same values? (equal pairs are remembered, so the comparison down a restyled subtree stays cheap) */
 export function varsEqual(a, b) {
 	if (a === b || a.eqTo === b) { return true; }
+	if (a.native || b.native) { return a.native && b.native ? a.equals(b) : sameOwn(a.toMap(), b.toMap()); }   // a scope of the native engine (native_style.js NativeVars)
 	let same;
 	if (a.parent !== null && b.parent !== null && sameOwn(a.own, b.own) && varsEqual(a.parent, b.parent)) { same = true; }
 	else { const ma = a.toMap(), mb = b.toMap(); same = sameOwn(ma, mb); }
 	if (same) { a.eqTo = b; b.eqTo = null; } return same;   // (only the latest pair: an older scope must not stay reachable through the chain)
 }
-/** Compute the style of one element (or pseudo-element) given its parent's computed style. Returns { values (camel-free dashed keys → computed), vars (Map) } */
+/**
+ * Compute the style of one element (or pseudo-element) given its parent's computed style. Returns { values (camel-free dashed keys → computed), vars (VarScope), cands }.
+ * With a native style engine (env.styleEngine.compute, 07-native-render/host/native_style.js) the computed-value step runs in C; computeStyleJS is the reference.
+ */
 export function computeStyle(el, parentCS, index, env, pseudo, candsIn) {
 	const cands = candsIn ?? matchedDeclarations(el, index, null, pseudo);   // candsIn: the cached result of matchedDeclarations when only inherited values changed
 	if (pseudo && cands.length === 0) { return null; }
+	const eng = env.styleEngine; if (eng && eng.compute) { const r = eng.compute(el, parentCS, env, pseudo, cands); if (r !== undefined) { return r; } }   // undefined: this element needs the JavaScript path (anchor positioning)
+	return computeStyleJS(el, parentCS, env, pseudo, cands);
+}
+/** the computed-value step in JavaScript (cascade over `cands` and the inline style, custom properties, var(), values) */
+export function computeStyleJS(el, parentCS, env, pseudo, cands) {
 	let vars = parentCS ? parentCS.vars : EMPTY_VARS; let varsOwned = false;      // a new scope only when the element declares custom properties (VarScope)
 	const winners = new Map();    // longhand → winning declaration { name, value, important, pendingShorthand }
 	// declarations are applied in cascade order (cands, then the inline style), so a later one wins unless only the earlier one is !important; the winner is the declaration itself
@@ -469,6 +478,11 @@ export function computeStyle(el, parentCS, index, env, pseudo, candsIn) {
 		out[k] = parseValueCached(p, k, d, ctx, color) ?? (p.inh && parentVals ? parentVals[k] : INIT[k]);
 	}
 	out['font-size'] = fontSize; out.color = color;
+	finishComputed(el, out, color, anchored);
+	return { values: out, vars, cands };
+}
+/** the last step of computing values, shared by both engines: anchor bookkeeping, border widths, currentcolor, font-weight keywords, overflow, blockification */
+export function finishComputed(el, out, color, anchored) {
 	if (anchored || (out['anchor-name'] && out['anchor-name'] !== 'none')) { const ad = el.ownerDocument; if (ad) { if (anchored) { Object.defineProperty(out, '__anchored', { value: anchored, enumerable: false }); (ad.__anchoredEls ??= new Set()).add(el); } if (out['anchor-name'] !== 'none') { (ad.__anchorEls ??= new Set()).add(el); } ad.__hasAnchors = true; } }
 	// border widths are 0 when the style is none/hidden
 	for (const s of SIDES) { const st = out[`border-${s}-style`]; if (st === 'none' || st === 'hidden') { out[`border-${s}-width`] = 0; } else if (out[`border-${s}-width`] && typeof out[`border-${s}-width`] === 'string') { out[`border-${s}-width`] = { thin: 1, medium: 3, thick: 5 }[out[`border-${s}-width`]] ?? 3; } if (out[`border-${s}-color`] === 'currentcolor') { out[`border-${s}-color`] = color; } }
@@ -476,11 +490,10 @@ export function computeStyle(el, parentCS, index, env, pseudo, candsIn) {
 	if (out['font-weight'] === 'bold') { out['font-weight'] = 700; } if (typeof out['font-weight'] === 'string') { out['font-weight'] = out['font-weight'] === 'bolder' ? 700 : out['font-weight'] === 'lighter' ? 300 : 400; }
 	for (const k of ['overflow-x', 'overflow-y']) { if (!['visible', 'hidden', 'scroll', 'auto', 'clip'].includes(out[k])) { out[k] = 'visible'; } }
 	if (out.position === 'absolute' || out.position === 'fixed' || out.float !== 'none') { if (out.display === 'inline') { out.display = 'block'; } else if (out.display === 'inline-block' || out.display === 'inline-flex' || out.display === 'inline-table') { out.display = out.display === 'inline-flex' ? 'flex' : out.display === 'inline-table' ? 'table' : 'block'; } }
-	return { values: out, vars, cands };
 }
 const initialOf = (p) => Array.isArray(p.init) ? p.init.slice() : p.init;
 export const INIT = {}, INH = [], NONINH = []; for (const k in T) { INIT[k] = initialOf(T[k]); (T[k].inh ? INH : NONINH).push(k); }
-const INIT_VALUES = {}; for (const k of NONINH) { INIT_VALUES[k] = INIT[k]; } for (const k of INH) { INIT_VALUES[k] = INIT[k]; }
+export const INIT_VALUES = {}; for (const k of NONINH) { INIT_VALUES[k] = INIT[k]; } for (const k of INH) { INIT_VALUES[k] = INIT[k]; }
 const parseCache = new Map();
 function parseValueCached(p, k, d, ctx, color) {
 	const ctxDep = p.kind === 'len' || /em|ex|ch|vw|vh|vmin|vmax|calc|min\(|max\(|clamp|currentcolor|color-mix/i.test(d);
@@ -488,7 +501,7 @@ function parseValueCached(p, k, d, ctx, color) {
 	let v = parseCache.get(key); if (v !== undefined) { return v; }
 	v = parseValue(p, d, ctx, color); if (v === null || v === undefined) { v = null; } if (parseCache.size > 50000) { parseCache.clear(); } parseCache.set(key, v); return v;
 }
-function parseValue(p, d, ctx, color) {
+export function parseValue(p, d, ctx, color) {
 	switch (p.kind) {
 		case 'kw': return d.toLowerCase();
 		case 'color': { const lc = d.toLowerCase(); if (lc === 'currentcolor') { return p === T.color ? null : (T['border-top-color'] === p || p.init === 'currentcolor' ? 'currentcolor' : color); } return parseColor(d, color); }

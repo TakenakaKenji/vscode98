@@ -172,7 +172,7 @@ export class CSSStyleDeclaration {
 	set cssText(t) { this.__map.clear(); for (const d of splitDecls(String(t))) { const m = /^([^:]+):([\s\S]*)$/.exec(d); if (m) { let v = m[2].trim(), imp = false; if (/!\s*important$/i.test(v)) { v = v.replace(/!\s*important$/i, '').trim(); imp = true; } const n = m[1].trim(); this.__map.set(n.startsWith('--') ? n : n.toLowerCase(), { v, important: imp }); } } this.__changed(); }
 	get length() { return this.__map.size; } item(i) { return [...this.__map.keys()][i] ?? ''; }
 	[Symbol.iterator]() { return this.__map.keys(); }
-	__changed() { const o = this.__owner; if (o) { if (!o.__syncingStyleAttr) { o.__syncingStyleAttr = true; try { o.__attrs.set('style', this.cssText); } finally { o.__syncingStyleAttr = false; } } o.__invalidate('style', 'attr', 'style'); } }
+	__changed() { const m = this.__map; m.__ver = (m.__ver | 0) + 1; const o = this.__owner; if (o) { if (!o.__syncingStyleAttr) { o.__syncingStyleAttr = true; try { o.__attrs.set('style', this.cssText); } finally { o.__syncingStyleAttr = false; } } o.__invalidate('style', 'attr', 'style'); } }
 }
 export function splitDecls(t) {   // splits at the top-level ';' (not inside parentheses or quotes); pieces are trimmed, empty ones dropped
 	const out = []; const n = t.length; let depth = 0, q = 0, start = 0;
