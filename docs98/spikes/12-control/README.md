@@ -4,6 +4,8 @@
 
 **Answer (2026-10-15, sandbox, both limited to 2 CPUs with `taskset -c 0-1`):** we are **3 to 23 times slower per interaction** and **8 to 18 times slower to start**, while using **20 to 25 % less memory**. In our host, **style computation is 65 to 87 % of every slow interaction**; layout is 5 to 15 %, painting 2 to 5 %, the rest is VS Code's own JavaScript on QuickJS. The owner's observation (stock VS Code 1.70.2 on the same Windows 7 laptop is much faster) is consistent with this.
 
+**Update 2026-10-16 ([spike 13](../13-native-style/README.md)):** with selector matching in C and the computed-value fixes, the same actions take 54 to 394 ms instead of 79 to 981 ms: 2.4 to 8.6 times Electron 1.142 instead of 3 to 23 times.
+
 ## Contenders
 
 | | Code | Runtime | How it runs here |
