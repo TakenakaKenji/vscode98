@@ -19,7 +19,43 @@ export class CSSStyleRule {
 	get cssText() { return `${this.selectorText} { ${this.__decls.map(d => `${d.name}: ${d.value}${d.important ? ' !important' : ''};`).join(' ')} }`; }
 }
 export class CSSGroupRule { constructor(type, cond, rules, sheet) { this.type = type; this.conditionText = cond; this.cssRules = rules; this.parentStyleSheet = sheet; } get media() { return { mediaText: this.conditionText }; } }
+let nativeSheetParser = null;   // spike:style parseSheet (native_style.js): the same result as parseRulesJS, as nested arrays, or null when it leaves the text to JavaScript
+let verifySheets = null;   // () => the list that collects the texts whose native result differs from parseRulesJS (verify mode), or null
+/** Lets a native parser take over stylesheet parsing (see parseRules); `verify()` returns a list for the texts whose native result differs from parseRulesJS, or null. */
+export function setNativeSheetParser(fn, verify) { nativeSheetParser = fn; verifySheets = verify || null; }
+function rulesFromNative(items, sheet, out) {
+	for (const it of items) {
+		const k = it[0];
+		if (typeof k === 'string') { out.push(new CSSStyleRule(k, it[1], sheet)); }
+		else if (k === null) { parseStyleRule(it[1], it[2], sheet, out, null); }
+		else if (k === 5) { const g = new CSSGroupRule(5, it[1], [], sheet); g.__decls = it[2]; g.type = 5; out.push(g); }
+		else { out.push(new CSSGroupRule(k, it[1], rulesFromNative(it[2], sheet, []), sheet)); }
+	}
+	return out;
+}
+/** The rules of a stylesheet text: style rules (nested ones flattened), grouping rules with their rules, @font-face; other at-rules are dropped. */
 export function parseRules(text, sheet, depth = 0) {
+	if (nativeSheetParser !== null) {
+		const items = nativeSheetParser(text);
+		if (items !== null) {
+			const rules = rulesFromNative(items, sheet, []);
+			const bad = verifySheets !== null ? verifySheets() : null; if (bad !== null && !rulesEqual(rules, parseRulesJS(text, sheet, depth))) { bad.push(text); }
+			return rules;
+		}
+	}
+	return parseRulesJS(text, sheet, depth);
+}
+function rulesEqual(a, b) {
+	if (a.length !== b.length) { return false; }
+	for (let i = 0; i < a.length; i++) {
+		const x = a[i], y = b[i];
+		if (x.constructor !== y.constructor || x.type !== y.type || x.selectorText !== y.selectorText || x.conditionText !== y.conditionText || JSON.stringify(x.__decls) !== JSON.stringify(y.__decls)) { return false; }
+		if (x.cssRules && !rulesEqual(x.cssRules, y.cssRules)) { return false; }
+	}
+	return true;
+}
+export { rulesEqual as sheetRulesEqual };
+export function parseRulesJS(text, sheet, depth = 0) {
 	text = stripComments(text); const rules = []; let i = 0; const n = text.length;
 	while (i < n) {
 		while (i < n) { const c = text.charCodeAt(i); if (c === 32 || c === 10 || c === 9 || c === 13 || c === 12 || (c > 127 || c === 11) && /\s/.test(text[i])) { i++; } else { break; } } if (i >= n) { break; }
@@ -27,7 +63,7 @@ export function parseRules(text, sheet, depth = 0) {
 			const end = readPrelude(text, i); const head = text.slice(i, end).trim(); const name = /^@([\w-]+)/.exec(head)[1].toLowerCase(); const prelude = head.slice(name.length + 1).trim();
 			if (text[end] === '{') {
 				const bend = readBlock(text, end); const body = text.slice(end + 1, bend - 1); i = bend;
-				if (name === 'media' || name === 'supports' || name === 'layer' || name === 'container' || name === 'scope' || name === 'document') { rules.push(new CSSGroupRule(name === 'media' ? 4 : name === 'supports' ? 12 : 0, prelude, parseRules(body, sheet, depth + 1), sheet)); }
+				if (name === 'media' || name === 'supports' || name === 'layer' || name === 'container' || name === 'scope' || name === 'document') { rules.push(new CSSGroupRule(name === 'media' ? 4 : name === 'supports' ? 12 : 0, prelude, parseRulesJS(body, sheet, depth + 1), sheet)); }
 				else if (name === 'font-face') { const g = new CSSGroupRule(5, prelude, [], sheet); g.__decls = parseDeclarations(body); g.type = 5; rules.push(g); }
 				else { /* @keyframes, @property, @page ...: ignored */ }
 			} else { i = end + 1; }   // @import, @charset, @layer a, b;

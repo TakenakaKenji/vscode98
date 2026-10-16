@@ -6,7 +6,7 @@
 // verify: also run the JavaScript matcher (without the ancestor filter) on every element and record the differences in `mismatches`.
 import * as S from 'spike:style';
 import { setNativeStyleSink } from '../../06-rendering/host/dom/dom.js';
-import { matchedDeclarationsAll, PROPS, INIT, INH, INIT_VALUES, parseValue, parseLength, parseColor, expandShorthand, expandDecls, finishComputed, computeStyleJS, substituteVars, EMPTY_VARS } from '../../06-rendering/host/dom/css.js';
+import { setNativeSheetParser, matchedDeclarationsAll, PROPS, INIT, INH, INIT_VALUES, parseValue, parseLength, parseColor, expandShorthand, expandDecls, finishComputed, computeStyleJS, substituteVars, EMPTY_VARS } from '../../06-rendering/host/dom/css.js';
 import { deepEqual } from '../../06-rendering/host/dom/style_invalidation.js';
 
 const NF_ELEM = 1, NF_DOC = 2, NF_HOVER = 4, NF_ACTIVE = 8, NF_CHECKED = 16, NF_EMPTY = 32;
@@ -102,7 +102,7 @@ function sync(doc) {
 
 // ---- matching
 let out = new Int32Array(4096); S.setOut(out);
-export const stats = { passes: 0, matches: 0, fallbacks: 0, records: 0, freed: 0, brokenIndexes: 0, syncMs: 0, matchMs: 0, verified: 0, computes: 0, computeFallbacks: 0, computeMs: 0, computeVerified: 0 };
+export const stats = { passes: 0, matches: 0, fallbacks: 0, records: 0, freed: 0, brokenIndexes: 0, syncMs: 0, matchMs: 0, verified: 0, computes: 0, computeFallbacks: 0, computeMs: 0, computeVerified: 0, sheets: 0, sheetFallbacks: 0, sheetMs: 0 };
 export const mismatches = [];
 const describe = (el) => el.localName + (el.getAttribute('id') ? '#' + el.getAttribute('id') : '') + (el.classes().length ? '.' + el.classes().join('.') : '');
 function verifyOne(el, index, got) {
@@ -188,6 +188,10 @@ function computeNative(el, parentCS, env, pseudo, cands) {
 	if (engine.verify) { verifyCompute(el, parentCS, env, pseudo, cands, r); }
 	return r;
 }
+
+// ---- stylesheet parsing in C (style_sheet.c); verify mode compares it with the JavaScript parser
+export const sheetMismatches = [];
+setNativeSheetParser((text) => { const t0 = performance.now(); const r = S.parseSheet(text); stats.sheetMs += performance.now() - t0; stats.sheets++; if (r === null) { stats.sheetFallbacks++; } return r; }, () => engine.verify ? sheetMismatches : null);
 
 export const engine = {
 	verify: false,
