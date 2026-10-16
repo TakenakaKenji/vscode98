@@ -11,6 +11,7 @@ import { PortTable } from './ports98.js';
 import { encode, decode } from './codec98.js';
 installResolveHooks(import.meta.url);
 import fs from 'node:fs';
+globalThis.__timelineLabel = process.env.VSCODE98_UTIL_LABEL || 'utility'; delete process.env.VSCODE98_UTIL_LABEL;   // the launch timeline's name for this process (not inherited by its children)
 const TRACE = process.env.UTIL_TRACE ? (m) => fs.appendFileSync(process.env.UTIL_TRACE + '.' + process.pid, (Date.now() % 1e7) + ' ' + m + '\n') : null;
 const short = (d) => { try { return JSON.stringify(d, (k, v) => (v && v.type === 'Buffer') || ArrayBuffer.isView(v) ? '[bytes ' + (v.length ?? v.byteLength) + ']' : v)?.slice(0, 160); } catch { return '?'; } };
 const send = (m) => { TRACE?.('-> main ' + m.t + ' ' + (m.id ?? '') + ' ' + short(m.data)); process.send(encode(m)); };

@@ -15,6 +15,8 @@ const { FdReadable, FdDuplex } = await import(`${outDir}.impl/fdstreams.js`);
 globalThis.__forkHostArgs = ['--stack-size', '0', runnerPath, outDir];
 // ---- process
 const P = globalThis.process;
+// the launch timeline (07-native-render/host/timeline98.h writes it when QJS98_TIMELINE is set): this process's label and VS Code's performance marks
+globalThis.__timelineInfo = () => { let marks = []; try { const pm = globalThis.MonacoPerformanceMarks; if (pm && typeof pm.getMarks === 'function') { marks = pm.getMarks().map(m => [m.name, Math.round(m.startTime)]); } } catch { /* none */ } const a = (P.argv && P.argv[1]) || ''; return JSON.stringify({ label: globalThis.__timelineLabel || a.replace(/^.*[\\/]/, '').replace(/\.[cm]?js$/, '') || 'process', marks }); };
 const exePath = WIN ? p.exePath() : (os.exePath ? os.exePath() : '/proc/self/exe');
 P.execPath = (std.getenv('VSCODE98_HOST') || exePath); P.execArgv = []; P.pid = WIN ? p.getpid() : os.getpid(); P.ppid = 1;
 if (script) { P.argv = [P.execPath, globalThis.__builtins.path.resolve(script), ...rest]; }

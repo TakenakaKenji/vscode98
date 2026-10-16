@@ -5,8 +5,58 @@
  *     (`import x from './a.cjs'`, `import fs from 'pkg-with-cjs-main'`) that is wrapped in a synthetic ES module; `undefined` falls through to the stock file loader.
  *  3. `requireEsm(path)`: synchronous require() of an ES module (Node 24's require(esm)): QuickJS loads module graphs synchronously, only top-level await is refused. */
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
 #include "quickjs.h"
 #include "quickjs-libc.h"
+
+/* ---- bytecode cache for large ES modules (the 42.7 MB workbench bundle took 4.4 to 4.9 s to compile on the sandbox; its bytecode reads back in ~0.2 s).
+ * Directory: QJS98_CODE_CACHE, or __codeCacheDir(dir) from JavaScript. A file per module: <dir>/<hash>.qbc, the hash of the module name and the source; the file starts
+ * with a header naming this build, so a different executable never reads it. The source text is not stored (JS_WRITE_OBJ_STRIP_SOURCE: line numbers stay, so stack traces
+ * keep working; Function.prototype.toString of these functions shows no source). Any problem reading falls back to compiling. */
+static char cache_dir[1024]; static int cache_state = -1;   /* -1 not looked up, 0 off, 1 on */
+static const char CACHE_MAGIC[] = "QJ98BC1 " __DATE__ " " __TIME__;
+static long cache_hits, cache_writes;
+static int cache_on(void) { if (cache_state < 0) { const char *d = getenv("QJS98_CODE_CACHE"); cache_state = d && *d && strlen(d) < sizeof cache_dir - 40; if (cache_state) { strcpy(cache_dir, d); } } return cache_state; }
+static uint64_t fnv64(uint64_t h, const char *s, size_t n) { for (size_t i = 0; i < n; i++) { h = (h ^ (uint8_t)s[i]) * 1099511628211ull; } return h; }
+static void cache_path(char *out, size_t cap, uint64_t key) { snprintf(out, cap, "%s/%016llx.qbc", cache_dir, (unsigned long long)key); }
+static JSValue cache_read(JSContext *ctx, uint64_t key) {
+	char path[1100]; cache_path(path, sizeof path, key); FILE *f = fopen(path, "rb"); if (!f) { return JS_UNDEFINED; }
+	fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET); size_t hl = sizeof CACHE_MAGIC + sizeof key;
+	if (n <= (long)hl) { fclose(f); return JS_UNDEFINED; }
+	uint8_t *buf = malloc((size_t)n); size_t got = fread(buf, 1, (size_t)n, f); fclose(f);
+	JSValue r = JS_UNDEFINED;
+	if (got == (size_t)n && memcmp(buf, CACHE_MAGIC, sizeof CACHE_MAGIC) == 0 && memcmp(buf + sizeof CACHE_MAGIC, &key, sizeof key) == 0) {
+		r = JS_ReadObject(ctx, buf + hl, (size_t)n - hl, JS_READ_OBJ_BYTECODE);
+		if (JS_IsException(r)) { JS_FreeValue(ctx, JS_GetException(ctx)); r = JS_UNDEFINED; }
+	}
+	free(buf); return r;
+}
+static void cache_write(JSContext *ctx, uint64_t key, JSValueConst fn) {
+	size_t len; uint8_t *bc = JS_WriteObject(ctx, &len, fn, JS_WRITE_OBJ_BYTECODE | JS_WRITE_OBJ_STRIP_SOURCE); if (!bc) { JS_FreeValue(ctx, JS_GetException(ctx)); return; }
+	char path[1100], tmp[1120]; cache_path(path, sizeof path, key); snprintf(tmp, sizeof tmp, "%s.tmp", path);
+	FILE *f = fopen(tmp, "wb");
+	if (f) {
+		int ok = fwrite(CACHE_MAGIC, 1, sizeof CACHE_MAGIC, f) == sizeof CACHE_MAGIC && fwrite(&key, 1, sizeof key, f) == sizeof key && fwrite(bc, 1, len, f) == len; ok = fclose(f) == 0 && ok;
+		if (ok) { remove(path); ok = rename(tmp, path) == 0; } if (!ok) { remove(tmp); } else { cache_writes++; }
+	}
+	js_free(ctx, bc);
+}
+/* compiles module source, through the cache when the module is large */
+static JSValue compile_module(JSContext *ctx, const char *s, size_t len, const char *name) {
+	if (len < 128 * 1024 || !cache_on()) { return JS_Eval(ctx, s, len, name, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY); }
+	uint64_t key = fnv64(fnv64(1469598103934665603ull, name, strlen(name) + 1), s, len);
+	JSValue fn = cache_read(ctx, key); if (!JS_IsUndefined(fn)) { cache_hits++; return fn; }
+	fn = JS_Eval(ctx, s, len, name, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+	if (!JS_IsException(fn)) { cache_write(ctx, key, fn); }
+	return fn;
+}
+static JSValue js_code_cache_dir(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {   /* __codeCacheDir(dir) -> previous setting; __codeCacheDir() -> { dir, hits, writes } */
+	if (argc > 0 && JS_IsString(argv[0])) { const char *d = JS_ToCString(ctx, argv[0]); if (d && strlen(d) < sizeof cache_dir - 40) { strcpy(cache_dir, d); cache_state = *d != 0; } JS_FreeCString(ctx, d); }
+	JSValue o = JS_NewObject(ctx); JS_SetPropertyStr(ctx, o, "dir", cache_on() ? JS_NewString(ctx, cache_dir) : JS_NULL); JS_SetPropertyStr(ctx, o, "hits", JS_NewInt64(ctx, cache_hits)); JS_SetPropertyStr(ctx, o, "writes", JS_NewInt64(ctx, cache_writes)); return o;
+}
+void spike_install_code_cache(JSContext *ctx) { JSValue g = JS_GetGlobalObject(ctx); JS_SetPropertyStr(ctx, g, "__codeCacheDir", JS_NewCFunction(ctx, js_code_cache_dir, "__codeCacheDir", 1)); JS_FreeValue(ctx, g); }
 
 static JSValue get_hook(JSContext *ctx, const char *name) {
 	JSValue g = JS_GetGlobalObject(ctx), f = JS_GetPropertyStr(ctx, g, name); JS_FreeValue(ctx, g); return f;
@@ -69,7 +119,7 @@ static JSModuleDef *esm_loader(JSContext *ctx, const char *name, void *opaque, J
 			if (fs && strcmp(fs, "module") == 0) {
 				JSValue src = JS_GetPropertyStr(ctx, r, "source"); size_t len; const char *s = JS_ToCStringLen(ctx, &len, src); JS_FreeValue(ctx, src);
 				if (s) {
-					JSValue fn = JS_Eval(ctx, s, len, name, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+					JSValue fn = compile_module(ctx, s, len, name);
 					JS_FreeCString(ctx, s);
 					if (!JS_IsException(fn)) {
 						m = JS_VALUE_GET_PTR(fn);
@@ -128,4 +178,5 @@ static JSValue js_require_esm(JSContext *ctx, JSValueConst this_val, int argc, J
 }
 void spike_init_esm(JSContext *ctx) {
 	JSValue g = JS_GetGlobalObject(ctx); JS_SetPropertyStr(ctx, g, "__requireEsm", JS_NewCFunction(ctx, js_require_esm, "__requireEsm", 1)); JS_FreeValue(ctx, g);
+	spike_install_code_cache(ctx);
 }

@@ -24,6 +24,7 @@
 #include "quickjs.h"
 #include "quickjs-libc.h"
 #include "winhook.h"
+uint64_t js98_tl_now(void); void js98_tl_sync(uint64_t a, uint64_t b); void js98_tl_install(JSContext *ctx);   /* timeline98.h, in the patched quickjs-libc.c */
 static HANDLE g_job; static int job_breakaway, job_children; static BOOL (WINAPI *job_assign)(HANDLE, HANDLE);   /* job_init() */
 
 /* errno values as JS sees them (Linux numbering, matching the constants hard-coded in fdstreams.js) */
@@ -468,7 +469,7 @@ static JSValue js_poll_sync(JSContext *ctx, JSValueConst this_val, int argc, JSV
 		if (!proc_done && pr) { hs[n] = pr->h; kind[n++] = 2; }
 		if (n == 0) { break; }
 		DWORD wait = INFINITE; if (timeout > 0) { DWORD el = GetTickCount() - start; wait = el >= timeout ? 0 : (DWORD)(timeout - el); }
-		DWORD r = WaitForMultipleObjects(n, hs, FALSE, wait);
+		uint64_t tl_a = js98_tl_now(); DWORD r = WaitForMultipleObjects(n, hs, FALSE, wait); js98_tl_sync(tl_a, js98_tl_now());
 		if (r == WAIT_TIMEOUT) { timed_out = 1; if (pr) { pr->killed = 1; TerminateProcess(pr->h, 1); } timeout = 0; continue; }
 		if (r >= WAIT_OBJECT_0 + n) { break; }
 		int k = kind[r - WAIT_OBJECT_0];
@@ -653,7 +654,7 @@ static void job_init(void) {
 }
 void spike_init_esm(JSContext *ctx);
 void spike_init(JSContext *ctx) {
-	spike_init_esm(ctx); g_ctx = ctx; job_init(); ready_ev = CreateEvent(NULL, TRUE, FALSE, NULL);
+	spike_init_esm(ctx); g_ctx = ctx; job_init(); js98_tl_install(ctx); ready_ev = CreateEvent(NULL, TRUE, FALSE, NULL);
 	/* Windows' default timer resolution is 15.6 ms: QuickJS clamps setTimeout(0) to 1 ms and waits with WaitForMultipleObjects/Sleep, so every chained zero-delay timer (the workbench and the Node
 	   shims use thousands, setImmediate included) would cost a full tick. Ask for 1 ms for the life of the process; QJS98_TIMER_RES=0 turns it off (for comparisons). */
 	{ const char *tr = getenv("QJS98_TIMER_RES"); if (!tr || tr[0] != '0') { timeBeginPeriod(1); } }

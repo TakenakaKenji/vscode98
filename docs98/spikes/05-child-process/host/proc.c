@@ -18,6 +18,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "quickjs.h"
+uint64_t js98_tl_now(void); void js98_tl_sync(uint64_t a, uint64_t b); void js98_tl_install(JSContext *ctx);   /* timeline98.h, in the patched quickjs-libc.c */
 
 #define ERR() (-errno)
 
@@ -184,7 +185,7 @@ static JSValue js_poll_sync(JSContext *ctx, JSValueConst this_val, int argc, JSV
 		if (outfd >= 0) { io = n; pf[n++] = (struct pollfd){ outfd, POLLIN, 0 }; }
 		if (errfd >= 0) { ie = n; pf[n++] = (struct pollfd){ errfd, POLLIN, 0 }; }
 		int wait = -1; if (deadline) { int64_t left = deadline - mono_ms(); if (left <= 0) { if (!killed) { kill(pid, SIGTERM); killed = 1; timed_out = 1; } wait = 200; deadline = mono_ms() + 2000; } else { wait = (int)left; } }
-		int r = poll(pf, n, wait); if (r < 0 && errno == EINTR) { continue; }
+		uint64_t tl_a = js98_tl_now(); int r = poll(pf, n, wait); js98_tl_sync(tl_a, js98_tl_now()); if (r < 0 && errno == EINTR) { continue; }
 		if (r < 0) { break; }
 		uint8_t tmp[65536];
 		if (ii >= 0 && (pf[ii].revents & (POLLOUT | POLLERR | POLLHUP))) { ssize_t w = write(infd, in + in_off, in_len - in_off); if (w > 0) { in_off += w; } if (w < 0 && errno != EAGAIN) { in_off = in_len; } if (in_off >= in_len) { close(infd); infd = -1; } }
@@ -236,6 +237,7 @@ static const JSCFunctionListEntry funcs[] = {
 static int proc_init(JSContext *ctx, JSModuleDef *m) { return JS_SetModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); }
 void spike_init_esm(JSContext *ctx);
 void spike_init(JSContext *ctx) {
+	js98_tl_install(ctx);
 	spike_init_esm(ctx);
 	JSValue g = JS_GetGlobalObject(ctx);
 	JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 1));

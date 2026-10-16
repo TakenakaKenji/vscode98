@@ -8,6 +8,7 @@ installAddons();
 import { pathToFileURL } from 'node:url';
 import nodePath from 'node:path';
 const appRoot = process.argv[2];
+globalThis.__timelineLabel = 'main';
 const here = import.meta.url.replace(/\/[^/]*$/, '/');
 installResolveHooks(import.meta.url);
 if (process.env.DEBUG_REJECT) { const prev = globalThis.__rejection; globalThis.__rejection = (p, reason, handled) => { if (!handled) { process.stderr.write('REJECTION ' + String(reason && reason.stack || reason).split('\n').slice(0, Number(process.env.DEBUG_REJECT)).join('\n') + '\n'); } prev?.(p, reason, handled); }; }

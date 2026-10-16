@@ -25,6 +25,7 @@ import { installPreload } from './preload98.js';
 import { ONIG_SHIM_SOURCE } from './onig_shim98.js';
 import { PortTable } from './ports98.js';
 import { encode, decode } from './codec98.js';
+import { startTimeline, timelineMark, timelineReport } from './timeline_report98.js';
 
 const nodeProcess = globalThis.process;
 const args = nodeProcess.argv.slice(2); const opt = (n, d) => { const i = args.indexOf('--' + n); return i >= 0 ? args[i + 1] : d; };
@@ -44,6 +45,11 @@ for (const m of ['group', 'groupCollapsed', 'groupEnd', 'table', 'time', 'timeEn
 
 async function main() {
 const t00 = performance.now(); const mainLog = []; log('[harness] start');
+// --timeline <dir>: every process of the app records its event loop (busy / waiting) and VS Code's startup marks there; the merged table is printed when the workbench is stable
+const timelineDir = opt('timeline'); const t00Epoch = Date.now() - t00; if (timelineDir) { startTimeline(timelineDir, nodeProcess.env); }
+// --code-cache <dir> (default <user-data-dir>/code-cache; 0 = off): bytecode of the large ES modules (05-child-process/host/esm.c), for this process and every one it starts
+const codeCacheDir = opt('code-cache', opt('user-data-dir') ? nodePath.join(opt('user-data-dir'), 'code-cache') : '0');
+if (codeCacheDir !== '0' && globalThis.__codeCacheDir) { try { os.mkdir(nodePath.dirname(codeCacheDir)); } catch { /* exists */ } os.mkdir(codeCacheDir); globalThis.__codeCacheDir(codeCacheDir); nodeProcess.env.QJS98_CODE_CACHE = codeCacheDir; }
 // ---- vscode-file://vscode-app/<abs path> -> file path, for import()
 Module.registerHooks({ resolve(specifier, context, nextResolve) { if (specifier.startsWith('vscode-file://vscode-app/')) { return { url: 'file://' + specifier.slice('vscode-file://vscode-app'.length).replace(/[?#].*$/, ''), shortCircuit: true }; } return nextResolve(specifier, context); } });
 // ---- user settings for a headless run: no trust prompt (the git extension is limited in untrusted workspaces), no welcome page, no telemetry or update checks
@@ -133,7 +139,7 @@ let winHost = null;
 if (opt('window', '0') === '1') {                      // a real window (Win32/GDI through spike:win): the document is painted whenever it changes, input goes to the DOM
 	const { openWindow } = await import('../../11-windows-host/host/window_host98.mjs');
 	winHost = openWindow(ctx, { width: W, height: H, title: 'vscode98', exact: opt('backend') === 'native-exact', onClose: () => { try { child.kill(); } catch { /* gone */ } } });
-	log('[harness] window opened');
+	log('[harness] window opened'); timelineMark('harness: window opened');
 	{ const seen = new Map(); liveNote = (k, m) => { const key = k + m.split('\n')[0].slice(0, 120); const n = (seen.get(key) || 0) + 1; seen.set(key, n); if (n <= 2) { log('[error] ' + k + ': ' + m.split('\n').slice(0, 6).join(' | ').slice(0, 600)); } }; }   // errors of the renderer (window events, paints, rejections) as they happen
 	// progress and memory every --status-every seconds (default 15), and a BMP of the window (open it with Paint) at the times given by --shot-at (default 60,150,300)
 	const t0w = performance.now(); const shots = opt('shot-at', '60,150,300').split(',').map(Number).filter(Boolean); const every = Number(opt('status-every', 15));
@@ -156,6 +162,8 @@ const done = performance.now();
 if (globalThis.__packVerify) { log('pack verify: ' + JSON.stringify(globalThis.__packStats)); }
 log('style-only passes (previous layout kept): ' + (doc.__styleOnlyPasses || 0) + ' of ' + (doc.__passStats || []).length + (doc.__verifyStyleOnly ? '; verified ' + (doc.__styleOnlyChecked || 0) + ' boxes, mismatches ' + JSON.stringify(doc.__styleOnlyMismatches || []) : ''));
 summarizeRun(ctx, { tImport, tLoaded, done, t00, errors, consoleLog, rssAfterImport, missing, unsupported });
+if (globalThis.__codeCacheDir) { const c = globalThis.__codeCacheDir(); log(`code cache: ${c.dir ?? 'off'}; this process: ${c.hits} modules read from the cache, ${c.writes} written`); }
+if (timelineDir) { timelineMark('harness: workbench stable'); timelineReport(timelineDir, log, t00Epoch); }
 if (opt('scenario')) { const sc = await import(opt('scenario')); await sc.run(ctx); }
 if (styleNative) { log('native style: ' + JSON.stringify(styleNative.stats) + ' C ' + JSON.stringify(styleNative.engine.nativeStats()) + ' mismatches ' + styleNative.mismatches.length + (styleNative.mismatches.length ? '\n  ' + styleNative.mismatches.slice(0, 30).join('\n  ') : '') + '; compute mismatches ' + styleNative.computeMismatches.length + (styleNative.computeMismatches.length ? '\n  ' + styleNative.computeMismatches.slice(0, 30).join('\n  ') : '') + '; selector mismatches ' + styleNative.selectorMismatches.length + (styleNative.selectorMismatches.length ? '\n  ' + styleNative.selectorMismatches.slice(0, 10).map(t => JSON.stringify(t.slice(0, 200))).join('\n  ') : '') + '; sheet mismatches ' + styleNative.sheetMismatches.length + (styleNative.sheetMismatches.length ? '\n  ' + styleNative.sheetMismatches.slice(0, 5).map(t => JSON.stringify(t.slice(0, 200))).join('\n  ') : '')); }
 log('--- main process output (last 40 lines)\n' + mainLog.join('').split('\n').slice(-40).join('\n'));
