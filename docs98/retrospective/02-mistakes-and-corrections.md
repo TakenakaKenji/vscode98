@@ -70,7 +70,8 @@ The pattern: the app catches an exception or gets `undefined`, and a feature sim
 - Synthetic events do not reproduce the menu-bar "move to Edit" action, and a File menu left open under the explorer made the next scripted click land on **Exit** (scenario_ctl) → Escape until no menu is open.
 - Playwright could not drive Chromium 100 (VS Code 1.70.2) → raw CDP driver; `keyboard.type('.')` sent the key code of Delete → `Input.insertText`; Electron rejected symlinked `node_modules` → copies; 1.70.2 uses native menus on Linux → `titleBarStyle: custom`.
 - A container restart killed background tasks mid-profile; work was safe only because it had just been committed.
-- Stale test-profile state (Backups, `code.lock`, orphaned processes) caused false scenario failures → `runsc.sh` cleans it.
+- Stale test-profile state (Backups, `code.lock`, orphaned processes) caused false scenario failures → `runsc.sh` cleans it. Likewise a scenario that relied on an earlier one leaving `hello.txt` modified failed once the workspace was reset (2026-10-16; caught because it failed identically with the previous engine, `--style match`) → each check sets up its own precondition.
+- A screenshot taken right after "stable" in verify mode (slower boot) showed the default theme before the real one was applied, which looked like a regression; an A/B of the two engines at the same moment was pixel-identical. → *Compare screenshots only between runs in the same mode, captured the same way.*
 - Profiling instrumentation was once added to the repo files and had to be stripped before committing → profile on a copy (`/tmp/claude-0/mkprof.py`).
 - Documentation drift: decisions D-003 to D-006 stayed "proposed", the roadmap's phase table, the targets feasibility table and the performance row of FEATURES.md were not updated after the spikes answered them (all corrected 2026-10-16). → *Update the decision log, roadmap and feature table in the same commit as the spike README.*
 

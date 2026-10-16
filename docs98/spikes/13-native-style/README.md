@@ -102,6 +102,8 @@ Style is now 28 to 45 % of the slower actions (it was 65 to 87 % in spike 12; a 
 | Workbench snapshot: layout dump and pixels, old engine vs new | identical (after phase 1 and after phase 2) |
 | Phase 2, workbench snapshot with `--style verify` | 3537 computed styles (elements and pseudo-elements), 0 differences from `computeStyleJS`, 0 left to JavaScript |
 | Phase 2, `scenario_lat` on the desktop workbench with `--style verify` | 19531 computed styles, 0 differences, 0 left to JavaScript |
+| Phase 2, the 11 feature scenarios with `--style native` (both phases) | all pass (after making `scenario_more`'s SCM check modify `hello.txt` itself: it had relied on an earlier scenario leaving the file modified, and failed the same way with `--style match`) |
+| Phase 2, Windows exe under Wine with `--style verify`; `match` vs `native` screenshots | 1500 computed styles, 0 differences; screenshots pixel-identical |
 | Phase 2, `style_fuzz.mjs` on QuickJS (`FUZZ_NATIVE=1`, 200 seeds × 25 steps: custom properties, inline styles, inheritance, `::before`, mutations) | 376018 computed styles, 0 differences from `computeStyleJS`, 0 mismatching passes |
 
 Known deliberate differences from the JavaScript matcher: none observed. (The C ancestor filter hashes lower-case tag names on both sides; the JavaScript one hashes `localName` as is for elements and lower case for selectors, which can only make it reject more, e.g. camelCase SVG tags.)
