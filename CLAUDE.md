@@ -4,6 +4,8 @@ This is a fork of microsoft/vscode (`upstream` remote) being turned into an Elec
 
 **Before doing any work, read [docs98/CHECKPOINT.md](docs98/CHECKPOINT.md) (current status and next steps), then [docs98/INDEX.md](docs98/INDEX.md).** It is the table of contents for all project docs (goal, architecture, targets, roadmap, decisions, inventory). Keep it updated when adding or changing docs.
 
+**Then read [docs98/retrospective/05-working-practices.md](docs98/retrospective/05-working-practices.md)**: the rules learned from earlier mistakes (control benchmark first, profile before porting, never retry around flakes, oracles for every optimisation, test the package on real Windows, commit early).
+
 Also see [AGENTS.md](AGENTS.md) for upstream VS Code contribution/coding guidance.
 
 Notes:

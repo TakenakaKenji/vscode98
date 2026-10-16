@@ -28,7 +28,7 @@ Concrete rules from the sessions so far. Each one exists because ignoring it cos
 13. **Commit and push early.** The container can restart at any time (it did, mid-profile): background tasks die, `/tmp` usually survives, uncommitted work in the repo survives but is at risk. Commit after each verified step.
 14. **Never `pkill -f <pattern>`**: it matched and killed the shell running it (exit 144). Use `pkill -x qjs-spike7`.
 15. **Clean up after the Electron control runs**: kill `code-oss` (`pkill -9 -x code-oss`), and move `~/.vscode-oss-shared/sharedStorage/state.vscdb*` aside; our host uses the same product data folder and inherited a real SQLite database from it.
-16. **Wine:** fresh Xvfb (`-ac`) per run, stop `wineserver -k` gracefully, fresh prefix if `CreateWindow` fails with 1400 (`/tmp/claude-0/wrun.sh`, `wrun15.sh`). Wine is a smoke test only: four of the real-Windows bugs never showed on Wine (fonts missing, endless repaint, input order, IPC write queue).
+16. **Wine:** fresh Xvfb (`-ac`) per run, stop `wineserver -k` gracefully, fresh prefix if `CreateWindow` fails with 1400 (`/tmp/claude-0/wrun.sh`, `wrun15.sh`). Wine is a smoke test only: real Windows 7 found what Wine hid (Linux font paths that Wine resolved, raw `EEXIST` from `mkdir`, a file reader that is quadratic on the Windows heap, the 15.6 ms timer tick, an empty keymap, an idle `WM_PAINT` repaint loop).
 17. **Destructive commands with a glob after `cd` are refused** by the harness safety check; use absolute paths without globs.
 18. Long-running commands: `--seconds 900` for long scenarios (a `--seconds 120` limit once killed a run mid-way and looked like a crash).
 
