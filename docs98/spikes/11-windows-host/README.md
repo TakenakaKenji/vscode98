@@ -242,3 +242,17 @@ The owner: "all times are exactly the same" as v17 (launch, file open, caret, me
 | "Total until stable" | 25.8 s | 23.2 s |
 
 At 15 s both versions show the same workbench: the renderer saved ~2.6 s of CPU and then waited that much longer for something else. **The launch is not limited by the renderer's CPU**; its critical path is elsewhere (main process start, storage, the extension host, IPC round trips: not measured yet). Interactions were not expected to change (v18 only touched startup work), which the report to the owner did not say clearly enough. Next: a launch timeline (per process: busy vs waiting, what the renderer waits on) before any further startup work.
+
+### Round 13: v19 (bytecode cache, launch timeline) on the laptop
+
+The owner: first start (cold cache) 20 s, **second start 12 s**; all other times unchanged (expected: v19 only touched startup). The second start's log ended before the "stable" point (the window was closed first), so its table came from the per-process files in `results\timeline` (merged by hand; the harness now also prints the table when the window is closed):
+
+| Window process (second start) | s |
+|---|---|
+| `didStartRenderer` → `didWaitForWindowConfig` (the first paint runs the first style pass, whose rule index takes ~2.2 s here; the configuration message from main waits behind it) | 0.5 → 2.9 |
+| `willLoadWorkbenchMain` → `didLoadWorkbenchMain` (first start: 3.5 → 12.8, the compile) | 2.9 → 4.8 |
+| `didStartWorkbench` | 6.9 |
+| `didResolveExplorer`; README restored in the editor | 9.6; 11.4 |
+| `didLoadExtensions` | 12.8 |
+
+The window process ran JavaScript 91 to 100 % of every second from 1 to 14 s: it is the critical path for the whole launch, and the other processes keep up with it. With the compile gone, the remaining pieces are ours: the first style pass (rule index ~2.2 s on the laptop, ~0.8 s on the sandbox; split there: stylesheet objects and flattening ~0.28 s, selectors ~0.14 s, entries and buckets ~0.16 s, the rest small), the bundle's top-level code (~1.5 s), and the workbench's own start (~8 s, which includes style and layout passes and `layout_pack` at ~1.1 s over the session).
