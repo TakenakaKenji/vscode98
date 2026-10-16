@@ -16,6 +16,10 @@ grep -q "ret = errno == EINTR ? 0 : -1;" "$OUT/quickjs-libc.c" || { echo "quickj
 # and the launch timeline (timeline98.h): the time the loop waits in poll(), per 100 ms of wall time
 perl -0pi -e 's/(#include "quickjs-libc.h"\n)/$1#include "timeline98.h"\n/; s/(\n    )(nfds = poll\(pfds, nfds, min_delay\);)/$1tl_tick(ctx); { uint64_t tl_a = js__hrtime_ns(); $2 tl_wait_done(tl_a); }/' "$OUT/quickjs-libc.c"
 grep -q "tl_wait_done(tl_a)" "$OUT/quickjs-libc.c" && grep -q '#include "timeline98.h"' "$OUT/quickjs-libc.c" || { echo "timeline patch did not apply" >&2; exit 1; }
+# quickjs.c with the hooks of the sampling profiler (prof98.h, patch_quickjs.py), compiled with the flags of QuickJS-ng's own CMake build; it takes the place of
+# the copy in libqjs.a (the other members of the archive are still used)
+python3 "$HERE/patch_quickjs.py" "$QJS/quickjs.c" "$OUT/quickjs.c"
+gcc $ARCH ${CFLAGS_EXTRA:-} -O3 -g -DNDEBUG -std=gnu11 -D_GNU_SOURCE -DQUICKJS_NG_BUILD -funsigned-char -I"$QJS" -I"$HERE" -c -o "$OUT/quickjs.o" "$OUT/quickjs.c"
 # -ffp-contract=off: no fused multiply-add, so the C arithmetic matches JavaScript's double arithmetic operation for operation
-gcc $ARCH ${CFLAGS_EXTRA:-} -O2 -g -DNDEBUG -ffp-contract=off -I"$QJS" -I"$HERE" -o "$OUT/qjs-spike7" "$OUT/qjs_patched.c" "$QJS/gen/repl.c" "$QJS/gen/standalone.c" "$S5/proc.c" "$S5/esm.c" "$HERE/render.c" "$HERE/layout.c" "$HERE/style.c" "$OUT/quickjs-libc.c" -DONIG_NO_W2C -I"$ONIG/src" -I"$S4" "$S4/onig_js.c" "$S4/onig_native.c" "$ONIG/$BDIR/libonig.a" -L"$QJS/$BDIR" -lqjs-libc -lqjs -lm -lpthread -ldl
+gcc $ARCH ${CFLAGS_EXTRA:-} -O2 -g -DNDEBUG -ffp-contract=off -I"$QJS" -I"$HERE" -o "$OUT/qjs-spike7" "$OUT/qjs_patched.c" "$QJS/gen/repl.c" "$QJS/gen/standalone.c" "$S5/proc.c" "$S5/esm.c" "$HERE/render.c" "$HERE/layout.c" "$HERE/style.c" "$OUT/quickjs-libc.c" "$OUT/quickjs.o" -DONIG_NO_W2C -I"$ONIG/src" -I"$S4" "$S4/onig_js.c" "$S4/onig_native.c" "$ONIG/$BDIR/libonig.a" -L"$QJS/$BDIR" -lqjs-libc -lqjs -lm -lpthread -ldl
 echo "built $OUT/qjs-spike7"

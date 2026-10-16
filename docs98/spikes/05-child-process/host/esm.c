@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include "quickjs.h"
 #include "quickjs-libc.h"
+int js98_pf_tag_push(const char *label); void js98_pf_tag_pop(int pushed);   /* the sampling profiler (07-native-render/host/prof98.h) */
 
 /* ---- bytecode cache for large ES modules (the 42.7 MB workbench bundle took 4.4 to 4.9 s to compile on the sandbox; its bytecode reads back in ~0.2 s).
  * Directory: QJS98_CODE_CACHE, or __codeCacheDir(dir) from JavaScript. A file per module source: <dir>/<hash of the source>.qbc, starting with a header that names this
@@ -68,8 +69,10 @@ static JSValue cache_read(JSContext *ctx, uint64_t key, const char *name) {
 		memcpy(&nl, buf + sizeof CACHE_MAGIC + sizeof key, 4);
 		if (hl + nl < (size_t)n) {
 			char *old = malloc(nl + 1); memcpy(old, buf + hl, nl); old[nl] = 0; const uint8_t *bc = buf + hl + nl; size_t bl = (size_t)n - hl - nl;
+			int pf_t = js98_pf_tag_push("[read bytecode]");
 			if (strcmp(old, name) == 0) { r = JS_ReadObject(ctx, bc, bl, JS_READ_OBJ_BYTECODE); }
 			else { size_t rl; uint8_t *rb = bc_rename(bc, bl, old, name, &rl); if (rb) { r = JS_ReadObject(ctx, rb, rl, JS_READ_OBJ_BYTECODE); free(rb); if (!JS_IsException(r)) { cache_renamed++; } } }
+			js98_pf_tag_pop(pf_t);
 			if (JS_IsException(r)) { JS_FreeValue(ctx, JS_GetException(ctx)); r = JS_UNDEFINED; }
 			free(old);
 		}

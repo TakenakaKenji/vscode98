@@ -52,7 +52,9 @@ static void tl_add(uint16_t *arr, uint64_t a, uint64_t b) {
 uint64_t js98_tl_now(void) { return js__hrtime_ns(); }   /* the clock of js98_tl_sync, for proc.c / winproc.c */
 void js98_tl_sync(uint64_t a, uint64_t b) { tl_init(); tl_add(tl_sync, a, b); }
 static void tl_put_arr(FILE *f, const char *name, const uint16_t *arr, int n) { fprintf(f, "\"%s\":[", name); for (int i = 0; i < n; i++) { fprintf(f, i ? ",%u" : "%u", arr[i]); } fputs("]", f); }
-static void tl_dump(JSContext *ctx) {
+/* the sampling profiler (prof98.h, in quickjs.c) */
+void js98_pf_tick(void); void js98_pf_dump(const char *timeline_path, int force); int js98_pf_tag_push(const char *label); void js98_pf_tag_pop(int pushed);
+static void tl_dump(JSContext *ctx, int force) {
 	uint64_t now = js__hrtime_ns(); tl_last_dump = now;
 	int n = (int)((now - tl_t0_ns) / ((uint64_t)TL_BUCKET_MS * 1000000u)) + 1; if (n > TL_N) { n = TL_N; }
 	char tmp[1100]; snprintf(tmp, sizeof tmp, "%s.tmp", tl_path);
@@ -74,18 +76,20 @@ static void tl_dump(JSContext *ctx) {
 	JS_FreeValue(ctx, fn); JS_FreeValue(ctx, g);
 	if (!wrote) { fputs("null", f); }
 	fputs("}\n", f); fclose(f);
+	js98_pf_dump(tl_path, force);
 #ifdef _WIN32
 	MoveFileExA(tmp, tl_path, MOVEFILE_REPLACE_EXISTING);
 #else
 	rename(tmp, tl_path);
 #endif
 }
-/* called where the loop is about to wait: writes the file every ~2 s */
-static void tl_tick(JSContext *ctx) { tl_init(); if (tl_on > 0 && js__hrtime_ns() - tl_last_dump >= 2000000000u) { tl_dump(ctx); } }
-static void tl_wait_done(uint64_t a) { tl_add(tl_wait, a, js__hrtime_ns()); }
+/* called where the loop is about to wait: writes the file every ~2 s; the profiler names its samples and labels the wait "[idle]" */
+static int tl_pf_idle;
+static void tl_tick(JSContext *ctx) { tl_init(); if (tl_on > 0 && js__hrtime_ns() - tl_last_dump >= 2000000000u) { tl_dump(ctx, 0); } js98_pf_tick(); tl_pf_idle = js98_pf_tag_push("[idle]"); }
+static void tl_wait_done(uint64_t a) { js98_pf_tag_pop(tl_pf_idle); tl_pf_idle = 0; tl_add(tl_wait, a, js__hrtime_ns()); }
 /* __timelineStart(dir): start recording in this process (the harness, which cannot have set its own environment before it started); __timelineDump(): write now */
 static JSValue js98_tl_start_js(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { const char *d = JS_ToCString(ctx, argv[0]); if (d) { if (tl_on <= 0) { tl_start(d); } JS_FreeCString(ctx, d); } return JS_UNDEFINED; }
-static JSValue js98_tl_dump_js(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { tl_init(); if (tl_on > 0) { tl_dump(ctx); } return JS_NewBool(ctx, tl_on > 0); }
+static JSValue js98_tl_dump_js(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { tl_init(); if (tl_on > 0) { tl_dump(ctx, 1); } return JS_NewBool(ctx, tl_on > 0); }
 void js98_tl_install(JSContext *ctx) {
 	JSValue g = JS_GetGlobalObject(ctx);
 	JS_SetPropertyStr(ctx, g, "__timelineStart", JS_NewCFunction(ctx, js98_tl_start_js, "__timelineStart", 1));
