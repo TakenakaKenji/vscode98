@@ -2,7 +2,7 @@
 
 **Question:** spike 12 showed that style computation is 65 to 87 % of every slow interaction of the vscode98 host. How much of it can move to C, and how much can the JavaScript that stays do better?
 
-**Status (2026-10-16):** phase 1 (selector matching in C) and phase 2 (the computed-value step in C) done, both on by default. Phase 1 plus three JavaScript fixes made interactions 1.6 to 4.4 times faster than in spike 12 (package v15). Phase 2, measured the same day on the same machine, makes them up to 1.8 times faster again (1.0 for a keystroke, which has almost no style work) (context menu 521 → 293 ms, New File 682 → 449 ms, command palette 643 → 460 ms): **3.0 to 9.2 times stock Electron 1.142 on that machine instead of 3.4 to 14.5 times** (see [the phase 2 benchmark](#phase-2-benchmark-same-machine-same-day)). Package v16 carries phase 2.
+**Status (2026-10-16):** phase 3a (the rule index at startup: stylesheets and selectors parsed in C, per-rule work on first use) done, package v18: the first style pass of the desktop boot ~2.4 → ~1.0 s on the sandbox. Before that: phase 1 (selector matching in C) and phase 2 (the computed-value step in C) done, both on by default. Phase 1 plus three JavaScript fixes made interactions 1.6 to 4.4 times faster than in spike 12 (package v15). Phase 2, measured the same day on the same machine, makes them up to 1.8 times faster again (1.0 for a keystroke, which has almost no style work) (context menu 521 → 293 ms, New File 682 → 449 ms, command palette 643 → 460 ms): **3.0 to 9.2 times stock Electron 1.142 on that machine instead of 3.4 to 14.5 times** (see [the phase 2 benchmark](#phase-2-benchmark-same-machine-same-day)). Package v16 carries phase 2.
 
 ## Where the style time went (before)
 
@@ -91,6 +91,29 @@ The container was moved to a different machine between the phase 1 and phase 2 m
 
 Style is now 28 to 45 % of the slower actions (it was 65 to 87 % in spike 12; a keystroke and a double click spend 5 to 14 ms in style). The rest: layout (native, but run on every pass: 30 to 110 ms), the workbench's own JavaScript on QuickJS (the `event` column, ~90 to 125 ms for a menu or a click in the editor), and paint.
 
+## Phase 3a: the rule index at startup (package v18)
+
+Round 11 on the laptop (v16): the first style pass took 5001 ms, 4855 ms of it building the rule index for 6 elements, a quarter of the 20 s launch. Profiled on the workbench replay (2026-10-16, 2.1 GHz sandbox, 2 CPUs), the cold build was: parsing the stylesheet text 0.6 to 1.1 s (the 2 MB `workbench.desktop.main.css` alone 0.48 s), parsing 13,296 selectors 0.45 to 0.55 s, expanding their declarations 0.2 s, the other per-rule preparation (ancestor-filter bits, bucket keys) ~0.4 s, native index entries (serializing each parsed selector for C) 0.2 to 0.3 s.
+
+A check before choosing the method: building the same objects with `JSON.parse` (native, no parsing logic) takes 45 ms for the rules and declarations, but 285 to 430 ms for the parsed selectors (9.3 MB of objects). So a faster stylesheet parser pays off, while for selectors only creating fewer objects does. Three steps, each with its own oracle:
+
+1. **Stylesheet text parsed in C** (`07-native-render/host/style_sheet.c`, `spike:style parseSheet`): exactly `css.js parseRulesJS` (comment stripping, the quote/paren/brace scanning, JavaScript `trim`, `!important`, lower-cased names); nested rules, nameless at-rules, non-ASCII property names and lone surrogates go back to JavaScript. `13-native-style/tests/sheet_parse_test.mjs`: 588 stylesheets (12.5 MB: the app, VS Code's sources, 400 from `node_modules`) and 50,000 random mutations, 0 differences; 3141 ms in JavaScript, 185 ms native.
+2. **Per-rule work on first use** (`css.js` `RuleBase`/`IndexEntry`): expanded declarations and the ancestor-filter bits are made when a rule is first a candidate; the native matcher reads neither, and ~1,500 of the ~13,000 rules ever match.
+3. **Selectors parsed in C with shared compounds** (`style_selector.c`, `spike:style parseSelector`): exactly `selectors.js parseSelectorJS` for ASCII selectors without escapes (the rest, and everything the JavaScript parser throws on, goes back to it). The 60,161 compounds of the workbench's rules are 10,905 distinct texts; a compound's text is parsed dry first and an identical text returns the same object (nothing but the parser writes to a compound). Every top-level complex selector also gets its native serialized form (`__nser`), so the native index entry needs no JavaScript walk. `tests/selector_parse_test.mjs`: 21,046 distinct selectors of the same corpus and 20,000 mutations, objects and serialized forms identical; 578 ms in JavaScript, 123 ms native.
+
+| First full style pass (median of 5, alternating, same machine and day) | before | after |
+|---|---|---|
+| Workbench replay (`run_replay_qjs.mjs`, 1015 elements), style | 2910 ms | 1262 ms |
+| Desktop boot, sandbox, rule index of the first pass (3 boots each) | 2339 ms | 968 ms |
+| Desktop boot, sandbox, all rule-index time of the boot | 3004 ms | 1459 ms |
+| Desktop boot under Wine (Windows exe), rule index of the first pass | 3183 ms | 1215 ms |
+
+Over a whole desktop boot, style time (index + planning + restyling) went from ~4.05 to ~2.6 s on the sandbox; the restyling share grew by ~0.1 to 0.3 s because the declarations of the rules that do match are now expanded there. Warm full restyles are unchanged (~80 ms). Expected on the laptop: the first-pass index from ~4.8 s to ~2 s (an estimate from the sandbox and Wine ratios, not measured).
+
+Checks: layout dump and framebuffer of the replay byte-identical to before; `--style verify` (now also comparing every stylesheet and selector parse with the JavaScript parsers) 0 differences on the replay and on the Windows exe under Wine (12,596 selectors parsed natively, 14 left to JavaScript); `style_fuzz.mjs` 200 × 25 with the JavaScript matcher and with `FUZZ_NATIVE=1` 0 mismatching passes (376,018 computed styles, 0 differences); Wine screenshots of v17 and v18 pixel-identical. One false alarm on the way: the first Wine verify run reported 39 selector differences; the compared JSON included `__sk`, a key the JavaScript matcher caches on compound objects, which a shared compound can already carry (the comparison now ignores `__` fields).
+
+Still in the index build (replay): creating the JavaScript rule objects ~0.15 s, the remaining selector objects ~0.12 s, index entries and buckets ~0.25 s. The invalidation planner's rule analysis still reads every parsed selector, so making selector objects lazy needs that analysis in C first.
+
 ## Correctness
 
 | Check | Result |
@@ -119,5 +142,5 @@ Known deliberate differences from the JavaScript matcher: none observed. (The C 
 
 - **Phase 3:** let the native layout read the computed values from C directly (today `layout_pack.js` reads them back from the JavaScript objects and packs them into typed arrays), and skip building the ~200-property object for elements whose values nobody reads in JavaScript; move `finishComputed` and the layout-change check (`layoutPropsDiffer`) to C with them.
 - **Layout per pass** is now as large as style in many actions (30 to 110 ms): it runs over the whole tree on every pass that is not style-only; incremental layout (relayout only dirty subtrees) is the next big lever after style.
-- **The first style pass at startup** is ~2.5 s for the workbench, almost all of it the rule index (13296 rules): stylesheet parsing ~0.55 s, selector parsing ~0.4 to 0.7 s, declaration expansion ~0.2 s, invalidation analysis ~0.5 s, native entries ~0.2 to 0.3 s. On the laptop (v16, round 11) that first pass took 5001 ms, 4855 ms of it the index, a quarter of the 20 s launch; re-profiled on the replay 2026-10-16: parsing the 2 MB `workbench.css` alone 479 ms, selector parsing 514 ms, declaration expansion 249 ms, the rest of the per-rule preparation 256 ms, native entries 288 ms. The next startup target: a CSS/selector parser in C, a cached prebuilt index, or deferring per-rule work (declaration expansion, ancestor-filter bits) until a rule is first a candidate.
+- **The first style pass at startup:** done as [phase 3a](#phase-3a-the-rule-index-at-startup-package-v18) (~2.4 → ~1.0 s on the sandbox). What is left there needs the invalidation planner's rule analysis in C.
 - The workbench's own JavaScript per action (`event` column) and layout are now a larger share; menus spend ~100 to 130 ms in event handling before any style work.

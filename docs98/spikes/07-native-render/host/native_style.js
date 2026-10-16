@@ -194,7 +194,7 @@ function computeNative(el, parentCS, env, pseudo, cands) {
 
 // ---- selector parsing in C (style_selector.c); verify mode compares the objects and the serialized form with the JavaScript parser
 export const selectorMismatches = [];
-const withoutNser = (k, v) => k === '__nser' ? undefined : v;
+const withoutNser = (k, v) => k.startsWith('__') ? undefined : v;   // __nser, and caches the matcher keeps on (shared) compounds such as __sk
 setNativeSelectorParser((text) => {
 	const t0 = performance.now(); const r = S.parseSelector(text); stats.selectorMs += performance.now() - t0; stats.selectors++; if (r === null) { stats.selectorFallbacks++; return null; }
 	if (engine.verify) {
