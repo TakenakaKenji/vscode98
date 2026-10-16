@@ -1,7 +1,7 @@
 // Style resolution + layout for the rendering spike: block flow with margin collapsing, inline formatting (line breaking, white-space modes, baseline alignment),
 // inline-block and replaced elements, absolute/fixed/relative positioning, flexbox (single and multi-line), overflow/scroll geometry, translate/scale transforms.
 // Not implemented (recorded in `unsupported`): floats, tables (laid out as blocks), grid, multi-column, writing modes, bidi, ::first-line/letter.
-import { buildRuleIndex, computeStyle, matchedDeclarations, matchedDeclarationsAll, resolveLen, PROPS, ancestorFilter, INH } from './css.js';
+import { buildRuleIndex, computeStyle, matchedDeclarations, matchedDeclarationsAll, resolveLen, PROPS, ancestorFilter, INH, varsEqual } from './css.js';
 import { analyzeIndex, diffIndex, deltaOfUpdate, mergeInv, planRestyle, logTouchesSheets, inheritedChanged, deepEqual } from './style_invalidation.js';
 import { resolveFont, fontMetrics, advance, kern } from './fonts.js';
 import { noteMissing } from './dom.js';
@@ -29,10 +29,10 @@ const PAINT_ONLY = new Set(['color', 'background-color', 'background-image', 'ba
 const NO_LAYOUT_ATTR = new Set(['role', 'title', 'custom-hover', 'placeholder', 'tabindex', 'draggable', 'spellcheck', 'autocomplete', 'aria-label']);
 /** do two computed-style value maps differ in a property layout reads? */
 export function layoutPropsDiffer(a, b) {
-	for (const k in b) { if (!PAINT_ONLY.has(k) && !deepEqual(a[k], b[k])) { return true; } }
-	for (const k in a) { if (!(k in b) && !PAINT_ONLY.has(k)) { return true; } }
+	for (let i = 0; i < LAYOUT_KEYS.length; i++) { const k = LAYOUT_KEYS[i]; const x = a[k], y = b[k]; if (x !== y && (typeof x !== 'object' || typeof y !== 'object' || !deepEqual(x, y))) { return true; } }   // computed values always carry every property of PROPS
 	return false;
 }
+const LAYOUT_KEYS = Object.keys(PROPS).filter((k) => !PAINT_ONLY.has(k));
 const pseudoDiffers = (a, b) => (a === null || a === undefined) !== (b === null || b === undefined) || (a && b && deepEqual(a.values, b.values) === false);   // a pseudo-element's whole style: its box is rebuilt (not patched) when it changes
 export function resolveStyles(doc, env, log) {
 	const t0 = performance.now(); const root = doc.documentElement; const passId = (doc.__stylePass = (doc.__stylePass || 0) + 1);
@@ -74,7 +74,7 @@ export function resolveStyles(doc, env, log) {
 /** Test oracle: restyle everything from scratch (without the ancestor filter) and record every difference to the cached styles in doc.__styleMismatches. */
 export function verifyStyles(doc, env, index) {
 	const out = (doc.__styleMismatches ??= []); const root = doc.documentElement; if (!root) { return; }
-	const same = (a, b) => (a === null || a === undefined) ? (b === null || b === undefined) : (b !== null && b !== undefined && deepEqual(a.values, b.values) && (a.vars === b.vars || (a.vars.size === b.vars.size && [...a.vars].every(([k, v]) => b.vars.get(k) === v))));
+	const same = (a, b) => (a === null || a === undefined) ? (b === null || b === undefined) : (b !== null && b !== undefined && deepEqual(a.values, b.values) && varsEqual(a.vars, b.vars));
 	const describe = (el) => el.localName + (el.getAttribute('id') ? '#' + el.getAttribute('id') : '') + (el.classes().length ? '.' + el.classes().join('.') : '');
 	const diffProps = (a, b) => { if (!a || !b) { return String(!!a) + '/' + String(!!b); } for (const k of Object.keys(b.values)) { if (!deepEqual(a.values[k], b.values[k])) { return `${k}: ${JSON.stringify(a.values[k])} (cached) vs ${JSON.stringify(b.values[k])} (full)`; } } return 'custom properties'; };
 	const walk = (el, parentCS) => {

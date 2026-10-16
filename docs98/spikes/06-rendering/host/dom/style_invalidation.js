@@ -11,7 +11,7 @@
 // pseudo-classes) appear in each of those roles in the active rules; (c) a mutation is planned only for the roles whose keys it touches. Anything unforeseen falls back to a
 // full restyle (see layout.js). The fuzz test (tests/style_fuzz.mjs) and the verify mode of the workbench harness compare against a full restyle.
 import { matchesComplex } from './selectors.js';
-import { baseEntriesOf } from './css.js';
+import { baseEntriesOf, varsEqual } from './css.js';
 
 const STATE_ATTR = { disabled: ['[disabled]'], enabled: ['[disabled]'], checked: ['[checked]'], 'read-only': ['[readonly]'], 'read-write': ['[readonly]'], required: ['[required]'], optional: ['[required]'], link: ['[href]'], 'any-link': ['[href]'] };
 const STATE = new Set(['hover', 'active', 'focus', 'focus-visible', 'focus-within', 'checked', 'disabled', 'enabled', 'target', 'read-only', 'read-write', 'placeholder-shown', 'required', 'optional', 'visited', 'link', 'any-link', 'indeterminate', 'default', 'valid', 'invalid', 'modal', 'popover-open', 'fullscreen', 'user-invalid', 'in-range', 'out-of-range']);
@@ -251,6 +251,6 @@ const eq = (a, b) => { if (a === b) { return true; } if (typeof a !== 'object' |
 export const deepEqual = eq;
 /** Did anything a child can inherit change? (inherited properties and custom properties) */
 export function inheritedChanged(oldCS, newCS, INH) {
-	if (!oldCS) { return true; } if (oldCS.vars !== newCS.vars) { if (oldCS.vars.size !== newCS.vars.size) { return true; } for (const [k, v] of newCS.vars) { if (oldCS.vars.get(k) !== v) { return true; } } }
+	if (!oldCS) { return true; } if (oldCS.vars !== newCS.vars && !varsEqual(newCS.vars, oldCS.vars)) { return true; }
 	for (const k of INH) { if (!eq(oldCS.values[k], newCS.values[k])) { return true; } } return false;
 }

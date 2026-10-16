@@ -22,8 +22,8 @@ async function main() {
 const t00 = performance.now();
 const env = installEnvironment({ width: W, height: H, opentype, readUrl }); const doc = env.document;
 let layoutTiming = null; if (opt('layout', 'js') === 'native') { const m = await import('../../07-native-render/host/native_layout.js'); env.layoutEngine = m.engine; layoutTiming = m.timing; }
-// --style native: selector matching in C (07-native-render/host/native_style.js, module spike:style); --style verify: also the JavaScript matcher, differences logged
-let styleNative = null; if (opt('style', 'js') !== 'js') { try { styleNative = await import('../../07-native-render/host/native_style.js'); env.styleEngine = styleNative.engine; styleNative.engine.verify = opt('style', 'js') === 'verify'; } catch (e) { styleNative = null; ((m) => { std.out.puts(m + '\n'); std.out.flush(); })('[harness] no native style engine (' + (e && e.message || e) + '): JavaScript matching'); } }
+// selector matching in C by default (07-native-render/host/native_style.js, module spike:style); --style js: the JavaScript matcher; --style verify: both, differences logged
+let styleNative = null; if (opt('style', 'native') !== 'js') { try { styleNative = await import('../../07-native-render/host/native_style.js'); env.styleEngine = styleNative.engine; styleNative.engine.verify = opt('style', 'native') === 'verify'; } catch (e) { styleNative = null; ((m) => { std.out.puts(m + '\n'); std.out.flush(); })('[harness] no native style engine (' + (e && e.message || e) + '): JavaScript matching'); } }
 installWebShims(env, { baseUrl: BASE, readFile: (p) => readBytes(webDir + '/' + p) });
 preparePage(doc, parseFragment, { html: std.loadFile(webDir + '/vs/code/browser/workbench/workbench.html'), base: BASE, readText: (p) => std.loadFile(p), webDir });
 globalThis._VSCODE_FILE_ROOT = BASE + '/out/';

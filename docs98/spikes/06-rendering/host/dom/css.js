@@ -405,24 +405,52 @@ export function substituteVars(value, vars, depth = 0) {
 	}
 	return out;
 }
+/**
+ * The custom properties of a computed style: the element's own declarations (`own`, a Map; null marks one that is invalid at computed-value time, i.e. undefined here)
+ * over those of its parent's scope. An element without custom properties shares its parent's scope object. The workbench declares ~1500 custom properties on one
+ * ancestor: a scope per element that declares any is a small Map instead of a copy of all of them. Lookup walks the chain; a long chain is flattened.
+ */
+export class VarScope {
+	constructor(parent, own) { this.parent = parent; this.own = own; this.depth = parent ? parent.depth + 1 : 0; this.flatMap = null; this.eqTo = null; this.substCache = null; if (this.depth > 12) { this.flatten(); } }
+	get(k) { for (let sc = this; sc !== null; sc = sc.parent) { if (sc.flatMap !== null) { return sc.flatMap.get(k); } const v = sc.own.get(k); if (v !== undefined) { return v === null ? undefined : v; } } return undefined; }
+	has(k) { return this.get(k) !== undefined; }
+	/** all defined custom properties as one Map (cached) */
+	toMap() { if (this.flatMap === null) { const m = this.parent ? new Map(this.parent.toMap()) : new Map(); for (const [k, v] of this.own) { if (v === null) { m.delete(k); } else { m.set(k, v); } } this.flatMap = m; } return this.flatMap; }
+	flatten() { this.toMap(); this.parent = null; this.own = this.flatMap; this.depth = 0; }
+	/** substituteVars(value, this), remembered per scope (a scope does not change once its element's custom properties are set; most elements share their ancestor's) */
+	substitute(value) { let c = this.substCache; if (c === null) { c = this.substCache = new Map(); } let r = c.get(value); if (r === undefined) { r = substituteVars(value, this); if (c.size > 5000) { c.clear(); } c.set(value, r); } return r; }
+	get size() { return this.toMap().size; }
+	[Symbol.iterator]() { return this.toMap()[Symbol.iterator](); }
+}
+export const EMPTY_VARS = new VarScope(null, new Map());
+const sameOwn = (a, b) => { if (a.size !== b.size) { return false; } for (const [k, v] of a) { if (b.get(k) !== v) { return false; } } return true; };
+/** do two custom-property scopes define the same properties with the same values? (equal pairs are remembered, so the comparison down a restyled subtree stays cheap) */
+export function varsEqual(a, b) {
+	if (a === b || a.eqTo === b) { return true; }
+	let same;
+	if (a.parent !== null && b.parent !== null && sameOwn(a.own, b.own) && varsEqual(a.parent, b.parent)) { same = true; }
+	else { const ma = a.toMap(), mb = b.toMap(); same = sameOwn(ma, mb); }
+	if (same) { a.eqTo = b; b.eqTo = null; } return same;   // (only the latest pair: an older scope must not stay reachable through the chain)
+}
 /** Compute the style of one element (or pseudo-element) given its parent's computed style. Returns { values (camel-free dashed keys → computed), vars (Map) } */
 export function computeStyle(el, parentCS, index, env, pseudo, candsIn) {
 	const cands = candsIn ?? matchedDeclarations(el, index, null, pseudo);   // candsIn: the cached result of matchedDeclarations when only inherited values changed
 	if (pseudo && cands.length === 0) { return null; }
-	let vars = parentCS ? parentCS.vars : new Map(); let varsOwned = !parentCS;      // copy-on-write: the workbench has ~1500 custom properties on one ancestor
-	const winners = new Map();    // longhand → { value, important, pendingShorthand }
-	const apply = (decls, rank) => { for (const d of decls) { const prev = winners.get(d.name); if (!prev || (d.important && !prev.important) || (d.important === prev.important && rank >= prev.rank)) { winners.set(d.name, { name: d.name, value: d.value, important: d.important, pendingShorthand: d.pendingShorthand, rank }); } } };
-	let rank = 0; for (const c of cands) { apply(c.decls, rank++); }
-	if (!pseudo && el.__style && el.__style.__map.size) { const inl = []; for (const [k, e] of el.__style.__map) { inl.push({ name: k, value: e.v, important: e.important }); } apply(expandDecls(inl), 1e9); }
+	let vars = parentCS ? parentCS.vars : EMPTY_VARS; let varsOwned = false;      // a new scope only when the element declares custom properties (VarScope)
+	const winners = new Map();    // longhand → winning declaration { name, value, important, pendingShorthand }
+	// declarations are applied in cascade order (cands, then the inline style), so a later one wins unless only the earlier one is !important; the winner is the declaration itself
+	const apply = (decls) => { for (let i = 0; i < decls.length; i++) { const d = decls[i]; const prev = winners.get(d.name); if (prev === undefined || d.important || !prev.important) { winners.set(d.name, d); } } };
+	for (let i = 0; i < cands.length; i++) { apply(cands[i].decls); }
+	if (!pseudo && el.__style && el.__style.__map.size) { const inl = []; for (const [k, e] of el.__style.__map) { inl.push({ name: k, value: e.v, important: e.important }); } apply(expandDecls(inl)); }
 	// custom properties first
-	for (const [k, d] of winners) { if (k.startsWith('--')) { const v = d.value.includes('var(') ? substituteVars(d.value, vars) : d.value; if (!varsOwned) { vars = new Map(vars); varsOwned = true; } if (v !== null) { vars.set(k, v.trim()); } else { vars.delete(k); } } }
-	const out = {}; const parentVals = parentCS ? parentCS.values : null;
+	for (const [k, d] of winners) { if (k.startsWith('--')) { const v = d.value.includes('var(') ? substituteVars(d.value, vars) : d.value; if (!varsOwned) { vars = new VarScope(vars, new Map()); varsOwned = true; } vars.own.set(k, v !== null ? v.trim() : null); if (vars.flatMap !== null) { if (v !== null) { vars.flatMap.set(k, v.trim()); } else { vars.flatMap.delete(k); } } } }
+	const out = { ...INIT_VALUES }; const parentVals = parentCS ? parentCS.values : null;   // every property, initial values first (non-inherited, then inherited: the key order of PROPS split by inheritance)
 	const ctx = { fontSize: parentVals ? parentVals['font-size'] : 16, rootFontSize: env.rootFontSize ?? 16, vw: env.vw, vh: env.vh };
 	// resolve declared values
 	const declared = new Map();
 	for (const [k, d] of winners) {
 		if (k.startsWith('--')) { continue; } let val = d.value;
-		if (val.includes('var(')) { val = substituteVars(val, vars); if (val === null) { continue; } if (d.pendingShorthand) { const ex = expandShorthand(d.pendingShorthand, val).find(([n]) => n === k); if (!ex) { continue; } val = ex[1]; } }
+		if (val.includes('var(')) { val = vars.substitute(val); if (val === null) { continue; } if (d.pendingShorthand) { const ex = expandShorthand(d.pendingShorthand, val).find(([n]) => n === k); if (!ex) { continue; } val = ex[1]; } }
 		declared.set(k, val.trim());
 	}
 	// font-size first (em units of the other properties depend on it)
@@ -430,8 +458,7 @@ export function computeStyle(el, parentCS, index, env, pseudo, candsIn) {
 	if (fs !== undefined && !/^(inherit|unset)$/i.test(fs)) { if (/^initial$/i.test(fs)) { fontSize = 16; } else if (keywordFontSizes[fs.toLowerCase()] !== undefined) { fontSize = keywordFontSizes[fs.toLowerCase()]; } else if (fs === 'smaller') { fontSize = fontSize / 1.2; } else if (fs === 'larger') { fontSize = fontSize * 1.2; } else { const l = parseLength(fs, { ...ctx, fontSize: parentVals ? parentVals['font-size'] : 16 }); const px = l !== null && typeof l === 'object' && l.pct !== undefined ? l.pct / 100 * (parentVals ? parentVals['font-size'] : 16) : (typeof l === 'number' ? l : null); if (px !== null) { fontSize = px; } } }
 	ctx.fontSize = fontSize;
 	const color0 = declared.get('color'); let color = parentVals ? parentVals.color : T.color.init; if (color0 !== undefined && !/^(inherit|unset)$/i.test(color0)) { const c = /^initial$/i.test(color0) ? T.color.init : parseColor(color0, color); if (c) { color = c; } }
-	for (const k of NONINH) { out[k] = INIT[k]; }
-	for (const k of INH) { out[k] = parentVals ? parentVals[k] : INIT[k]; }
+	if (parentVals) { for (let i = 0; i < INH.length; i++) { const k = INH[i]; out[k] = parentVals[k]; } }
 	let anchored;
 	for (const [k, d] of declared) {
 		const p = T[k]; if (!p || k === 'font-size' || k === 'color') { continue; }
@@ -453,6 +480,7 @@ export function computeStyle(el, parentCS, index, env, pseudo, candsIn) {
 }
 const initialOf = (p) => Array.isArray(p.init) ? p.init.slice() : p.init;
 export const INIT = {}, INH = [], NONINH = []; for (const k in T) { INIT[k] = initialOf(T[k]); (T[k].inh ? INH : NONINH).push(k); }
+const INIT_VALUES = {}; for (const k of NONINH) { INIT_VALUES[k] = INIT[k]; } for (const k of INH) { INIT_VALUES[k] = INIT[k]; }
 const parseCache = new Map();
 function parseValueCached(p, k, d, ctx, color) {
 	const ctxDep = p.kind === 'len' || /em|ex|ch|vw|vh|vmin|vmax|calc|min\(|max\(|clamp|currentcolor|color-mix/i.test(d);
