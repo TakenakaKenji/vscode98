@@ -140,6 +140,21 @@ v25:
 
 Wine, plain starts, profiler off (v24 → v25): 21.8 → 19.6 s until stable (first start), 17.4 → 16.7 s and 15.9 → 15.4 s (later starts); window busy 14.7 → 12.7, 11.7 → 11.1, 10.3 → 9.9 s; restyling 1,100/857/708 → 459/383/373 ms. The 11 feature scenarios pass; no process left after Alt+F4.
 
+## How the Wine runs compare with the laptop
+
+The same metrics from the harness log of each start. The laptop runs are with the profiler on (`run-desktop.cmd`); the Wine runs without it, because under Wine the profiler costs about 25 %. Laptop: second start. Wine: later starts of a fresh copy (n2, n3). "Full paint" is the first paint of about 400 elements (the workbench visible). "Busy" is the window process's busy time.
+
+| | laptop: full paint / didStartWorkbench / last paint / busy | Wine: same | laptop ÷ Wine |
+|---|---|---|---|
+| v23 | 8.7 / 7.6 / 20.7 / 16.1 s | 7.8 / 7.1 / 13.3 / 13.5 s | 1.11 / 1.07 / — / 1.20 |
+| v24 | 7.0 / 6.7 / 14.8 / 13.9 s | 5.4 / 5.3 / 11.1 / 11.0 s | 1.30 / 1.27 / 1.34 / 1.26 |
+| v25 | (not yet) | 5.3 / 5.2 / 10.7 / 10.5 s | |
+
+- The laptop is 7 to 34 % slower than these Wine runs. Some of that is the profiler, whose cost on real Windows is not measured; one laptop start with the profiler off would tell.
+- The direction of each change agreed between the two. Wine overstated the v23 → v24 gain: `didStartWorkbench` −26 % under Wine, −12 % on the laptop.
+- With the v24 ratios, v25 should come out at about 6.6 s to `didStartWorkbench` and about 13 s busy on the laptop.
+- The harness's "until stable" waits for a quiet period after the last paint. On the laptop it is 4 to 5 s later than what the owner reports (v24: 19.8 s logged, 14 s seen; last paint 14.8 s). The last paint is the closer match.
+
 ## Files
 
 - `07-native-render/host/timeline98.h`; hooks in `07-native-render/host/build.sh` (Linux `quickjs-libc.c` patch), `11-windows-host/host/patch_libc.py`, `05-child-process/host/proc.c`, `11-windows-host/host/winproc.c`.

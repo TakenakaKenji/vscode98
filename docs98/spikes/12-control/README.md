@@ -6,6 +6,33 @@
 
 **Update 2026-10-16 ([spike 13](../13-native-style/README.md)):** with selector matching in C and the computed-value fixes, the same actions take 54 to 394 ms instead of 79 to 981 ms: 2.4 to 8.6 times Electron 1.142 instead of 3 to 23 times. **Later the same day (spike 13 phase 2, a different sandbox machine, Electron re-run there):** 3.0 to 9.2 times Electron 1.142 (phase 1 only on that machine: 3.4 to 14.5 times).
 
+## Re-run 2026-10-17 (v25 code; this sandbox machine, both sides re-measured, 2 CPUs, median of 5 rounds)
+
+After the startup work of packages v18 to v25. Electron 1.70.2 and 1.142 as below. vscode98 is today's tree on Linux (`qjs-spike7`). Its startup is a warm start: a user-data folder with the bytecode cache and the saved style analysis, as on the second start of the package.
+
+| Action | Electron 1.70.2 | Electron 1.142 | vscode98 | / 1.70.2 | / 1.142 | vscode98: style / layout / paint (one round) |
+|---|---|---|---|---|---|---|
+| Explorer context menu | 44 | 59 | 411 | 9.3 x | 7.0 x | 170 / 68 / 20 |
+| Menu bar: open File | 32 | 48 | 266 | 8.3 x | 5.5 x | 116 / 71 / 25 |
+| Open file (explorer click) | 81 | 86 | 328 | 4.0 x | 3.8 x | 96 / 68 / 18 |
+| Switch to another file | 66 | 86 | 374 | 5.7 x | 4.3 x | 83 / 79 / 19 |
+| Click in text: caret moves | 38 | 57 | 274 | 7.2 x | 4.8 x | 62 / 83 / 20 |
+| Double click: word selected | 45 | 41 | 211 | 4.7 x | 5.1 x | 29 / 59 / 30 |
+| Keystroke to screen | 21 | 25 | 91 | 4.3 x | 3.6 x | 6 / 13 / 19 |
+| Quick Open (Ctrl+P) | 48 | 65 | 418 | 8.7 x | 6.4 x | 157 / 147 / 41 |
+| Command palette | 101 | 78 | 546 | 5.4 x | 7.0 x | 153 / 131 / 30 |
+| New File: input box | 58 | 54 | 185 | 3.2 x | 3.4 x | 63 / 36 / 21 |
+| New File: Enter to row | 74 | 89 | 509 | 6.9 x | 5.7 x | 140 / 115 / 59 |
+| New Folder: input box | 40 | 39 | 174 | 4.4 x | 4.5 x | 65 / 38 / 25 |
+| New Folder: Enter to row | 61 | 51 | 589 | 9.7 x | 11.5 x | 97 / 87 / 64 |
+| **Startup to explorer ready** | **2.0 to 2.4 s** | **3.5 to 4.0 s** | **15.1 to 15.8 s** (cold: 22.1 s) | **6.8 x** | **4.1 x** | |
+| Memory after 30 s (processes) | 812 to 840 MB (9) | 972 to 977 MB (8) | 439 to 471 MB (6 to 7) | 0.55 x | 0.47 x | |
+
+- Startup: 8 to 10 times Electron 1.142 on 2026-10-15, about 4 times now.
+- Interactions: still 3 to 12 times. The rounds since spike 13 worked on startup, not on interactions. Our rounds spread more than Electron's (new folder 309 to 864 ms over the 5 rounds).
+- The rest of each interaction (event handling and VS Code's own code on QuickJS) is now as large as style.
+- `cdp_page.mjs`: `waitForFunction` waits again when VS Code reloads the window during the wait. The 1.70.2 starts failed with "Execution context was destroyed" without this.
+
 ## Contenders
 
 | | Code | Runtime | How it runs here |
