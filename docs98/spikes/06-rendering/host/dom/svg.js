@@ -82,10 +82,16 @@ function strokeToPolys(subs, width) {
 	return polys;
 }
 // ---- rasterizer: 4 sub-scanlines, exact horizontal coverage, non-zero or even-odd ---------------------------------------------------------
+// The QuickJS hosts do the scanline loops in C (07-native-render/host/svg98.h, the same result to the bit; the JS loops were 0.9 s of the laptop's launch)
+let nativeFill = typeof globalThis.__svgFill === 'function' ? globalThis.__svgFill : null, nativeRgba = typeof globalThis.__svgToRGBA8 === 'function' ? globalThis.__svgToRGBA8 : null;
+/** on = false: the JS loops even when the host has the C ones (06-rendering/tests/svg_native_oracle.mjs compares both) */
+export function useNativeSvg(on) { nativeFill = on && typeof globalThis.__svgFill === 'function' ? globalThis.__svgFill : null; nativeRgba = on && typeof globalThis.__svgToRGBA8 === 'function' ? globalThis.__svgToRGBA8 : null; }
 function fillPolys(polys, W, H, evenOdd, color, out) {
 	const SS = 4; const acc = new Float32Array(W + 2); const edges = []; let ymin = Infinity, ymax = -Infinity;
 	for (const poly of polys) { for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; if (a[1] === b[1]) { continue; } edges.push(a[1] < b[1] ? [a[0], a[1], b[0], b[1], 1] : [b[0], b[1], a[0], a[1], -1]); ymin = Math.min(ymin, a[1], b[1]); ymax = Math.max(ymax, a[1], b[1]); } }
-	if (!edges.length) { return; } const y0 = Math.max(0, Math.floor(ymin)), y1 = Math.min(H, Math.ceil(ymax));
+	if (!edges.length) { return; }
+	if (nativeFill) { const f = new Float64Array(edges.length * 5); for (let i = 0; i < edges.length; i++) { f.set(edges[i], i * 5); } nativeFill(f, ymin, ymax, W, H, evenOdd, color[0], color[1], color[2], color[3], out); return; }
+	const y0 = Math.max(0, Math.floor(ymin)), y1 = Math.min(H, Math.ceil(ymax));
 	for (let y = y0; y < y1; y++) {
 		acc.fill(0);
 		for (let s = 0; s < SS; s++) {
@@ -137,6 +143,6 @@ export function decodeSvg(bytes, scale = 1, currentColor = null) {
 		}
 	};
 	draw(svg, {}, base, 0);
-	const data = new Uint8Array(W * H * 4); for (let i = 0; i < data.length; i++) { data[i] = Math.max(0, Math.min(255, Math.round(out[i]))); }
+	let data; if (nativeRgba) { data = nativeRgba(out); } else { data = new Uint8Array(W * H * 4); for (let i = 0; i < data.length; i++) { data[i] = Math.max(0, Math.min(255, Math.round(out[i]))); } }
 	return { w: W, h: H, data, iw, ih, vector: true };
 }

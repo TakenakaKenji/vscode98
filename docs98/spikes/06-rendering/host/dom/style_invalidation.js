@@ -85,13 +85,16 @@ export function analyzeIndex(index, prev, only) {
 		const parts = complex.parts, n = parts.length;
 		for (let i = 0; i < n; i++) {
 			if (i > 0 && parts[i].comb === '+') { inv.adj = Math.max(inv.adj, forced || parts.slice(i + 1).some(q => q.comb === ' ' || q.comb === '>') ? 3 : 2); if (parts.slice(i + 1).some(q => q.comb === '+' || q.comb === '~')) { inv.adjChain = true; } }
-			const c = parts[i].compound; const left = i < n - 1 || forced; const nextComb = i < n - 1 ? parts[i + 1].comb : null; const followedBySibling = nextComb === '+' || nextComb === '~'; const keys = keysOfCompound(c); const shape = shapeOf(c, i === n - 1 ? outer : null, i > 0 && parts[i].comb === '>' ? shapeOf(parts[i - 1].compound, null) : null, i > 0 && parts[i].comb === ' ' ? shapeOf(parts[i - 1].compound, null) : null); const addCtx = (k) => { inv.ctxKeys.add(k); if (k[0] === ':') { const l = inv.ctxShapes.get(k); if (l) { l.push(shape); } else { inv.ctxShapes.set(k, [shape]); } } };
+			const c = parts[i].compound; const left = i < n - 1 || forced; const nextComb = i < n - 1 ? parts[i + 1].comb : null; const followedBySibling = nextComb === '+' || nextComb === '~'; const keys = keysOfCompound(c);
+			// the compound's shape is only needed for state keys in context and for its pseudo-classes: built on first use (building it for every compound of every rule was most of the analysis)
+			let shape, hasShape = false; const shapeNow = () => { if (!hasShape) { shape = shapeOf(c, i === n - 1 ? outer : null, i > 0 && parts[i].comb === '>' ? shapeOf(parts[i - 1].compound, null) : null, i > 0 && parts[i].comb === ' ' ? shapeOf(parts[i - 1].compound, null) : null); hasShape = true; } return shape; };
+			const addCtx = (k) => { inv.ctxKeys.add(k); if (k[0] === ':') { const l = inv.ctxShapes.get(k); if (l) { l.push(shapeNow()); } else { inv.ctxShapes.set(k, [shapeNow()]); } } };
 			const tailHasDesc = followedBySibling && parts.slice(i + 2).some(p => p.comb === ' ' || p.comb === '>'); let inRun = i === n - 1; for (let j = i; !inRun && j + 1 < n && (parts[j + 1].comb === '+' || parts[j + 1].comb === '~'); j++) { inRun = j + 1 === n - 1; }
 			const own = followedBySibling ? (tailHasDesc || forced ? 3 : 2) : 0; const eff = Math.max(own, inRun ? sibMode : 0);
 			if (left) { if (eff) { const target = eff === 3 ? inv.sibKeysDeep : inv.sibKeys; for (const k of keys) { target.add(k); } if (!keys.length && own) { inv.sibUniversal = true; { const rp = i > 0 && parts[i].comb === '>' ? shapeOf(parts[i - 1].compound, null) : null, ra = i > 0 && parts[i].comb === ' ' ? shapeOf(parts[i - 1].compound, null) : null; for (let j = i + 1; j < n; j++) { inv.sibUniShapes.push(shapeOf(parts[j].compound, j === n - 1 ? outer : null, rp, ra)); if (parts[j + 1] === undefined || (parts[j + 1].comb !== '+' && parts[j + 1].comb !== '~')) { break; } } } } } if (!eff || forced) { for (const k of keys) { addCtx(k); } } }
 			else { for (const k of keys) { if (k[0] === ':') { inv.selfStateKeys.add(k); } } }
 			if (forced && nested) { for (const k of keys) { addCtx(k); } }
-			scanCompoundPseudos(c, left, eff, forced, shape);
+			if (c.pseudos.length) { scanCompoundPseudos(c, left, eff, forced, shapeNow()); }
 		}
 	};
 	for (const e of all) { if (seen.has(e.complex)) { continue; } seen.add(e.complex); scanComplex(e.complex, false, false); }

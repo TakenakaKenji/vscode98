@@ -117,10 +117,24 @@ Wine implements `SuspendThread` with a signal. A signal that lands while the thr
 
 After the fix: 4 of 4 profiled starts with no failure. The profiler oracle passes on Linux and Wine. Under Wine the profiler at 2 ms costs about 25 % (23 to 24 s until stable instead of 17.5 to 19 s), because each suspension is a round trip through the wineserver. Compare Wine timings with the profiler off (`QJS98_PROFILE` unset).
 
+## The laptop's v23 profile and what v24 changed
+
+Owner, v23: 8 s until the workbench shows in both starts; until stable 19 s (first start) and 15 s (second). In the second start the window process was busy almost every second from 1 to 15 s, so its busy time is still the launch. Its largest items (inclusive, 16.1 s busy): the style rule index of the first passes (`buildRuleIndex` 1.6 s, `analyzeIndex` 1.2 s), font parsing (opentype.js `parseBuffer` 1.0 s), SVG decoding (0.9 s), VS Code's font measurement (`readCharWidths` 0.5 s). Base64 and the extension host's module paths no longer appear.
+
+v24:
+- **Fonts are parsed lazily** (`opentype.parse(buf, { lowMemory: true })` in `06-rendering/host/dom/fonts.js` and for `@font-face` in `env.js`): glyphs are read when first used, not all at load. Oracle `06-rendering/tests/font_lazy_oracle.mjs`: the 12 shipped fonts and `codicon.ttf` give the same metrics, glyph indices, advance widths, outlines and kerning for 31,941 code points; the parse takes 0.49 s instead of 2.05 s (Linux), 0.44 s instead of 2.03 s (Wine).
+- **The SVG rasterizer's scanline loops are in C** (`07-native-render/host/svg98.h`, globals `__svgFill` / `__svgToRGBA8`, used by `06-rendering/host/dom/svg.js`). The arithmetic matches the JS step by step: doubles, a float32 accumulator and image, and a stable sort of the crossings. Oracle `06-rendering/tests/svg_native_oracle.mjs`: every SVG of the app at scale 1 and 2, with and without a currentColor, gives the same bytes (156 decodes on Linux, 114 under Wine). `code-icon.svg` (the watermark logo, 559 bytes, 256×256) takes 7 ms instead of 216 ms.
+- **The invalidation analysis builds a compound's shape only when it is used** (`style_invalidation.js` `scanComplex`: shapes are only needed for state keys in context and for compounds with pseudo-classes). Oracle `09-incremental-style/tests/analyze_oracle.mjs`: the analysis of the workbench's 14,097 rule entries is the same as JSON; 92.6 → 64.5 ms in V8. Style fuzz: 7,500 passes, 0 mismatches.
+
+Wine, plain starts, profiler off: second and third starts 19.6 and 18.8 s until stable with v23, 17.7 and 16.9 s with v24 (window busy 13.7/13.2 → 12.0/11.3 s, `didStartWorkbench` 7.2/7.0 → 5.9/5.3 s). First start 21.6 → 21.1 s: under Wine it is dominated by file and pipe I/O (`loadFile` 1.7 s, pipe writes 1.7 s, reading bytecode 1.3 s in a profiled start), which were much smaller on the laptop.
+
+Not done yet: `buildRuleIndex` runs on each of the 12 to 14 rule-set changes of the launch and flattens and compares all ~14,000 rules each time. A per-sheet cache needs a change counter on stylesheets that also covers edits of single rules.
+
 ## Files
 
 - `07-native-render/host/timeline98.h`; hooks in `07-native-render/host/build.sh` (Linux `quickjs-libc.c` patch), `11-windows-host/host/patch_libc.py`, `05-child-process/host/proc.c`, `11-windows-host/host/winproc.c`.
 - `10-main-shim/host/timeline_report98.js`, `boot_desktop_qjs.mjs` (`--timeline`, `--code-cache`), `11-windows-host/package/run-desktop.cmd` (timeline on; keeps the previous log as `results\desktop-prev.txt`).
 - `05-child-process/host/esm.c` (the cache).
+- `06-rendering/tests/font_lazy_oracle.mjs`, `07-native-render/host/svg98.h` (SVG scanlines in C), `06-rendering/tests/svg_native_oracle.mjs`, `09-incremental-style/tests/analyze_oracle.mjs`.
 - `05-child-process/host/b64_98.h` (base64 in C), `10-main-shim/tests/b64_oracle.mjs`, `10-main-shim/host/scenario_openfile.mjs` (opens a file so that the next start restores it).
 - `07-native-render/host/prof98.h`, `07-native-render/host/patch_quickjs.py` (the profiler; the `[idle]` label and the file writes from `timeline98.h`), `10-main-shim/host/profile_report98.js`, `14-launch/tests/prof_oracle.mjs`.

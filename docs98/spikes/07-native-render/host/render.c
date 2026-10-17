@@ -191,6 +191,7 @@ static void glyph_run(Ctx *c, int fontId, double size, double ls, double wsp, do
 }
 
 #include "raster_int.h"
+#include "svg98.h"
 
 /* ---------------------------------------------------------------- command stream */
 enum { OP_FILL_RECT = 1, OP_FILL_RRECT, OP_PUSH_CLIP, OP_POP_CLIP, OP_PUSH_LAYER, OP_POP_LAYER, OP_GLYPH_RUN, OP_RESET_CLIP, OP_DRAW_IMAGE };
@@ -312,7 +313,7 @@ static void rejection_tracker(JSContext *ctx, JSValueConst promise, JSValueConst
 	JS_FreeValue(ctx, fn); JS_FreeValue(ctx, g);
 }
 void spike_install_rejection_tracker(JSRuntime *rt) { JS_SetHostPromiseRejectionTracker(rt, rejection_tracker, NULL); }
-void spike_init_render(JSContext *ctx) { set_fpu_double(); JSModuleDef *m = JS_NewCModule(ctx, "spike:render", render_init); if (m) { JS_AddModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); } }
+void spike_init_render(JSContext *ctx) { set_fpu_double(); js98_svg_install(ctx); JSModuleDef *m = JS_NewCModule(ctx, "spike:render", render_init); if (m) { JS_AddModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); } }
 
 /* accessors for layout.c */
 int render_font_metrics(int id, double *asc, double *desc, double *gap) { if (id < 0 || id >= nfonts) { return 0; } *asc = fonts[id].asc; *desc = fonts[id].desc; *gap = fonts[id].gap; return 1; }
