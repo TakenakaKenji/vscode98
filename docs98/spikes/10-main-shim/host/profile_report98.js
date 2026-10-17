@@ -40,6 +40,8 @@ function aggregate(p, t0, a = -Infinity, b = Infinity) {
 	const top = (m, k) => [...m].sort((x, y) => y[1] - x[1]).slice(0, k);
 	return { self, incl, file, busy, idle, n, top };
 }
+/** seconds from the harness start of the first and the last sample of p */
+function sampleSpan(p, t0) { let a = Infinity, b = -Infinity; for (let i = 0; i < p.samples.length; i += 3) { const t = p.t0 + p.samples[i] - t0; if (t < a) { a = t; } if (t > b) { b = t; } } return [a / 1000, b / 1000]; }
 /** the heaviest call paths (innermost frames first) through the function `id` */
 function callers(p, id, depth, k) {
 	const paths = new Map();
@@ -55,13 +57,15 @@ export function profileReport(dir, log, t0, procs) {
 	const profs = loadProfiles(dir, procs); if (!profs.length) { return; }
 	const order = (p) => p.label === 'window' ? 0 : p.label === 'main' ? 1 : 2; profs.sort((x, y) => order(x) - order(y) || y.samples.length - x.samples.length);
 	const lines = []; const out = (s) => lines.push(s);
-	const head = `profile (one sample every ${profs[0].intervalMs} ms of ${profs[0].clock === 'cpu' ? 'CPU time' : 'wall time'}; busy = not waiting in the event loop):`;
+	const head = `profile (one sample every ${profs[0].intervalMs} ms of ${profs[0].clock === 'cpu' ? 'CPU time' : 'wall time'}; busy = not waiting in the event loop${profs[0].clock === 'cpu' ? '' : ', which includes waiting for a CPU while other processes run'}):`;
 	log(head); out(head);
 	const now = Date.now(); const seconds = Math.ceil((now - t0) / 1000);
 	for (const p of profs) {
 		const all = aggregate(p, t0); if (all.busy < 50) { continue; }
 		const name = (id) => p.names[id];
-		const hdr = `  ${p.col}: busy ${(all.busy / 1000).toFixed(1)} s in ${all.n} samples${p.dropped ? `, ${p.dropped} dropped` : ''}`;
+		// a process writes its file when its event loop is about to wait (at most every 2 s): one that has been busy since then has newer samples than these
+		const span = sampleSpan(p, t0), stale = (now - t0) / 1000 - span[1] > 1.5;
+		const hdr = `  ${p.col}: busy ${(all.busy / 1000).toFixed(1)} s in ${all.n} samples${p.dropped ? `, ${p.dropped} dropped` : ''}, ${span[0].toFixed(1)} to ${span[1].toFixed(1)} s${stale ? ' (not written since: busy without waiting, or idle)' : ''}`;
 		const isWin = p.label === 'window';
 		log(hdr); out(''); out(hdr);
 		// by file: one line in the log, a table in the file

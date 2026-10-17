@@ -64,3 +64,14 @@ export class FdDuplex extends Duplex {
 	_attachFd(fd) { this._fd = fd; p.setNonblock(fd, true); if (this._readableState.flowing !== false && this.listenerCount('data') + this.listenerCount('readable') > 0) { startReading(this); } }
 }
 export { startReading, stopReading };
+/** IPC framing (JSON lines): returns a chunk handler that calls `onLine(line)` for every complete non-empty line. Each chunk is scanned once and the rest of
+ * the buffer is cut once per chunk: rescanning from the start on every chunk made a multi-megabyte message quadratic (the laptop's v22 profile:
+ * `indexOf` 0.33 s of the window's launch). `onLine` must not throw. */
+export function lineSplitter(onLine) {
+	let acc = '';
+	return (d) => {
+		const from = acc.length; acc += d; let start = 0; let i = acc.indexOf('\n', from);
+		while (i >= 0) { const line = acc.slice(start, i); start = i + 1; if (line) { onLine(line); } i = acc.indexOf('\n', start); }
+		if (start) { acc = acc.slice(start); }
+	};
+}

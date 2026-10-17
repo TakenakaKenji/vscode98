@@ -18,6 +18,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "quickjs.h"
+#include "b64_98.h"
 uint64_t js98_tl_now(void); void js98_tl_sync(uint64_t a, uint64_t b); void js98_tl_install(JSContext *ctx);   /* timeline98.h, in the patched quickjs-libc.c */
 
 #define ERR() (-errno)
@@ -243,5 +244,6 @@ void spike_init(JSContext *ctx) {
 	JS_SetPropertyStr(ctx, g, "__utf8Decode", JS_NewCFunction(ctx, js_utf8_decode, "__utf8Decode", 1));
 	JS_SetPropertyStr(ctx, g, "__utf8Encode", JS_NewCFunction(ctx, js_utf8_encode, "__utf8Encode", 1));
 	JS_FreeValue(ctx, g);
+	js98_b64_install(ctx);
 	JSModuleDef *m = JS_NewCModule(ctx, "spike:proc", proc_init); if (m) { JS_AddModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); }
 }

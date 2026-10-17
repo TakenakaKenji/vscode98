@@ -2,13 +2,13 @@
 // so typed arrays travel as { $u8: <base64> } and are revived on the other side. Plain JSON-able values pass through untouched.
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const REV = new Uint8Array(128); for (let i = 0; i < 64; i++) { REV[B64.charCodeAt(i)] = i; }
-export function toBase64(u8) {
+function toBase64Js(u8) {
 	let out = ''; const n = u8.length; let i = 0;
 	for (; i + 2 < n; i += 3) { const v = (u8[i] << 16) | (u8[i + 1] << 8) | u8[i + 2]; out += B64[(v >> 18) & 63] + B64[(v >> 12) & 63] + B64[(v >> 6) & 63] + B64[v & 63]; }
 	if (i < n) { const v = (u8[i] << 16) | ((i + 1 < n ? u8[i + 1] : 0) << 8); out += B64[(v >> 18) & 63] + B64[(v >> 12) & 63] + (i + 1 < n ? B64[(v >> 6) & 63] : '=') + '='; }
 	return out;
 }
-export function fromBase64(s) {
+function fromBase64Js(s) {
 	const pad = s.endsWith('==') ? 2 : s.endsWith('=') ? 1 : 0; const n = (s.length / 4) * 3 - pad; const out = new Uint8Array(n); let o = 0;
 	for (let i = 0; i < s.length; i += 4) {
 		const v = (REV[s.charCodeAt(i)] << 18) | (REV[s.charCodeAt(i + 1)] << 12) | (REV[s.charCodeAt(i + 2)] << 6) | REV[s.charCodeAt(i + 3)];
@@ -16,6 +16,10 @@ export function fromBase64(s) {
 	}
 	return out;
 }
+// Our QuickJS hosts do both in C (05-child-process/host/b64_98.h, same results); the JS loops were 12 % of the window's launch on the laptop. Node runs the loops.
+export const toBase64 = typeof globalThis.__base64Encode === 'function' ? globalThis.__base64Encode : toBase64Js;
+export const fromBase64 = typeof globalThis.__base64Decode === 'function' ? globalThis.__base64Decode : fromBase64Js;
+export { toBase64Js, fromBase64Js };
 /** value -> JSON-safe value (typed arrays and ArrayBuffers become { $u8 }, functions and undefined are dropped, `onLeak(path)` is told about dropped functions) */
 export function encode(v, onLeak, path = '', depth = 0) {
 	if (typeof v === 'function') { onLeak?.(path); return undefined; }

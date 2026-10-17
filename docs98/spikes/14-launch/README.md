@@ -80,9 +80,47 @@ First profile, sandbox (Linux, 2 CPUs, warm cache, CPU time; the window process 
 
 The laptop's profile (v22) decides the order of the work.
 
+## The laptop's v22 profile and what v23 changed
+
+Owner, v22, two starts: about 10 s until the window shows the workbench and 22 s until it is stable, both times. The second start restored a JavaScript file opened in the first (`t.js`), so the extension host loaded the TypeScript extension during the launch. The window process was busy almost every second from 1 s to 22 s, so its busy time is the launch. What the profile showed (second start; busy time is wall time):
+
+| | window (21.4 s busy) | main (2.2 s) | shared process (8.1 s) | extension host (8.9 s) |
+|---|---|---|---|---|
+| base64 of IPC data (`codec98.js`) | 2.3 s | 1.1 s | 2.9 s | 0.2 s |
+| IPC line splitting (`indexOf` from the start of the buffer on every chunk) | 0.33 s | | | |
+| VS Code's `Module._nodeModulePaths` filter (`path.relative` per ancestor, per module) | | | | 3.5 s |
+| `Module.isBuiltin` (regex + `Array.includes`, on every `require`) | | | | 0.6 s |
+
+v23:
+- **Base64 in C** (`05-child-process/host/b64_98.h`, globals `__base64Encode` / `__base64Decode` in both hosts, used by `codec98.js` when present). Oracle `10-main-shim/tests/b64_oracle.mjs`: the same bytes and strings as the JS loops for every length 0 to 2000, offset views, ArrayBuffers, padded, odd-length and non-ASCII strings; 4 MB in 13 to 33 ms instead of 0.8 to 1.5 s (Linux and Wine).
+- **IPC framing scans each chunk once** (`lineSplitter` in `05-child-process/host/impl/fdstreams.js`, both ends: `child_process.js` and `proc_setup.mjs`).
+- **The CommonJS loader caches like Node** (`02-node-shim/host/impl/module.js`): `module.paths` once per directory (until someone replaces `Module._nodeModulePaths` again), the nearest `package.json` type once per directory, `parent.path + request` → filename for modules already loaded (Node's `relativeResolveCache`), `isBuiltin` as a Set lookup.
+- **The report says how far each process's samples go**: a process writes its file when its event loop is about to wait, at most every 2 s, so one that is busy for a long stretch (the extension host loading an extension) has newer samples than the file at the moment of the report. Each process line now ends with the span of its samples and says when the file is more than 1.5 s old. On Windows "busy" is wall time and includes waiting for a CPU while other processes run (the header says so).
+
+Wine, second start with a restored JavaScript file (`10-main-shim/host/scenario_openfile.mjs` opens it in the first start), profiler off, two runs each:
+
+| | v22 | v23 |
+|---|---|---|
+| until stable | 22.6, 21.5 s | 18.9, 17.5 s |
+| window busy | 16.0, 15.4 s | 12.8, 11.9 s |
+| main busy | 7.2, 6.5 s | 2.5, 2.9 s |
+| shared process busy | 5.1, 5.1 s | 2.7, 2.8 s |
+
+With v23 neither `codec98.js` nor `path.relative` appears in any process's top list. The 11 feature scenarios pass.
+
+### The profiler under Wine
+
+Wine implements `SuspendThread` with a signal. A signal that lands while the thread writes a request to the wineserver cuts the write short, and Wine then ends the thread ("wine client error: partial write 65536"). A pipe write carries its data in such a request. In 3 of 3 profiled Wine starts that opened or restored a JavaScript file, the main process died this way. It never happened without the profiler, and it cannot happen on Windows, where suspension is done by the kernel. The fix (`prof98.h`, `winproc.c`):
+- Around pipe writes (`js98_pf_io_enter` / `leave`), the main thread copies its own frame chain, which cannot change inside a C call, and the sampler stamps that copy instead of suspending the thread.
+- A sequence number tells the sampler whether the copy is current.
+- The sampler announces a suspension before it checks, and a thread entering a write waits until no suspension is announced. That closes the gap between the check and `SuspendThread`: the first version without it still lost main in 2 of 2 starts.
+
+After the fix: 4 of 4 profiled starts with no failure. The profiler oracle passes on Linux and Wine. Under Wine the profiler at 2 ms costs about 25 % (23 to 24 s until stable instead of 17.5 to 19 s), because each suspension is a round trip through the wineserver. Compare Wine timings with the profiler off (`QJS98_PROFILE` unset).
+
 ## Files
 
 - `07-native-render/host/timeline98.h`; hooks in `07-native-render/host/build.sh` (Linux `quickjs-libc.c` patch), `11-windows-host/host/patch_libc.py`, `05-child-process/host/proc.c`, `11-windows-host/host/winproc.c`.
 - `10-main-shim/host/timeline_report98.js`, `boot_desktop_qjs.mjs` (`--timeline`, `--code-cache`), `11-windows-host/package/run-desktop.cmd` (timeline on; keeps the previous log as `results\desktop-prev.txt`).
 - `05-child-process/host/esm.c` (the cache).
+- `05-child-process/host/b64_98.h` (base64 in C), `10-main-shim/tests/b64_oracle.mjs`, `10-main-shim/host/scenario_openfile.mjs` (opens a file so that the next start restores it).
 - `07-native-render/host/prof98.h`, `07-native-render/host/patch_quickjs.py` (the profiler; the `[idle]` label and the file writes from `timeline98.h`), `10-main-shim/host/profile_report98.js`, `14-launch/tests/prof_oracle.mjs`.

@@ -50,15 +50,34 @@ function resolveInPackage(dir, name, sub, conditions = NODE_CONDITIONS) {       
 // sync module loader, ESM-only dependencies must be pre-bundled to CommonJS ahead of time (what VS Code's own extension build does). Pre-bundled copies are
 // looked up in OVERLAY_DIR as <path with / replaced by __>.cjs.
 const overlayDir = std.getenv('ESM_OVERLAY_DIR') || '';
-function nearestPackageType(file) { for (let d = dirname(file); d && d !== dirname(d); d = dirname(d)) { const pj = join(d, 'package.json'); if (kind(pj) === 1) { try { return JSON.parse(readText(pj)).type || 'commonjs'; } catch { return 'commonjs'; } } } return 'commonjs'; }
+const packageTypeByDir = new Map();   // like Node's package scope cache: one walk up per directory, not per file (stat of every ancestor for every module)
+function nearestPackageType(file) {
+	const seen = []; let type = 'commonjs';
+	for (let d = dirname(file); d && d !== dirname(d); d = dirname(d)) {
+		const known = packageTypeByDir.get(d); if (known !== undefined) { type = known; break; }
+		seen.push(d); const pj = join(d, 'package.json');
+		if (kind(pj) === 1) { try { type = JSON.parse(readText(pj)).type || 'commonjs'; } catch { type = 'commonjs'; } break; }
+	}
+	for (const d of seen) { packageTypeByDir.set(d, type); }
+	return type;
+}
 function isEsmFile(file) { const e = extname(file); return e === '.mjs' || (e === '.js' && nearestPackageType(file) === 'module'); }
 function esmError(file) { const e = new Error(`require() of ES Module ${file} is not supported by this host (no synchronous module loader); pre-bundle it to CommonJS`); e.code = 'ERR_REQUIRE_ESM'; return e; }
 
+// module.paths of every loaded module, once per directory. VS Code's extension host replaces Module._nodeModulePaths with a filter that runs path.relative
+// for every ancestor (bootstrap-node's removeGlobalNodeJsModuleLookupPaths, on Windows); with one call per module it was ~3.5 s of the laptop's
+// extension host once the TypeScript extension loaded. The result only depends on the directory, so it is kept until someone replaces the function again.
+let pathsFn = null, pathsByDir = new Map();
+function modulePathsOf(dir) {
+	if (Module._nodeModulePaths !== pathsFn) { pathsFn = Module._nodeModulePaths; pathsByDir = new Map(); }
+	let r = pathsByDir.get(dir); if (!r) { r = pathsFn(dir); if (!Array.isArray(r)) { return r; } pathsByDir.set(dir, r); }
+	return r.slice();
+}
 export class Module {
 	constructor(id = '', parent) { this.id = id; this.path = dirname(id); this.exports = {}; this.filename = null; this.loaded = false; this.children = []; this.paths = []; this.parent = parent; }
 	require(id) { return Module._load(id, this, false); }
 	load(filename) {
-		this.filename = filename; this.paths = Module._nodeModulePaths(dirname(filename));
+		this.filename = filename; this.paths = modulePathsOf(dirname(filename));
 		if (extname(filename) === '.json') { this.exports = JSON.parse(readText(filename)); }
 		else if (extname(filename) === '.node' && typeof globalThis.__loadNativeAddon === 'function') { this.exports = globalThis.__loadNativeAddon(filename); }   // native addons: host-provided stand-ins (10-main-shim/host/native_addons98.js)
 		else if (isEsmFile(filename)) {
@@ -76,7 +95,9 @@ export class Module {
 Module._cache = Object.create(null);
 Module._extensions = { '.js': null, '.json': null, '.node': null };
 Module.builtinModules = ['assert', 'async_hooks', 'buffer', 'child_process', 'cluster', 'console', 'constants', 'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2', 'https', 'inspector', 'module', 'net', 'os', 'path', 'perf_hooks', 'process', 'punycode', 'querystring', 'readline', 'repl', 'stream', 'string_decoder', 'sys', 'timers', 'tls', 'tty', 'url', 'util', 'v8', 'vm', 'wasi', 'worker_threads', 'zlib'];
-Module.isBuiltin = (name) => { const n = String(name).replace(/^node:/, ''); return String(name).startsWith('node:') || Module.builtinModules.includes(n.split('/')[0]) && (n.indexOf('/') < 0 || ['fs/promises', 'path/posix', 'path/win32', 'stream/promises', 'stream/web', 'stream/consumers', 'timers/promises', 'util/types', 'dns/promises', 'readline/promises', 'assert/strict'].includes(n)); };
+// Called on every require (twice): a Set lookup instead of a regex and Array.includes (0.6 s of the laptop's extension host)
+const builtinNames = new Set(Module.builtinModules), builtinSubpaths = new Set(['fs/promises', 'path/posix', 'path/win32', 'stream/promises', 'stream/web', 'stream/consumers', 'timers/promises', 'util/types', 'dns/promises', 'readline/promises', 'assert/strict']);
+Module.isBuiltin = (name) => { const n = String(name); return n.startsWith('node:') || (n.indexOf('/') < 0 ? builtinNames.has(n) : builtinSubpaths.has(n)); };
 Module.wrap = (s) => '(function (exports, require, module, __filename, __dirname) { ' + s + '\n});';
 Module._nodeModulePaths = (from) => {      // every ancestor's node_modules, nearest first (not for a directory that is itself called node_modules)
 	const out = []; let d = resolve(from);
@@ -104,13 +125,17 @@ Module._resolveBareEsm = function (request, fromDir) {
 	for (const d of Module._nodeModulePaths(fromDir)) { const f = resolveInPackage(d.endsWith('node_modules') ? d : join(d, 'node_modules'), m[1], m[2] || '', ['node', 'import', 'module-sync', 'default']); if (f) { return f; } }
 	return undefined;
 };
+const relativeResolveCache = new Map();
 Module._load = function (request, parent, isMain) {
 	if (Module.isBuiltin(request)) { const n = String(request).replace(/^node:/, ''); return globalThis.__builtins[n] ?? globalThis.__stub('builtin', n); }
+	const key = parent && parent.path !== undefined ? parent.path + '\x00' + request : undefined;   // Node's relativeResolveCache: a module already loaded is found without resolving (stat) again
+	if (key !== undefined) { const f = relativeResolveCache.get(key); if (f !== undefined) { const c = Module._cache[f]; if (c) { return c.exports; } relativeResolveCache.delete(key); } }
 	const filename = Module._resolveFilename(request, parent, isMain);
-	const cached = Module._cache[filename]; if (cached) { return cached.exports; }
+	const cached = Module._cache[filename]; if (cached) { if (key !== undefined) { relativeResolveCache.set(key, filename); } return cached.exports; }
 	if (traceRequire) { std.err.puts('[require] ' + filename + '\n'); std.err.flush(); }
 	const m = new Module(filename, parent); Module._cache[filename] = m; if (parent && parent.children) { parent.children.push(m); }
 	try { m.load(filename); } catch (e) { delete Module._cache[filename]; throw e; }
+	if (key !== undefined) { relativeResolveCache.set(key, filename); }
 	return m.exports;
 };
 function makeRequire(mod) {

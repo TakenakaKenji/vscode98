@@ -24,6 +24,8 @@
 #include "quickjs.h"
 #include "quickjs-libc.h"
 #include "winhook.h"
+#include "../../05-child-process/host/b64_98.h"
+int js98_pf_io_enter(void); void js98_pf_io_leave(int entered);   /* the sampling profiler (07-native-render/host/prof98.h): no thread suspension inside pipe writes under Wine */
 uint64_t js98_tl_now(void); void js98_tl_sync(uint64_t a, uint64_t b); void js98_tl_install(JSContext *ctx);   /* timeline98.h, in the patched quickjs-libc.c */
 static HANDLE g_job; static int job_breakaway, job_children; static BOOL (WINAPI *job_assign)(HANDLE, HANDLE);   /* job_init() */
 
@@ -166,8 +168,8 @@ static void write_kick(Fd *f) {                          /* start the next overl
 	if (f->wpending || !f->wqlen) { return; }
 	free(f->wbuf); f->wbuf = f->wq; f->wlen = f->wqlen; f->wq = NULL; f->wqlen = f->wqcap = 0;
 	ResetEvent(f->wev); memset(&f->wov, 0, sizeof f->wov); f->wov.hEvent = f->wev;
-	if (WriteFile(f->h, f->wbuf, f->wlen, NULL, &f->wov)) { f->wpending = 1; return; }
-	DWORD err = GetLastError();
+	int io = js98_pf_io_enter(); BOOL wok = WriteFile(f->h, f->wbuf, f->wlen, NULL, &f->wov); DWORD err = wok ? 0 : GetLastError(); js98_pf_io_leave(io);
+	if (wok) { f->wpending = 1; return; }
 	if (err == ERROR_IO_PENDING) { f->wpending = 1; return; }
 	f->werr = -errno_from_win(err); f->wlen = 0; SetEvent(f->wev);
 }
@@ -214,7 +216,7 @@ static JSValue js_write(JSContext *ctx, JSValueConst this_val, int argc, JSValue
 	size_t size; uint8_t *buf = JS_GetArrayBuffer(ctx, &size, argv[1]); if (!buf) { return JS_EXCEPTION; }
 	int64_t off = 0, len = 0; JS_ToInt64(ctx, &off, argv[2]); JS_ToInt64(ctx, &len, argv[3]); if (off < 0 || len < 0 || (size_t)(off + len) > size) { return JS_ThrowRangeError(ctx, "write: out of range"); }
 	if (!f->ovl) {                                                                 /* synchronous handle: write it all now */
-		int64_t done = 0; while (done < len) { DWORD n = 0; if (!WriteFile(f->h, buf + off + done, (DWORD)(len - done > 1 << 20 ? 1 << 20 : len - done), &n, NULL)) { return JS_NewInt32(ctx, done ? (int)done : -errno_from_win(GetLastError())); } done += n; }
+		int64_t done = 0; while (done < len) { DWORD n = 0; int io = js98_pf_io_enter(); BOOL wok = WriteFile(f->h, buf + off + done, (DWORD)(len - done > 1 << 20 ? 1 << 20 : len - done), &n, NULL); DWORD err = wok ? 0 : GetLastError(); js98_pf_io_leave(io); if (!wok) { return JS_NewInt32(ctx, done ? (int)done : -errno_from_win(err)); } done += n; }
 		return JS_NewInt32(ctx, (int)done);
 	}
 	if (f->h == INVALID_HANDLE_VALUE) { return JS_NewInt32(ctx, -E_PIPE); }
@@ -664,5 +666,6 @@ void spike_init(JSContext *ctx) {
 	JS_SetPropertyStr(ctx, g, "__utf8Encode", JS_NewCFunction(ctx, js_utf8_encode, "__utf8Encode", 1));
 	JS_SetPropertyStr(ctx, g, "__nativeRename", JS_NewCFunction(ctx, js_rename, "__nativeRename", 2));   /* used by the fs shim */
 	JS_FreeValue(ctx, g);
+	js98_b64_install(ctx);
 	JSModuleDef *m = JS_NewCModule(ctx, "spike:proc", proc_init); if (m) { JS_AddModuleExportList(ctx, m, funcs, sizeof funcs / sizeof funcs[0]); }
 }

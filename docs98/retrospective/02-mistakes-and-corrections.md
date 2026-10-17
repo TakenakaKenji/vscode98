@@ -42,6 +42,8 @@ Every error that cost real time, grouped by kind. Format: **what happened** → 
 
 Wine passed everything in spike 11, yet the real Windows 7 runs found: Linux font paths (resolved by Wine), raw Win32 `EEXIST` from `mkdir`, a realloc-per-8 KB file reader that is quadratic on the Windows heap (1775 ms for 15 MB), the 15.6 ms timer tick, an empty keymap breaking Ctrl shortcuts only on win32, and an idle repaint loop through `WM_PAINT`. → *Wine is a smoke test; get the real target into the loop as soon as anything boots, with status lines and screenshots in the log.*
 
+- **The reverse: a Wine-only failure** (2026-10-17). With the sampling profiler on, main died in profiled Wine starts that opened a JavaScript file ("wine client error: partial write 65536"). Wine suspends threads with a signal that can cut a wineserver request short, and real Windows cannot fail this way. The first fix checked "not in a write" and then suspended, which left a race; it still failed 2 of 2. → *Compare with the profiler off before blaming the code under test; a check-then-act between two threads needs a handshake.*
+
 ## E. Missing browser or Node semantics (silent failures)
 
 The pattern: the app catches an exception or gets `undefined`, and a feature simply does nothing.
@@ -70,7 +72,7 @@ The pattern: the app catches an exception or gets `undefined`, and a feature sim
 
 ## G. Process and tool slips
 
-- `pkill -f <pattern>` matched the running shell itself (exit 144) → use `pkill -x name`.
+- `pkill -f <pattern>` matched the running shell itself (exit 144) → use `pkill -x name` (repeated 2026-10-17 with `pkill -f ab_pair.sh` and a `pgrep -f` + `kill` loop: both killed the calling shell; kill the PIDs a script reports, or match with `-x`.)
 - A `--seconds 120` harness limit cut long scenarios and looked like a crash → `--seconds 900`.
 - Synthetic events do not reproduce the menu-bar "move to Edit" action, and a File menu left open under the explorer made the next scripted click land on **Exit** (scenario_ctl) → Escape until no menu is open.
 - Playwright could not drive Chromium 100 (VS Code 1.70.2) → raw CDP driver; `keyboard.type('.')` sent the key code of Delete → `Input.insertText`; Electron rejected symlinked `node_modules` → copies; 1.70.2 uses native menus on Linux → `titleBarStyle: custom`.

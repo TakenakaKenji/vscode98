@@ -74,12 +74,8 @@ static uint64_t pf_clock_ns(void) {
 }
 
 /* ---- sampling: runs while the main thread is stopped (Windows) or interrupted (Linux signal handler) ---- */
-static void pf_take(void) {
-	JSRuntime *rt = pf_rt; if (!rt) { return; }
-	uint32_t h = pf_head; if (h - pf_tail >= PF_RING) { pf_dropped++; return; }
-	PfRaw *r = &pf_ring[h % PF_RING];
-	r->t = (uint32_t)((pf_now_ns() - pf_t0_ns) / 1000000u);
-	uint64_t c = pf_clock_ns(); r->w = (uint32_t)((c - pf_last_ns) / 1000u); pf_last_ns = c;
+/* copies the frame chain of the main thread into r (kind, p, magic, n, cut) */
+static void pf_fill(JSRuntime *rt, PfRaw *r) {
 	int n = 0; JSStackFrame *sf = rt->current_stack_frame;
 	int nt = pf_ntag; if (nt > 0 && nt <= PF_MAXTAG && pf_tags[nt - 1].sf == sf && pf_tags[nt - 1].label) { r->kind[n] = PF_K_TAG; r->p[n] = pf_tags[nt - 1].label; r->magic[n] = 0; n++; }
 	for (; sf && n < PF_DEPTH; sf = sf->prev_frame) {
@@ -98,16 +94,52 @@ static void pf_take(void) {
 	}
 	if (n == 0) { r->kind[0] = PF_K_TAG; r->p[0] = "[host]"; r->magic[0] = 0; n = 1; }   /* C code of the host outside any JavaScript call (the event loop, module loading) */
 	r->n = (uint16_t)n; r->cut = sf != NULL;
+}
+/* stamps the slot h (time, weight = the time since the previous sample) and publishes it */
+static void pf_commit(PfRaw *r, uint32_t h) {
+	r->t = (uint32_t)((pf_now_ns() - pf_t0_ns) / 1000000u);
+	uint64_t c = pf_clock_ns(); r->w = (uint32_t)((c - pf_last_ns) / 1000u); pf_last_ns = c;
 	pf_barrier(); pf_head = h + 1;
 }
+static void pf_take(void) {
+	JSRuntime *rt = pf_rt; if (!rt) { return; }
+	uint32_t h = pf_head; if (h - pf_tail >= PF_RING) { pf_dropped++; return; }
+	PfRaw *r = &pf_ring[h % PF_RING]; pf_fill(rt, r); pf_commit(r, h);
+}
 #ifdef _WIN32
+/* Wine implements SuspendThread with a signal, and a signal that lands while the thread writes a request to the wineserver cuts the write short; Wine
+ * then kills the thread ("wine client error: partial write 65536"). Pipe writes carry their data in such a request: main died in 3 of 3 profiled Wine
+ * starts that opened or restored a JavaScript file. Around those calls (js98_pf_io_enter / leave, winproc.c) the main thread copies its own frame chain, which cannot
+ * change inside a C call, and the sampler stamps that copy instead of suspending the thread. pf_io_seq is odd inside; the copy counts only if the
+ * sequence is the same after copying it (else this tick is skipped and the next sample's weight covers it). The sampler announces a suspension
+ * (pf_suspending) before it looks at the sequence, and a thread entering a write waits until no suspension is announced, so the check and the suspension
+ * cannot straddle the start of a write (both sides use interlocked operations, which are full barriers). */
+static volatile LONG pf_io_seq, pf_suspending; static PfRaw pf_io_tpl;
+int js98_pf_io_enter(void) {
+	JSRuntime *rt = pf_rt; if (pf_state <= 0 || !rt || !pf_is_main() || (pf_io_seq & 1)) { return 0; }
+	pf_fill(rt, &pf_io_tpl); pf_barrier(); InterlockedIncrement(&pf_io_seq);
+	while (InterlockedCompareExchange(&pf_suspending, 0, 0)) { YieldProcessor(); }   /* a suspension that saw an even sequence: let it finish first */
+	return 1;
+}
+void js98_pf_io_leave(int entered) { if (entered) { InterlockedIncrement(&pf_io_seq); } }
+static int pf_take_io(LONG seq) {
+	uint32_t h = pf_head; if (h - pf_tail >= PF_RING) { pf_dropped++; return 1; }
+	PfRaw *r = &pf_ring[h % PF_RING]; int n = pf_io_tpl.n; if (n > PF_DEPTH) { n = PF_DEPTH; }
+	memcpy(r->kind, pf_io_tpl.kind, (size_t)n); memcpy(r->magic, pf_io_tpl.magic, (size_t)n * sizeof r->magic[0]); memcpy(r->p, pf_io_tpl.p, (size_t)n * sizeof r->p[0]);
+	r->n = (uint16_t)n; r->cut = pf_io_tpl.cut;
+	pf_barrier(); if (pf_io_seq != seq) { return 0; }
+	pf_commit(r, h); return 1;
+}
 static DWORD WINAPI pf_sampler(LPVOID arg) {
 	(void)arg; CONTEXT c;
 	while (WaitForSingleObject(pf_stop, (DWORD)pf_interval) == WAIT_TIMEOUT) {
-		if (SuspendThread(pf_main) == (DWORD)-1) { break; }
+		InterlockedExchange(&pf_suspending, 1);
+		LONG seq = InterlockedCompareExchange(&pf_io_seq, 0, 0);
+		if (seq & 1) { InterlockedExchange(&pf_suspending, 0); if (pf_rt) { pf_take_io(seq); } continue; }   /* inside a host write: never suspend there (see above) */
+		if (SuspendThread(pf_main) == (DWORD)-1) { InterlockedExchange(&pf_suspending, 0); break; }
 		memset(&c, 0, sizeof c); c.ContextFlags = CONTEXT_CONTROL; GetThreadContext(pf_main, &c);   /* returns once the thread has really stopped */
 		pf_take();
-		ResumeThread(pf_main);
+		ResumeThread(pf_main); InterlockedExchange(&pf_suspending, 0);
 	}
 	return 0;
 }

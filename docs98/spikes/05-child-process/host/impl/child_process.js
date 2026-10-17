@@ -6,7 +6,7 @@ import * as p from 'spike:proc';
 import * as io from './fdio.js';
 import { EventEmitter } from '__SHIMS__/events.js';
 import { Readable, Writable } from './stream.js';
-import { FdReadable, FdWritable, FdDuplex, errnoError } from './fdstreams.js';
+import { FdReadable, FdWritable, FdDuplex, errnoError, lineSplitter } from './fdstreams.js';
 
 const TRACE = !!std.getenv('VSCODE98_TRACE_PROC');   // debug aid: log spawns, exits and child stderr to our stderr
 const SIGNALS = { SIGHUP: 1, SIGINT: 2, SIGQUIT: 3, SIGABRT: 6, SIGKILL: 9, SIGUSR1: 10, SIGSEGV: 11, SIGUSR2: 12, SIGPIPE: 13, SIGALRM: 14, SIGTERM: 15, SIGCHLD: 17, SIGCONT: 18, SIGSTOP: 19 };
@@ -46,8 +46,10 @@ export class ChildProcess extends EventEmitter {
 	}
 	disconnect() { if (!this.connected) { queueMicrotask(() => this.emit('error', Object.assign(new Error('Channel closed'), { code: 'ERR_IPC_CHANNEL_CLOSED' }))); return; } this._chan.destroy(); }
 	_attachChannel(chan) {
-		this._chan = chan; this.channel = chan; this.connected = true; let acc = '';
-		chan.setEncoding?.('utf8'); chan.on('data', (d) => { acc += typeof d === 'string' ? d : d.toString('utf8'); if (TRACE_PIPE) { TRACE_PIPE(`pid ${this.pid} data ${d.length} acc ${acc.length}`); } let i; while ((i = acc.indexOf('\n')) >= 0) { const line = acc.slice(0, i); acc = acc.slice(i + 1); if (!line) { continue; } if (TRACE_PIPE) { TRACE_PIPE(`pid ${this.pid} line ${line.length} ${line.slice(0, 40)}`); } let m; try { m = JSON.parse(line); } catch (e) { console.error(`[ipc parent] dropped a message that is not JSON (${line.length} chars, ${e && e.message}): ${line.slice(0, 120)} ... ${line.slice(-60)}`); continue; } if (m && typeof m.cmd === 'string' && m.cmd.startsWith('NODE_')) { continue; } try { this.emit('message', m); } catch (e) { console.error('[ipc parent] a message handler threw: ' + String(e && e.stack || e).split('\n').slice(0, 4).join(' | ')); } } });
+		this._chan = chan; this.channel = chan; this.connected = true;
+		const onLine = (line) => { if (TRACE_PIPE) { TRACE_PIPE(`pid ${this.pid} line ${line.length} ${line.slice(0, 40)}`); } let m; try { m = JSON.parse(line); } catch (e) { console.error(`[ipc parent] dropped a message that is not JSON (${line.length} chars, ${e && e.message}): ${line.slice(0, 120)} ... ${line.slice(-60)}`); return; } if (m && typeof m.cmd === 'string' && m.cmd.startsWith('NODE_')) { return; } try { this.emit('message', m); } catch (e) { console.error('[ipc parent] a message handler threw: ' + String(e && e.stack || e).split('\n').slice(0, 4).join(' | ')); } };
+		const split = lineSplitter(onLine);
+		chan.setEncoding?.('utf8'); chan.on('data', (d) => { if (TRACE_PIPE) { TRACE_PIPE(`pid ${this.pid} data ${d.length}`); } split(typeof d === 'string' ? d : d.toString('utf8')); });
 		chan.on('error', () => { });
 		chan.on('close', () => { if (this.connected) { this.connected = false; this.channel = undefined; this.emit('disconnect'); this._streamClosed(); } });
 		this._pendingClose++;
