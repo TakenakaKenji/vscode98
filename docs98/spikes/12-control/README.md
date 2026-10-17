@@ -33,6 +33,16 @@ After the startup work of packages v18 to v25. Electron 1.70.2 and 1.142 as belo
 - The rest of each interaction (event handling and VS Code's own code on QuickJS) is now as large as style.
 - `cdp_page.mjs`: `waitForFunction` waits again when VS Code reloads the window during the wait. The 1.70.2 starts failed with "Execution context was destroyed" without this.
 
+## On the laptop (2026-10-17, owner's stopwatch, second start of each)
+
+| | open | stable |
+|---|---|---|
+| stock VS Code 1.70.2 (installed) | 4 s | 8 s |
+| vscode98 v25 (run 3, profiler off) | 7 s | 15 to 16 s |
+| ratio | 1.75 x | about 1.9 to 2 x |
+
+The first stock-VS-Code numbers measured on the owner's laptop. The gap there is much smaller than in this sandbox (6.8 x to explorer ready): 1.70.2 takes about twice as long on the laptop as here, while our host is no slower there than here.
+
 ## Contenders
 
 | | Code | Runtime | How it runs here |
