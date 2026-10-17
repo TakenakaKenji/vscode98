@@ -278,3 +278,7 @@ Owner, v22: 10 s until the workbench shows, 22 s until stable, both starts; the 
 ### Round 18: the laptop's v23 profile; v24
 
 Owner, v23: 8 s until the workbench shows (v22: 10 s); until stable 19 s (first start) and 15 s (second; v22: 22 s). The window's largest items were the style rule index (1.6 s), font parsing (1.0 s) and SVG decoding (0.9 s). v24 parses fonts lazily, rasterizes SVG in C and makes the invalidation analysis lighter; each change has an oracle that shows the same results ([14-launch/README.md](../14-launch/README.md#the-laptops-v23-profile-and-what-v24-changed)). Wine, plain second and third starts without the profiler: 19.6 and 18.8 s until stable with v23, 17.7 and 16.9 s with v24. The 11 feature scenarios pass, every start left no process after Alt+F4. Package v24: SHA256 `072fd94be6f08232a3b8b5853cc78857aa6a4c61fb7725affb37be809f993f80` (joined zip, 7 parts).
+
+### Round 19: the laptop's v24 profile; v25
+
+Owner, v24: 8 s until the workbench shows, 14 s until stable (second start). v25 compares custom-property scopes without walking their whole chains, and saves the style engine's first analysis of the rules for later starts ([14-launch/README.md](../14-launch/README.md#the-laptops-v24-profile-and-what-v25-changed)). Wine, plain starts without the profiler: 21.8/17.4/15.9 s until stable with v24, 19.6/16.7/15.4 s with v25. Package v25: SHA256 `75a9aa13c18f5e8145f4f53bf9e7de6a03de4fd40e1be76d2178f9d71810f53f` (joined zip, 7 parts).

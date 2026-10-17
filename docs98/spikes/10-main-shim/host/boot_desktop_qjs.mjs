@@ -15,6 +15,7 @@ import { installEnvironment } from '../../06-rendering/host/dom/env.js';
 import { parseColor } from '../../06-rendering/host/dom/css.js';
 import { parseFragment, missing } from '../../06-rendering/host/dom/dom.js';
 import { unsupported } from '../../06-rendering/host/dom/layout.js';
+import { setAnalysisStore } from '../../06-rendering/host/dom/style_invalidation.js';
 import { paintDocument, toPPM, unpainted } from '../../06-rendering/host/dom/paint.js';
 import { NativeBackend } from '../../07-native-render/host/native_backend.js';
 import * as spikeProc from 'spike:proc';
@@ -51,6 +52,8 @@ const timelineDir = opt('timeline'); const t00Epoch = Date.now() - t00; let time
 // --code-cache <dir> (default <user-data-dir>/code-cache; 0 = off): bytecode of the large ES modules (05-child-process/host/esm.c), for this process and every one it starts
 const codeCacheDir = opt('code-cache', opt('user-data-dir') ? nodePath.join(opt('user-data-dir'), 'code-cache') : '0');
 if (codeCacheDir !== '0' && globalThis.__codeCacheDir) { try { os.mkdir(nodePath.dirname(codeCacheDir)); } catch { /* exists */ } os.mkdir(codeCacheDir); globalThis.__codeCacheDir(codeCacheDir); nodeProcess.env.QJS98_CODE_CACHE = codeCacheDir; }
+// the style engine's first full analysis of the rules is saved next to the bytecode (style-<key>.json; the key names the rule set): later starts read it
+if (codeCacheDir !== '0') { setAnalysisStore({ get: (k) => std.loadFile(`${codeCacheDir}/style-${k}.json`), put: (k, v) => { const f = `${codeCacheDir}/style-${k}.json`, t = f + '.tmp'; const h = std.open(t, 'w'); if (!h) { return; } h.puts(v); h.close(); os.rename(t, f); } }); }
 // ---- vscode-file://vscode-app/<abs path> -> file path, for import()
 Module.registerHooks({ resolve(specifier, context, nextResolve) { if (specifier.startsWith('vscode-file://vscode-app/')) { return { url: 'file://' + specifier.slice('vscode-file://vscode-app'.length).replace(/[?#].*$/, ''), shortCircuit: true }; } return nextResolve(specifier, context); } });
 // ---- user settings for a headless run: no trust prompt (the git extension is limited in untrusted workspaces), no welcome page, no telemetry or update checks

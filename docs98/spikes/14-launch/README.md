@@ -130,6 +130,16 @@ Wine, plain starts, profiler off: second and third starts 19.6 and 18.8 s until 
 
 Not done yet: `buildRuleIndex` runs on each of the 12 to 14 rule-set changes of the launch and flattens and compares all ~14,000 rules each time. A per-sheet cache needs a change counter on stylesheets that also covers edits of single rules.
 
+## The laptop's v24 profile and what v25 changed
+
+Owner, v24: 8 s until the workbench shows; until stable 14 s in the second start (v23: 15 s, v22: 22 s). The window was busy until 14.8 s (13.9 s busy). Its style engine time: rule index 2.44 s (1.77 s of it in the first pass, which styles the 6-element splash), planning 0.66 s, restyling 1.16 s, of which `varsEqual` (custom-property scopes, in C) was 0.52 s.
+
+v25:
+- **`varsEqual` without the whole chain** (`07-native-render/host/style_compute.c` `scope_equal`). Two scopes whose own properties differed were compared over their whole chains (~1,000 `--vscode-*` variables), and only "equal" answers were remembered. When a scope near the root changed, every descendant's comparison repeated that work. In a Linux boot, 2,116 calls from JavaScript became 5,878 whole-chain comparisons that collected 26.6 million entries. Now: with equal parents (or two flattened scopes), only the names the two scopes define themselves are compared, and the latest unequal pair is remembered too. That boot: 381 whole-chain comparisons, 2.0 million entries, restyling 1,629 → 812 ms. The answers stay exact, because the harness's style verify mode compares with `varsEqual`. `QJS98_VARS_VERIFY=1` computes every answer the old way as well and counts differences: 0 in a boot, and 0 in 89,968 comparisons of the style fuzz on the native engine (`FUZZ_NATIVE=1`; the fuzz now prints these counts).
+- **The first full analysis of the rules is saved** (`style_invalidation.js` `setAnalysisStore`; the harness keeps `style-<key>.json` next to the bytecode in `userdata/code-cache`). The key is a hash (new native `__fnv1a64`) of every entry's selector in scan order and of `ANALYSIS_FORMAT`. Later starts read the analysis instead of computing it (~40 % of the first pass). Oracle: `09-incremental-style/tests/analyze_oracle.mjs` analyses the workbench's rules, saves the analysis to an in-memory store, reads it back, and checks the restored analysis equals the computed one (and the v23 baseline). Linux boots: first pass 983 ms (saving) → 647 and 592 ms (reading). The package's prebuild boot runs headless, and its first pass sees more rules than a windowed start (14,565 entries against 14,200), so the first windowed start writes its own file and the later ones read it.
+
+Wine, plain starts, profiler off (v24 → v25): 21.8 → 19.6 s until stable (first start), 17.4 → 16.7 s and 15.9 → 15.4 s (later starts); window busy 14.7 → 12.7, 11.7 → 11.1, 10.3 → 9.9 s; restyling 1,100/857/708 → 459/383/373 ms. The 11 feature scenarios pass; no process left after Alt+F4.
+
 ## Files
 
 - `07-native-render/host/timeline98.h`; hooks in `07-native-render/host/build.sh` (Linux `quickjs-libc.c` patch), `11-windows-host/host/patch_libc.py`, `05-child-process/host/proc.c`, `11-windows-host/host/winproc.c`.

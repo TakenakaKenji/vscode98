@@ -64,6 +64,18 @@ function indexShapes(shapes, prev) {
 /** Whether a change of state/structure `key` of `el` can change how its descendants match (the key is context somewhere, in a compound `el` can satisfy). */
 const ctxHit = (inv, key, el) => inv.ctxKeys.has(key) && shapesMatch(inv.ctxShapes.get(key), el);
 
+// ---- a saved analysis: the first full analysis of a start is the same every time (the workbench's stylesheets), and was ~40 % of the first style pass.
+// The host gives a store (setAnalysisStore); the key is a hash of every entry's selector in scan order and of ANALYSIS_FORMAT, so a different rule set
+// or a changed analysis never reads an old one. 09-incremental-style/tests/analyze_oracle.mjs checks that a restored analysis equals a computed one.
+const ANALYSIS_FORMAT = 1;   // bump whenever the analysis below changes what it records
+let analysisStore = null;
+/** store: { get(key) -> string | null, put(key, text) } or null */
+export function setAnalysisStore(store) { analysisStore = store; }
+const encInv = (v) => v instanceof Set ? { $s: [...v] } : v instanceof Map ? { $m: [...v].map(([k, x]) => [k, encInv(x)]) } : Array.isArray(v) ? v.map(encInv) : v !== null && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, encInv(x)])) : v;
+const decInv = (v) => Array.isArray(v) ? v.map(decInv) : v !== null && typeof v === 'object' ? (v.$s ? new Set(v.$s) : v.$m ? new Map(v.$m.map(([k, x]) => [k, decInv(x)])) : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, decInv(x)]))) : v;
+const fnv32 = (t) => { let h = 2166136261; for (let i = 0; i < t.length; i++) { h = Math.imul(h ^ t.charCodeAt(i), 16777619); } return (h >>> 0).toString(16); };
+function analysisKey(all) { let t = 'v' + ANALYSIS_FORMAT; for (const e of all) { t += '\n' + e.sel; } return (typeof globalThis.__fnv1a64 === 'function' ? globalThis.__fnv1a64(t) : fnv32(t)) + '-' + all.length; }
+
 /** Analyses the active rules once per rule-set change: which keys occur as ancestor context, as sibling context, inside :has(), and which structural pseudo-classes are used. */
 export function analyzeIndex(index, prev, only) {
 	const fresh = { ctxKeys: new Set(), ctxShapes: new Map(), sibKeys: new Set(), sibKeysDeep: new Set(), sibUniversal: false, sibUniShapes: [], sibAllKeys: new Set(), adj: 0, adjChain: false, selfStateKeys: new Set(), hasRules: [], struct: { first: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, last: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, nth: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, nthLast: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] }, empty: { any: false, left: false, shapes: [], sib: 0, sibShapes: [] } }, entries: 0 };
@@ -97,7 +109,13 @@ export function analyzeIndex(index, prev, only) {
 			if (c.pseudos.length) { scanCompoundPseudos(c, left, eff, forced, shapeNow()); }
 		}
 	};
+	const storeKey = inv === fresh && !only && analysisStore ? analysisKey(all) : null;
+	if (storeKey !== null) {
+		let text = null; try { text = analysisStore.get(storeKey); } catch { text = null; }
+		if (text) { try { const r = decInv(JSON.parse(text)); Object.defineProperty(r, '__seen', { value: new Set(all.map((e) => e.complex)) }); r.entries = all.length; return r; } catch { /* unreadable: analyse */ } }
+	}
 	for (const e of all) { if (seen.has(e.complex)) { continue; } seen.add(e.complex); scanComplex(e.complex, false, false); }
+	if (storeKey !== null) { try { analysisStore.put(storeKey, JSON.stringify(encInv(inv))); } catch { /* not saved */ } }
 	return inv;
 }
 

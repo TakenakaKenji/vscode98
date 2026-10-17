@@ -51,7 +51,7 @@ static void free_block(Block *b) { for (int i = 0; i < b->n; i++) { free(b->d[i]
 /* ---------------------------------------------------------------- custom-property scopes (css.js VarScope) */
 typedef struct { int name; int tomb; Str val; } VEnt;
 typedef struct SubE { uint32_t h; Str key; Str res; int isNull; } SubE;   /* substitution cache entry (key.s NULL: empty) */
-typedef struct { int used, refs, parent, depth; uint32_t gen; VEnt *own; int nown, capown; IMap ix; int eqId; uint32_t eqGen; SubE *sub; int nsub, capsub; } Scope;
+typedef struct { int used, refs, parent, depth; uint32_t gen; VEnt *own; int nown, capown; IMap ix; int eqId; uint32_t eqGen; int neqId; uint32_t neqGen; SubE *sub; int nsub, capsub; } Scope;
 static Scope *scopes; static int nscopes; static Vec freeScopes;
 static void sub_clear(Scope *s) { for (int i = 0; i < s->capsub; i++) { if (s->sub[i].key.s) { free(s->sub[i].key.s); free(s->sub[i].res.s); } } free(s->sub); s->sub = NULL; s->nsub = s->capsub = 0; }
 static void scope_unref(int id);
@@ -71,7 +71,7 @@ static const Str *scope_get(int id, int name) {
 }
 static int scope_new(int parent) {
 	int id; if (freeScopes.n) { id = freeScopes.v[--freeScopes.n]; } else { if (nscopes % 256 == 0) { scopes = realloc(scopes, (size_t)(nscopes + 256) * sizeof(Scope)); memset(scopes + nscopes, 0, 256 * sizeof(Scope)); } id = nscopes++; }
-	Scope *s = &scopes[id]; uint32_t g = s->gen; memset(s, 0, sizeof *s); s->gen = g; s->used = 1; s->refs = 1; s->eqId = -1; s->parent = parent; s->depth = parent >= 0 ? scopes[parent].depth + 1 : 0; if (parent > 0) { scopes[parent].refs++; }
+	Scope *s = &scopes[id]; uint32_t g = s->gen; memset(s, 0, sizeof *s); s->gen = g; s->used = 1; s->refs = 1; s->eqId = -1; s->neqId = -1; s->parent = parent; s->depth = parent >= 0 ? scopes[parent].depth + 1 : 0; if (parent > 0) { scopes[parent].refs++; }
 	return id;
 }
 /* the defined entries of a scope's whole chain, nearest first (each name once) */
@@ -93,18 +93,39 @@ static int same_own(const Scope *a, const Scope *b) {
 	for (int i = 0; i < a->nown; i++) { int j = own_find(b, a->own[i].name); if (j < 0) { return 0; } const VEnt *x = &a->own[i], *y = &b->own[j]; if (x->tomb != y->tomb || (!x->tomb && (x->val.n != y->val.n || memcmp(x->val.s, y->val.s, (size_t)x->val.n) != 0))) { return 0; } }
 	return 1;
 }
+static uint64_t statEq, statEqMap, statEqMapEntries;   /* varsEqual calls from JavaScript; full-chain comparisons and the entries they collected */
 static int same_map(int a, int b) {
-	Vec na = { 0 }, ia = { 0 }, nb = { 0 }, ib = { 0 }; scope_collect(a, &na, &ia); scope_collect(b, &nb, &ib); int same = na.n == nb.n;
+	Vec na = { 0 }, ia = { 0 }, nb = { 0 }, ib = { 0 }; scope_collect(a, &na, &ia); scope_collect(b, &nb, &ib); int same = na.n == nb.n; statEqMap++; statEqMapEntries += (uint64_t)(na.n + nb.n);
 	for (int k = 0; same && k < na.n; k++) { const Str *x = &scopes[ia.v[2 * k]].own[ia.v[2 * k + 1]].val; const Str *y = scope_get(b, na.v[k]); if (!y || y->n != x->n || memcmp(y->s, x->s, (size_t)x->n) != 0) { same = 0; } }
 	free(na.v); free(ia.v); free(nb.v); free(ib.v); return same;
 }
 /* css.js varsEqual: same defined custom properties with the same values; an equal pair is remembered (only the latest) */
+/* do the effective maps of a and b agree on every name that a or b defines itself? (exactly their equality when the parents' maps are equal, or when both
+ * are flattened and hold their whole map) */
+static int own_union_equal(int a, int b) {
+	for (int pass = 0; pass < 2; pass++) {
+		const Scope *s = &scopes[pass ? b : a];
+		for (int i = 0; i < s->nown; i++) { int nm = s->own[i].name; const Str *x = scope_get(a, nm), *y = scope_get(b, nm); if (!x != !y || (x && (x->n != y->n || memcmp(x->s, y->s, (size_t)x->n) != 0))) { return 0; } }
+	}
+	return 1;
+}
+static int varsVerify = -1; static uint64_t statEqMismatch;   /* QJS98_VARS_VERIFY=1: every answer is also computed the old way (same_map) and differences are counted */
+/* css.js varsEqual: same defined custom properties with the same values; the latest equal pair and the latest unequal pair are remembered.
+ * When an element's own custom properties changed, comparing the two whole chains (~1,000 --vscode-* variables) was 0.5 s of the laptop's launch:
+ * with equal parents (the usual case: the same parent scope), only the names the two scopes define themselves can differ. */
 static int scope_equal(int a, int b) {
 	if (a == b) { return 1; } Scope *sa = &scopes[a], *sb = &scopes[b];
 	if (sa->eqId == b && sa->eqGen == sb->gen) { return 1; }
+	if (sa->neqId == b && sa->neqGen == sb->gen) { return 0; }   /* a known difference: the children of a changed scope all ask about the same parent pair */
 	int same;
-	if (sa->parent >= 0 && sb->parent >= 0 && a != 0 && b != 0 && same_own(sa, sb) && scope_equal(sa->parent, sb->parent)) { same = 1; } else { same = same_map(a, b); }
-	if (same) { sa = &scopes[a]; sb = &scopes[b]; sa->eqId = b; sa->eqGen = sb->gen; sb->eqId = -1; }
+	if (a != 0 && b != 0 && sa->parent >= 0 && sb->parent >= 0) {
+		if (same_own(sa, sb) && scope_equal(sa->parent, sb->parent)) { same = 1; }
+		else { sa = &scopes[a]; sb = &scopes[b]; same = (sa->parent == sb->parent || scope_equal(sa->parent, sb->parent)) ? own_union_equal(a, b) : same_map(a, b); }
+	} else if (a != 0 && b != 0 && sa->parent < 0 && sb->parent < 0) { same = own_union_equal(a, b); }
+	else { same = same_map(a, b); }
+	if (varsVerify < 0) { const char *e = getenv("QJS98_VARS_VERIFY"); varsVerify = e && *e == '1'; }
+	if (varsVerify && same != same_map(a, b)) { statEqMismatch++; }
+	sa = &scopes[a]; sb = &scopes[b]; if (same) { sa->eqId = b; sa->eqGen = sb->gen; sb->eqId = -1; } else { sa->neqId = b; sa->neqGen = sb->gen; }
 	return same;
 }
 
@@ -345,7 +366,7 @@ static JSValue js_var_entries(JSContext *ctx, JSValueConst this_val, int argc, J
 	for (int k = 0; k < names.n; k++) { const Str *v = &scopes[idx.v[2 * k]].own[idx.v[2 * k + 1]].val; JS_SetPropertyUint32(ctx, a, (uint32_t)(2 * k), JS_NewStringLen(ctx, atoms[names.v[k]].s, (size_t)atoms[names.v[k]].len)); JS_SetPropertyUint32(ctx, a, (uint32_t)(2 * k + 1), JS_NewStringLen(ctx, v->s, (size_t)v->n)); }
 	free(names.v); free(idx.v); return a;
 }
-static JSValue js_vars_equal(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { int a = scope_arg(ctx, argv[0]), b = scope_arg(ctx, argv[1]); if (a < 0 || b < 0) { return JS_ThrowRangeError(ctx, "varsEqual: bad scope"); } return JS_NewBool(ctx, scope_equal(a, b)); }
+static JSValue js_vars_equal(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { int a = scope_arg(ctx, argv[0]), b = scope_arg(ctx, argv[1]); if (a < 0 || b < 0) { return JS_ThrowRangeError(ctx, "varsEqual: bad scope"); } statEq++; return JS_NewBool(ctx, scope_equal(a, b)); }
 /* scopeFrom(names atoms Int32Array, values string[]) -> a flat scope with these entries (for a JavaScript VarScope parent) */
 static JSValue js_scope_from(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
 	int32_t *nm; int n; if (get_i32(ctx, argv[0], &nm, &n)) { return JS_ThrowTypeError(ctx, "scopeFrom: bad arguments"); }
@@ -356,7 +377,7 @@ static JSValue js_scope_from(JSContext *ctx, JSValueConst this_val, int argc, JS
 static JSValue js_compute_stats(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
 	JSValue r = JS_NewObject(ctx); int live = 0; for (int i = 0; i < nscopes; i++) { live += scopes[i].used; } int lb = 0; for (int i = 0; i < nblocks; i++) { lb += blocks[i].used; }
 	JS_SetPropertyStr(ctx, r, "computes", JS_NewFloat64(ctx, (double)statComputes)); JS_SetPropertyStr(ctx, r, "fallbacks", JS_NewFloat64(ctx, (double)statFallbacks)); JS_SetPropertyStr(ctx, r, "cacheHits", JS_NewFloat64(ctx, (double)statHits)); JS_SetPropertyStr(ctx, r, "cacheMisses", JS_NewFloat64(ctx, (double)statMisses));
-	JS_SetPropertyStr(ctx, r, "cacheSize", JS_NewInt32(ctx, (int)pcount)); JS_SetPropertyStr(ctx, r, "scopes", JS_NewInt32(ctx, live)); JS_SetPropertyStr(ctx, r, "blocks", JS_NewInt32(ctx, lb)); return r;
+	JS_SetPropertyStr(ctx, r, "cacheSize", JS_NewInt32(ctx, (int)pcount)); JS_SetPropertyStr(ctx, r, "scopes", JS_NewInt32(ctx, live)); JS_SetPropertyStr(ctx, r, "blocks", JS_NewInt32(ctx, lb)); JS_SetPropertyStr(ctx, r, "varsEqual", JS_NewFloat64(ctx, (double)statEq)); JS_SetPropertyStr(ctx, r, "varsEqualFull", JS_NewFloat64(ctx, (double)statEqMap)); JS_SetPropertyStr(ctx, r, "varsEqualFullEntries", JS_NewFloat64(ctx, (double)statEqMapEntries)); JS_SetPropertyStr(ctx, r, "varsEqualMismatches", JS_NewFloat64(ctx, (double)statEqMismatch)); return r;
 }
 #define STYLE_COMPUTE_FUNCS \
 	JS_CFUNC_DEF("computeInit", 6, js_compute_init), JS_CFUNC_DEF("declBlock", 2, js_decl_block), JS_CFUNC_DEF("declFree", 1, js_decl_free), JS_CFUNC_DEF("compute", 9, js_compute), \
