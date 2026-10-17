@@ -1,4 +1,4 @@
-# Spike 14 — Launch timeline and bytecode cache
+# Spike 14 — Launch timeline, bytecode cache and sampling profiler
 
 **Question:** round 12 showed that v18 removed 2.6 s of the window process's CPU at startup and the laptop's launch did not change. Where does the launch actually go, process by process, and what is on its critical path?
 
@@ -57,8 +57,32 @@ Checks: the 11 feature scenarios run from a hard-linked copy of the app at anoth
 - 3.9 → ~11 s: the workbench's startup at nearly 100 % of the window process; main and the shared process work alongside and are not waited for.
 - CommonJS modules (most built-in extensions) are not cached yet (`Module` shim, not `esm.c`).
 
+## The sampling profiler (v22)
+
+The timeline says which process is busy; the profiler says on what. `07-native-render/host/prof98.h` is compiled into QuickJS itself (`patch_quickjs.py` appends it to a copy of `quickjs.c` in both builds, so it reads QuickJS's own call frames). It is off unless `QJS98_PROFILE` is the interval in ms (`run-desktop.cmd` sets 2; children inherit it).
+
+- Sampling copies the frame chain of the main runtime (`rt->current_stack_frame`): per frame the function's bytecode, or the C function and its magic. Nothing is allocated, locked or run while sampling. Windows: a sampler thread suspends the main thread (`SuspendThread` + `GetThreadContext`), copies, resumes; wall time, so the loop's wait is `[idle]`. Linux: a CPU-time timer of the main thread (`timer_create(CLOCK_THREAD_CPUTIME_ID)`, `SIGPROF` to that thread).
+- Each sample carries the time it stands for (the Linux CPU timer fires on the 4 ms kernel tick whatever interval is asked for: with a fixed weight every count came out at half).
+- Names are made on the main thread: each loop turn, when the ring of raw samples is half full (`js_poll_interrupts`), and just before a function's bytecode is freed (so a sampled pointer is named while valid and a reused address gets a new id). C functions are named where they are created; methods and `const f = () => ...` get the names QuickJS gives them at run time (their bytecode has none). Labels for work without a frame: `[gc]`, `[compile]`, `[read bytecode]`, `[idle]`, `[host]` (C code outside any JavaScript call).
+- QuickJS links a C function's frame into the chain before setting `cur_func`; the patch links it after, behind a compiler barrier, so a sample never reads a half-built frame.
+- Output: `<timeline dir>/<pid>.prof.json` (names, interned stacks, samples as time / stack / weight; repeated samples merged within 100 ms). `10-main-shim/host/profile_report98.js` prints after the timeline, per process: time by source file, top functions by self and inclusive time, and for the window the top 3 per second of the launch; `results\profile.txt` has the longer tables, the call paths of the top 25 and every process.
+
+Oracle: `14-launch/tests/prof_oracle.mjs` burns known amounts of CPU in plain functions, a native call (`JSON.parse`), a closure called through `Array.prototype.map`, a recursion deeper than the 64 recorded frames, short-lived functions (their bytecode freed while sampling), a method, a getter, an arrow function and `std.gc()`; every row within 15 % (in practice within 1 to 3 %) on Linux and under Wine at 2 and 5 ms. Overhead (CPU benchmark `bench.js`, 1 CPU, medians of 5): old build 7600 ms, new build with the profiler off 7232 ms, on at 2 ms 7402 ms. The 11 feature scenarios pass with it on; under Wine the package boots and closes with no process left.
+
+First profile, sandbox (Linux, 2 CPUs, warm cache, CPU time; the window process 10.2 s busy until stable):
+
+| | window | main | shared process |
+|---|---|---|---|
+| base64 of IPC binary data (`codec98.js` `toBase64`/`fromBase64`) | 0.9 s (9 %) | 2.0 s (62 %) | 0.8 s (33 %) |
+| harness stability check: `getElementsByTagName('*')` every 20 ms (`boot_common.js runScenario`) | 0.8 s (8 %) | | |
+| VS Code's font measurement (`readCharWidths`, one forced layout per `offsetWidth`), inclusive | 1.2 s (12 %) | | |
+| style passes (`resolveStyles`), inclusive | 2.6 s (25 %) | | |
+
+The laptop's profile (v22) decides the order of the work.
+
 ## Files
 
 - `07-native-render/host/timeline98.h`; hooks in `07-native-render/host/build.sh` (Linux `quickjs-libc.c` patch), `11-windows-host/host/patch_libc.py`, `05-child-process/host/proc.c`, `11-windows-host/host/winproc.c`.
 - `10-main-shim/host/timeline_report98.js`, `boot_desktop_qjs.mjs` (`--timeline`, `--code-cache`), `11-windows-host/package/run-desktop.cmd` (timeline on; keeps the previous log as `results\desktop-prev.txt`).
 - `05-child-process/host/esm.c` (the cache).
+- `07-native-render/host/prof98.h`, `07-native-render/host/patch_quickjs.py` (the profiler; the `[idle]` label and the file writes from `timeline98.h`), `10-main-shim/host/profile_report98.js`, `14-launch/tests/prof_oracle.mjs`.
