@@ -282,3 +282,22 @@ Owner, v23: 8 s until the workbench shows (v22: 10 s); until stable 19 s (first 
 ### Round 19: the laptop's v24 profile; v25
 
 Owner, v24: 8 s until the workbench shows, 14 s until stable (second start). v25 compares custom-property scopes without walking their whole chains, and saves the style engine's first analysis of the rules for later starts ([14-launch/README.md](../14-launch/README.md#the-laptops-v24-profile-and-what-v25-changed)). Wine, plain starts without the profiler: 21.8/17.4/15.9 s until stable with v24, 19.6/16.7/15.4 s with v25. Package v25: SHA256 `75a9aa13c18f5e8145f4f53bf9e7de6a03de4fd40e1be76d2178f9d71810f53f` (joined zip, 7 parts).
+
+### Round 20: v25 on the laptop
+
+Owner's stopwatch, open / stable: run 1 11 / 20 s, run 2 11 / 16 to 17 s, run 3 (profiler off: `QJS98_PROFILE=0` in `run-desktop.cmd`) 7 / 15 to 16 s. v24's second start was 8 / 14 s. From the logs (run 2 profiled, run 3 not; v24 = its second start):
+
+| | v24 | v25 run 2 | v25 run 3 (no profiler) |
+|---|---|---|---|
+| full paint (~400 elements) | 7.01 s | 7.50 s | 6.96 s |
+| `didStartWorkbench` | 6.68 s | 7.26 s | 6.68 s |
+| last paint | 14.8 s | (closed at 18.7 s) | 18.2 s |
+| window busy | 13.9 s | 16.5 s | 15.3 s |
+| style (all passes) / first pass | 4.26 / 1.77 s | | 3.22 / 1.29 s |
+| `present` (copy to the screen) / `[host]` | 0.13 / 0.73 s | **2.21 / 1.87 s** | |
+
+- The style engine did what the Wine runs showed: about 1 s less style time, and a 0.5 s shorter first pass.
+- The launch did not get shorter, because other work grew. In run 2, copying frames to the screen took 2.2 s instead of 0.13 s, and C code outside JavaScript took 1.9 s instead of 0.7 s; nothing in v25 touches either. Both point at the machine (another program, display or power state). In run 3, the extension host and shared process ran at 95 to 100 % around 14 to 15 s, while the window was busy 1.4 s longer than in v24.
+- The profiler on real Windows: run 3 reached `didStartWorkbench` 8 % sooner than run 2 (about 25 % under Wine).
+- The prediction from the Wine runs (about 6.6 s to `didStartWorkbench`) held without the profiler; the predicted ~13 s busy did not (15.3 s).
+- The editor watermark (the large VS Code logo) is missing in v22, v24 and v25 alike, under Wine too. Our renderer never drew it, so it is not a regression of the SVG work.
