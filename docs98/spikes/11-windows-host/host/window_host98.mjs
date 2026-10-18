@@ -33,9 +33,9 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 	// what the owner feels, in the log (the laptop logs of v26 had no per-action times): for each click or key, the time in the handler, to the first paint and to the last paint of the burst that followed, and the collections that ran meanwhile; plus a fixed CPU loop every 15 s of idle time, to tell a slowing machine (thermal throttling, other load) from a slowing program
 	let pend = null, probeAt = performance.now(), probeFirst = 0, nAct = 0;
 	const gcNow = () => { const g = globalThis.__gcStats?.(); return g ? { forced: g[1], heap: Math.round(g[2] / 1048576) } : { forced: 0, heap: 0 }; };
-	const finishAct = (why) => { const a = pend; pend = null; if (!a) { return; } lats.push(a.last === null ? 0 : a.last); const g = gcNow(); const now = performance.now();
+	const finishAct = (why) => { const a = pend; pend = null; if (!a) { return; } lats.push(a.last === null ? 0 : a.last); if (a.last !== null) { spans.push({ label: a.type + ' ' + a.what, a: a.epoch0, b: a.epoch0 + a.last }); } const g = gcNow(); const now = performance.now();
 		log?.(`[latency] ${a.type} ${a.what}: handler ${a.handlerMs.toFixed(0)} ms, first paint ${a.first === null ? 'none' : a.first.toFixed(0) + ' ms'}, last paint ${a.last === null ? 'none' : a.last.toFixed(0) + ' ms'}${why ? ' (' + why + ')' : ''}, ${(doc.__passStats || []).length - a.passes0} layout passes, ${paints - a.paints0} paints, forced collections +${g.forced - a.forced0}, idle +${gcRuns - a.idle0}, heap ${g.heap} MB`); };
-	const lats = [];
+	const lats = [], spans = [];   // spans: the epoch time of each input and of its last paint, for the profile of the use (10-main-shim/host/use_profile98.js)
 	const describe = (el) => { if (!el) { return ''; } let t = ''; try { t = String(el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 28); } catch (e) { } return ` ${el.localName}.${String(el.className || '').split(' ')[0].slice(0, 30)}${t ? ' "' + t + '"' : ''}`; };
 	const probe = () => { let x = 0, ms = Infinity; for (let r = 0; r < 3; r++) { const t = performance.now(); for (let i = 0; i < 1500000; i++) { x = (x + i * 7) | 0; } ms = Math.min(ms, (performance.now() - t) * 2); }   // the fastest of three: a preemption in one of them does not count
 		if (!probeFirst) { probeFirst = ms; } const g = gcNow();
@@ -53,7 +53,7 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 		if (type !== 'mousemove' && type !== 'paint' && ctx.opt?.('debug-input', '0') === '1') { ctx.log?.('[input] event ' + type + ' ' + a + ' ' + b + ' ' + c + ' ' + d); }
 		if (zoom.factor !== 1 && (type === 'mousemove' || type === 'mousedown' || type === 'mouseup' || type === 'dblclick' || type === 'wheel')) { a = Math.round(a / zoom.factor); b = Math.round(b / zoom.factor); }   // window pixels -> CSS pixels
 		const act = type === 'mousedown' || type === 'dblclick' || type === 'keydown' || type === 'wheel';
-		if (act) { if (pend) { finishAct('next input came first'); } const g = gcNow(); pend = { type, what: type === 'keydown' ? 'key ' + a : a + ',' + b, t0: performance.now(), handlerMs: 0, first: null, last: null, lastAt: 0, passes0: (doc.__passStats || []).length, paints0: paints, forced0: g.forced, idle0: gcRuns }; nAct++; }
+		if (act) { if (pend) { finishAct('next input came first'); } const g = gcNow(); pend = { epoch0: Date.now(), type, what: type === 'keydown' ? 'key ' + a : a + ',' + b, t0: performance.now(), handlerMs: 0, first: null, last: null, lastAt: 0, passes0: (doc.__passStats || []).length, paints0: paints, forced0: g.forced, idle0: gcRuns }; nAct++; }
 		if (type === 'mouseup' && pend) { pend.quietFrom = performance.now(); }   // the click itself (a file opening, a menu item running) happens on the mouseup: the burst is not over before it
 		ctx.lastDown98 = null; const th = performance.now(); const handled = driver.handle(type, a, b, c, d, mods); if (act && pend && pend.handlerMs === 0) { pend.handlerMs = performance.now() - th; if (ctx.lastDown98) { pend.what += describe(ctx.lastDown98); } }
 		if (handled) { return; }
@@ -61,7 +61,7 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 			case 'resize': W = a; H = b; log?.(`[window] resize ${a}x${b}`); env.resize?.(Math.round(a / zoom.factor), Math.round(b / zoom.factor)); repaint(); break;
 			case 'focus': { if (a) { env.window.dispatchEvent(new env.window.Event('focus')); } else { env.window.dispatchEvent(new env.window.Event('blur')); } break; }
 			case 'close': finishAct('window closed'); probe(); { const g = gcNow(); { const v = lats.filter(x => x > 0).sort((p, q) => p - q); const q = (f) => v.length ? v[Math.min(v.length - 1, Math.floor(v.length * f))].toFixed(0) : '-'; log?.(`[window] response time of ${v.length} inputs that changed the screen (input to last paint): median ${q(0.5)} ms, 90th percentile ${q(0.9)} ms, slowest ${q(1)} ms, over 1 s: ${v.filter(x => x > 1000).length}, over 3 s: ${v.filter(x => x > 3000).length}`); }
-			log?.(`[window] closing: ${nAct} inputs, ${paints} paints, collections at idle moments ${gcRuns} (${Math.round(gcMs)} ms), forced ${g.forced}, heap ${g.heap} MB`); } win.destroy(wid); log?.('[window] closed'); try { onClose?.(); } finally { std.exit(0); } break;
+			log?.(`[window] closing: ${nAct} inputs, ${paints} paints, collections at idle moments ${gcRuns} (${Math.round(gcMs)} ms), forced ${g.forced}, heap ${g.heap} MB`); } ctx.useProfile?.(spans); win.destroy(wid); log?.('[window] closed'); try { onClose?.(); } finally { std.exit(0); } break;
 			case 'paint': break;   // the echo of our own present(): repainting on it is an endless loop (found on Windows 7: 12 frames/s of an idle workbench)
 		}
 	});

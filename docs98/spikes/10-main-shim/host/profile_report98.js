@@ -11,7 +11,7 @@ const ms = (v) => rpad(Math.round(v), 7);
 const pct = (v, tot) => rpad((100 * v / tot).toFixed(1), 5) + '%';
 const fileOf = (name) => { const m = / ([^ ]+):\d+:\d+$/.exec(name); return m ? m[1] : null; };
 
-function loadProfiles(dir, procs) {
+export function loadProfiles(dir, procs) {
 	const [names] = os.readdir(dir); const out = [];
 	for (const n of (names || []).filter(x => x.endsWith('.prof.json'))) {
 		let p; try { p = JSON.parse(std.loadFile(dir + '/' + n)); } catch { continue; }   // being rewritten
@@ -23,7 +23,7 @@ function loadProfiles(dir, procs) {
 	return out;
 }
 /** aggregates the samples of p with t (harness clock, ms) in [a, b) */
-function aggregate(p, t0, a = -Infinity, b = Infinity) {
+export function aggregate(p, t0, a = -Infinity, b = Infinity) {
 	const self = new Map(), incl = new Map(), file = new Map(); let busy = 0, idle = 0, n = 0;
 	const idleId = p.names.indexOf('[idle]');
 	for (let i = 0; i < p.samples.length; i += 3) {

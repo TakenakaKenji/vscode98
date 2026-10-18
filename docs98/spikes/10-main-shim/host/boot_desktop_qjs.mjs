@@ -28,6 +28,7 @@ import { ONIG_SHIM_SOURCE } from './onig_shim98.js';
 import { PortTable } from './ports98.js';
 import { encode, decode } from './codec98.js';
 import { startTimeline, timelineMark, timelineReport } from './timeline_report98.js';
+import { useProfileReport } from './use_profile98.js';
 
 const nodeProcess = globalThis.process;
 const args = nodeProcess.argv.slice(2); const opt = (n, d) => { const i = args.indexOf('--' + n); return i >= 0 ? args[i + 1] : d; };
@@ -140,7 +141,8 @@ const tImport = performance.now();
 log('[harness] page scripts: ' + JSON.stringify(scripts));
 for (const s of scripts) { try { await import(s); log('[harness] imported ' + s + ' after ' + Math.round(performance.now() - t00) + ' ms (' + Math.round(performance.now() - tImport) + ' ms for the import)'); } catch (e) { log('[harness] import failed ' + s + ': ' + (e && e.stack || e)); note('import ' + s, e); } }
 const tLoaded = performance.now(); const rssAfterImport = rss();
-const ctx = { env, doc, note, rss, layoutTiming, styleNative, opt, log, W, H, consoleLog, gcIdle, timelineMark: timelineDir ? timelineMark : null };
+const ctx = { env, doc, note, rss, layoutTiming, styleNative, opt, log, W, H, consoleLog, gcIdle, timelineMark: timelineDir ? timelineMark : null,
+	useProfile: timelineDir ? (wins) => { try { globalThis.__timelineDump?.(); useProfileReport(timelineDir, nodeProcess.pid ?? globalThis.__spikeProc?.getpid?.(), wins, log); } catch (e) { log('[use-profile] ' + e); } } : null };
 // the BrowserWindow's backgroundColor (main: the theme's background, #1E1E1E by default): what Electron shows before the page paints and where it sets no background
 const windowBackground = (() => { try { const c = createOpts?.options?.backgroundColor; return c ? parseColor(String(c)) : null; } catch { return null; } })(); if (windowBackground) { doc.__baseBackground = windowBackground; }
 let winHost = null;

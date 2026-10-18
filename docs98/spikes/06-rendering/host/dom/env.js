@@ -5,7 +5,7 @@ import * as D from './dom.js';
 import { NodeFilter, NodeIterator, TreeWalker } from './dom_extra.js';
 import { isHoisted, itemsOf } from './stacking.js';
 import { CSSStyleSheet, serializeValue, parseColor, PROPS, resolveLen } from './css.js';
-import { Layout, disposeLayout } from './layout.js';
+import { Layout, disposeLayout, resolveStyles } from './layout.js';
 import { iframeProps, syncFrames, deepHit, splitHtml, mountMarkup } from './frames.js';
 import { decodeImage } from './images.js';
 import { resolveFont, fontMetrics, advance, registerFontFace, setOpentype } from './fonts.js';
@@ -132,11 +132,21 @@ export class Document extends Node {
 		const src = el.getAttribute('src'); if (!src) { return null; } if (el.__imgSrc === src) { return el.__img || null; }
 		el.__imgSrc = src; const im = this.__imageByUrl(src); el.__img = im; setTimeout(() => { el.dispatchEvent(new D.Event(im ? 'load' : 'error')); }, 0); return im;
 	}
-	__ensureLayout() {
+	/** brings the layout up to date; `stylesOnly` (getComputedStyle of a property that needs no geometry): the styles only, the layout stays pending (`__dirty` stays set, `__stylesResolved` remembers that the styles are done) */
+	__ensureLayout(stylesOnly = false) {
 		const env = this.__env;
 		if (this.__layout && !this.__dirty) { return; }
-		const t0 = performance.now(); const dirty = this.__dirtyLog || []; this.__dirtyLog = []; let lay = this.__layout, reused = false;
-		if (lay && !this.__noStyleOnly) { const ts = performance.now(); const r = Layout.styleOnly(this, env, lay, dirty); if (r === true) { reused = true; lay.styleMs = performance.now() - ts; lay.layoutMs = 0; lay.styleInfo = this.__styleInfo; if (this.__verifyStyleOnly) { this.__checkStyleOnly(lay); } } else { lay = null; this.__stylesResolved = r === null; this.__preStyleMs = r === null ? performance.now() - ts : 0; } } else { lay = null; }
+		if (stylesOnly && (!this.__layout || globalThis.__noLazyGcs98)) { stylesOnly = false; }
+		if (stylesOnly && this.__stylesResolved === true && !(this.__dirtyLog && this.__dirtyLog.length)) { return; }
+		if (globalThis.__whyPasses98) { const st = new Error().stack.split('\n').slice(1).map(x => x.trim().replace(/^at /, '')).filter(x => !/^(__ensureLayout|__boxFor|__box|__rect|get \w+)\b|env\.js/.test(x) || /get (client|offset|scroll)\w+ dom\.js/.test(x)); const key = st.slice(0, 4).join(' < '); globalThis.__whyPasses98.set(key, (globalThis.__whyPasses98.get(key) || 0) + 1); }   // --why 1 of scenario_ctl: who asked for each layout pass
+		const t0 = performance.now(); let dirty = this.__dirtyLog || []; this.__dirtyLog = []; let lay = this.__layout, reused = false;
+		if (this.__stylesResolved === true) {   // an earlier getComputedStyle resolved the styles and left the layout pending: only the mutations since then are new to the style pass
+			lay = null; if (dirty.length) { const ts = performance.now(); resolveStyles(this, env, dirty); this.__preStyleMs = (this.__preStyleMs || 0) + performance.now() - ts; } dirty = (this.__pendingDirty || []).concat(dirty); this.__pendingDirty = null;
+		} else if (lay && !this.__noStyleOnly) { const ts = performance.now(); const r = Layout.styleOnly(this, env, lay, dirty); if (r === true) { reused = true; lay.styleMs = performance.now() - ts; lay.layoutMs = 0; lay.styleInfo = this.__styleInfo; if (this.__verifyStyleOnly) { this.__checkStyleOnly(lay); } } else { lay = null; this.__stylesResolved = r === null; this.__preStyleMs = r === null ? performance.now() - ts : 0; } } else { lay = null; }
+		if (stylesOnly && !reused) {
+			if (this.__stylesResolved !== true) { const ts = performance.now(); resolveStyles(this, env, dirty); this.__stylesResolved = true; this.__preStyleMs = (this.__preStyleMs || 0) + performance.now() - ts; }   // styleOnly gave up before resolving (nodes inserted, text changed ...)
+			this.__pendingDirty = dirty; this.__lazyGcs = (this.__lazyGcs || 0) + 1; return;
+		}
 		if (!reused) { lay = new Layout(this, env); lay.dirtyLog = dirty; lay.skipStyle = this.__stylesResolved === true; lay.preStyleMs = this.__preStyleMs || 0; this.__stylesResolved = false; this.__preStyleMs = 0; lay.run(); }
 		if (this.__passStats) { this.__passStats.push(summarizeDirty(dirty, this, lay, t0)); } { const prevLay = this.__layout; this.__layout = lay; if (prevLay && prevLay !== lay) { if (this.__retiredLayout) { disposeLayout(this.__retiredLayout); } this.__retiredLayout = prevLay; } }   // the layout of the pass before the previous one is taken apart (layout.js disposeLayout)
 		if (lay) { lay.__ctxItems = null; } this.__dirty = false; this.__styleDirty = false; this.__layoutCount++; this.__layoutMs += performance.now() - t0; if (!reused) { this.__applyTransforms(lay); } else { this.__styleOnlyPasses = (this.__styleOnlyPasses || 0) + 1; }
@@ -293,11 +303,13 @@ export function installEnvironment(opts = {}) {
 
 // ---- getComputedStyle -------------------------------------------------------------------------------------------------------------------------
 export function computedStyleFor(doc, el, pseudo) {
-	doc.__ensureLayout(); const cs = el.__cs; const box = doc.__layout && doc.__layout.boxOf.get(el); const vals = cs ? cs.values : {};
+	doc.__ensureLayout(true); const cs = el.__cs; const vals = cs ? cs.values : {};   // styles only: the layout is run when a property that reads the geometry is asked for (below)
+	let box, boxed = false; const boxOf = () => { if (!boxed) { boxed = true; doc.__ensureLayout(); box = doc.__layout && doc.__layout.boxOf.get(el); } return box; };
 	const dashOf = (n) => n.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
 	const get = (n) => {
 		const k = n.startsWith('--') ? n : dashOf(n === 'cssFloat' ? 'float' : n); if (k.startsWith('--')) { return cs ? (cs.vars.get(k) ?? '') : ''; }
 		if (!cs) { return ''; }
+		const needsBox = k === 'width' || k === 'height' || /^(margin|padding)-(top|right|bottom|left)$/.test(k); const box = needsBox ? boxOf() : null;
 		if (box && (k === 'width' || k === 'height')) { const bb = vals['box-sizing'] === 'border-box'; if (box.kind === 'inline' || vals.display === 'none') { return 'auto'; } return (k === 'width' ? (bb ? box.w : box.w - box.hx) : (bb ? box.h : box.h - box.vy)) + 'px'; }
 		if (box && /^(margin|padding)-(top|right|bottom|left)$/.test(k)) { const side = { top: 't', right: 'r', bottom: 'b', left: 'l' }[k.split('-')[1]]; return (k.startsWith('margin') ? box['m' + side] : box['p' + side]) + 'px'; }
 		if (k === 'line-height') { const l = vals['line-height']; if (l === 'normal') { return 'normal'; } return typeof l === 'number' ? l + 'px' : (l && l.num !== undefined ? (l.num * vals['font-size']) + 'px' : serializeValue(k, l)); }

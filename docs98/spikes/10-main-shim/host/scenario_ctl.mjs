@@ -19,11 +19,19 @@ async function run0(ctx) {
 	// between two actions a user pauses: with the idle collector (07-native-render/host/gc98.h) that is where a pending collection runs; its count and time are reported
 	let idleGcRuns = 0, idleGcMs = 0; const idleGc = (before) => { if (ctx.gcIdle && globalThis.__gcWanted?.()) { const h0 = globalThis.__gcStats()[2]; const t = performance.now(); globalThis.__gcNow(); idleGcRuns++; idleGcMs += performance.now() - t; log(`ctl: idle collection before ${before}: ${Math.round(performance.now() - t)} ms, heap ${Math.round(h0 / 1048576)} -> ${Math.round(globalThis.__gcStats()[2] / 1048576)} MB`); } };
 	if (ctx.opt('no-dispose', '0') === '1') { globalThis.__noDispose98 = true; }
+	if (ctx.opt('lazy-gcs', '1') === '0') { globalThis.__noLazyGcs98 = true; }
+	// --geo 1: after each action a hash of the geometry of every box (the oracle of changes that must not change what is laid out: the same hashes with and without them)
+	const geo = ctx.opt('geo', '0') === '1';
+	const geoHash = () => { doc.__ensureLayout(); let h = 2166136261 >>> 0; const mix = (v) => { h = Math.imul(h ^ (Math.round(v * 64) | 0), 16777619) >>> 0; }; let n = 0; for (const el of doc.getElementsByTagName('*')) { const b = doc.__layout.boxOf.get(el); if (!b) { continue; } n++; mix(b.ax); mix(b.ay); mix(b.w); mix(b.h); } return h.toString(16) + '/' + n; };
+	const why = ctx.opt('why', '0') === '1'; const whyAll = {}; if (why) { globalThis.__whyPasses98 = new Map(); }
 	async function timed(name, act, pred, maxMs = 60000) {
+		if (why) { globalThis.__whyPasses98.clear(); }
 		idleGc(name); const f0 = globalThis.__gcStats?.()[1] ?? 0; const a0 = { ...acc }; const p0 = doc.__passStats.length; const e0 = Date.now(); const t0 = performance.now(); act(); const tEvent = performance.now() - t0;
 		for (;;) { await sleep(1); tick(); let ok = false; try { ok = pred(); } catch { } if (ok) { break; } if (performance.now() - t0 > maxMs) { log('ctl: timeout ' + name); return -1; } }
 		const ms = Math.round(performance.now() - t0);
 		const forced = (globalThis.__gcStats?.()[1] ?? 0) - f0; if (forced) { log(`ctl: ${name} ${ms} ms contained ${forced} collection(s) forced from inside an allocation`); }
+		if (why) { const m = (whyAll[name] ??= new Map()); for (const [k, v] of globalThis.__whyPasses98) { m.set(k, (m.get(k) || 0) + v); } }
+		if (geo) { log(`ctl: geo ${name} ${geoHash()}`); }
 		if (marks) { log(`ctl: mark ${name} ${e0} ${Date.now()}`); }   // epoch ms of the action, for selecting its samples from a profile (14-launch/tests/profile_actions.mjs)
 		if (split) { const ps = doc.__passStats.slice(p0); const style = ps.reduce((a, x) => a + x.styleMs, 0), lay = ps.reduce((a, x) => a + x.layoutMs, 0); (splits[name] ??= []).push({ ms, event: Math.round(tEvent), frames: Math.round(acc.frames - a0.frames), style: Math.round(style), layout: Math.round(lay), paint: Math.round(acc.paint - a0.paint), passes: ps.length }); }
 		return ms;
@@ -80,6 +88,7 @@ async function run0(ctx) {
 	}
 	const med = {}; for (const k of Object.keys(results[0])) { const v = results.map((r) => r[k]).sort((a, b) => a - b); med[k] = v[Math.floor(v.length / 2)]; }
 	log('ctl: median ' + JSON.stringify(med));
+	if (why) { for (const [name, m] of Object.entries(whyAll)) { const tot = [...m.values()].reduce((a, b) => a + b, 0); log(`ctl: why ${name}: ${tot} layout passes over ${rounds} rounds`); for (const [k, v] of [...m].sort((a, b) => b[1] - a[1]).slice(0, 5)) { log(`ctl:   ${v} x ${k.slice(0, 300)}`); } } }
 	if (split) { for (const [k, list] of Object.entries(splits)) { const m = list[Math.floor(list.length / 2)]; log('ctl: split ' + k + ' ' + JSON.stringify(m)); } }
 	{ const st = globalThis.__gcStats?.(); log(`ctl: gc ${ctx.gcIdle ? 'idle' : 'stock'}: ${idleGcRuns} runs between actions (${Math.round(idleGcMs)} ms), ${st ? st[0] : '?'} idle-scheduled in total, ${st ? st[1] : '?'} forced from inside an allocation, heap ${st ? Math.round(st[2] / 1048576) : '?'} MB`); }
 	log('ctl: done');
