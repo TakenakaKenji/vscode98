@@ -19,7 +19,6 @@ async function run0(ctx) {
 	// between two actions a user pauses: with the idle collector (07-native-render/host/gc98.h) that is where a pending collection runs; its count and time are reported
 	let idleGcRuns = 0, idleGcMs = 0; const idleGc = (before) => { if (ctx.gcIdle && globalThis.__gcWanted?.()) { const h0 = globalThis.__gcStats()[2]; const t = performance.now(); globalThis.__gcNow(); idleGcRuns++; idleGcMs += performance.now() - t; log(`ctl: idle collection before ${before}: ${Math.round(performance.now() - t)} ms, heap ${Math.round(h0 / 1048576)} -> ${Math.round(globalThis.__gcStats()[2] / 1048576)} MB`); } };
 	if (ctx.opt('no-dispose', '0') === '1') { globalThis.__noDispose98 = true; }
-	if (ctx.opt('lazy-gcs', '1') === '0') { globalThis.__noLazyGcs98 = true; }
 	// --geo 1: after each action a hash of the geometry of every box (the oracle of changes that must not change what is laid out: the same hashes with and without them)
 	const geo = ctx.opt('geo', '0') === '1';
 	const geoHash = () => { doc.__ensureLayout(); let h = 2166136261 >>> 0; const mix = (v) => { h = Math.imul(h ^ (Math.round(v * 64) | 0), 16777619) >>> 0; }; let n = 0; for (const el of doc.getElementsByTagName('*')) { const b = doc.__layout.boxOf.get(el); if (!b) { continue; } n++; mix(b.ax); mix(b.ay); mix(b.w); mix(b.h); } return h.toString(16) + '/' + n; };
