@@ -24,7 +24,7 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 		const t0 = performance.now(); doc.__ensureLayout(); paintedPasses = (doc.__passStats || []).length; paintedGen = doc.__paintGen | 0;
 		if (!backend || backend.w !== W || backend.h !== H) { backend = new NativeBackend(W, H, { exact }); } else { backend.reset(); }
 		const z = zoom.factor; const r = paintDocument(doc, z === 1 ? W : Math.round(W / z), z === 1 ? H : Math.round(H / z), z === 1 ? backend : new ScaledBackend(backend, z));
-		win.present(id, r.px, W, H, 0, 0, W, H); paints++; paintMs += performance.now() - t0; lastPaint = performance.now();
+		win.present(id, r.px, W, H, 0, 0, W, H); paints++; paintMs += performance.now() - t0; lastPaint = performance.now(); lastCost = lastPaint - t0;
 		if (paints <= 40 && ctx.timelineMark) { ctx.timelineMark(`harness: paint ${paints} (${doc.getElementsByTagName('*').length} elements, ${Math.round(performance.now() - t0)} ms)`); }   // the launch timeline: when the window first showed something, and what
 	}
 	// any layout pass since the last paint counts: code that reads geometry runs layout itself and clears doc.__dirty, so `__dirty` alone misses most changes
@@ -40,9 +40,13 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 	const probe = () => { let x = 0, ms = Infinity; for (let r = 0; r < 3; r++) { const t = performance.now(); for (let i = 0; i < 1500000; i++) { x = (x + i * 7) | 0; } ms = Math.min(ms, (performance.now() - t) * 2); }   // the fastest of three: a preemption in one of them does not count
 		if (!probeFirst) { probeFirst = ms; } const g = gcNow();
 		log?.(`[probe] fixed loop ${ms.toFixed(0)} ms (first ${probeFirst.toFixed(0)} ms), ${(ms / probeFirst).toFixed(2)}x, collections idle ${gcRuns} (${Math.round(gcMs)} ms) forced ${g.forced}, heap ${g.heap} MB${x === 12345 ? ' ' : ''}`); };
+	// frames while the program is busy: a paint costs ~35 ms on the laptop (more with the layout it forces) and half of a long burst of work (a menu, a file opening: 20 to 70 layout passes, 30 paints) went to painting
+	// every 33 ms; the gap to the next paint is now three times the cost of the last one (33 to 300 ms), so the program gets two thirds of the time. The paint after a quiet period is not delayed, and the last
+	// frame of a burst is painted when the gap is over. `--paint-pace 0` = the old fixed 30 fps.
+	const pace = ctx.opt?.('paint-pace', '1') !== '0'; let lastCost = 0;
 	const tick = () => {
 		if (win.size(id)[0] === 0) { return; }
-		try { env.flushFrames?.(); const passes = (doc.__passStats || []).length; const dirty = doc.__dirty || forced || passes !== paintedPasses || (doc.__paintGen | 0) !== paintedGen; if (dirty && performance.now() - lastPaint >= 1000 / fps) { forced = false; paintNow(); lastActive = performance.now(); if (pend) { const el = lastPaint - pend.t0; if (pend.first === null) { pend.first = el; } pend.last = el; pend.lastAt = lastPaint; } }
+		try { env.flushFrames?.(); const passes = (doc.__passStats || []).length; const dirty = doc.__dirty || forced || passes !== paintedPasses || (doc.__paintGen | 0) !== paintedGen; if (dirty && performance.now() - lastPaint >= (pace ? Math.max(1000 / fps, Math.min(300, lastCost * 3)) : 1000 / fps)) { forced = false; paintNow(); lastActive = performance.now(); if (pend) { const el = lastPaint - pend.t0; if (pend.first === null) { pend.first = el; } pend.last = el; pend.lastAt = lastPaint; } }
 			else if (!dirty && pend && performance.now() - Math.max(pend.lastAt || pend.t0, pend.quietFrom || 0) >= (pend.first === null ? 600 : 250)) { finishAct(''); }
 			else if (!dirty && !pend && performance.now() - probeAt >= 15000 && performance.now() - lastActive >= 400) { probeAt = performance.now(); probe(); }
 			else if (!dirty && ctx.gcIdle && performance.now() - lastActive >= 800 && globalThis.__gcWanted?.()) { const t = performance.now(); globalThis.__gcNow(); gcRuns++; gcMs += performance.now() - t; lastActive = performance.now(); } } catch (e) { ctx.note?.('paint', e); }

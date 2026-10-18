@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import { installEnvironment } from '../../06-rendering/host/dom/env.js';
 const require = createRequire(import.meta.url); const opentype = require('/home/user/vscode98/node_modules/opentype.js/dist/opentype.js');
 globalThis.__readFileBytes = (p) => { const b = fs.readFileSync(p); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); };
+globalThis.__verifyCount98 = { checked: 0, bad: 0 };   // resolveStyles reusing the element count of the previous pass is compared with a recount
 const seeds = Number(process.argv[2] ?? 200), steps = Number(process.argv[3] ?? 25), first = Number(process.argv[4] ?? 1);
 if (process.env.FUZZ_DEBUG) { globalThis.__styleDebug = (plan, log, inv) => { globalThis.__lastPlanRef = plan; globalThis.__lastInv = inv; }; }
 const env = installEnvironment({ width: 600, height: 400, opentype }); const doc = env.document; env.layoutEngine = { run() { } };   // style only: the fuzz checks style resolution, and the flex layout of random trees can be very slow
@@ -47,4 +48,5 @@ for (let s = first; s < first + seeds; s++) {
 }
 console.log(`${passes} passes: ${incremental} incremental (restyled ${recomputed} of ${totalEls} elements = ${(100 * recomputed / Math.max(1, totalEls)).toFixed(1)} %), ${fullPasses} full ${JSON.stringify([...reasons])}; mismatching passes: ${bad}`);
 if (styleNative) { const cs = styleNative.engine.nativeStats ? styleNative.engine.nativeStats() : {}; if (cs.varsEqual !== undefined) { console.log(`custom-property scope comparisons: ${cs.varsEqual}, ${cs.varsEqualFull} over the whole chain, ${cs.varsEqualMismatches} answers different from the whole-chain comparison (counted with QJS98_VARS_VERIFY=1)`); } console.log(`native matcher: ${styleNative.stats.matches} elements matched, ${styleNative.stats.fallbacks} fallbacks, ${styleNative.mismatches.length} differences from the JavaScript matcher${styleNative.mismatches.length ? '\n  ' + styleNative.mismatches.slice(0, 10).join('\n  ') : ''}; ${styleNative.stats.computes} computed in C (${styleNative.stats.computeFallbacks} left to JavaScript), ${styleNative.computeMismatches.length} differences from computeStyleJS${styleNative.computeMismatches.length ? '\n  ' + styleNative.computeMismatches.slice(0, 10).join('\n  ') : ''}`); }
-process.exit(bad ? 1 : 0);
+console.log(`element counts reused and compared with a recount: ${globalThis.__verifyCount98.checked}, different: ${globalThis.__verifyCount98.bad}`);
+process.exit(bad || globalThis.__verifyCount98.bad ? 1 : 0);

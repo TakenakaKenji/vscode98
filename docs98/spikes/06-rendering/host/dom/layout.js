@@ -45,7 +45,13 @@ export function resolveStyles(doc, env, log) {
 		if (!full) { if (envKey !== doc.__indexEnvKey) { full = 'environment changed'; } else { delta = !old ? null : extended ? deltaOfUpdate(upd) : diffIndex(old, index); if (!delta) { full = 'rule set changed too much'; } } }
 		doc.__indexEnvKey = envKey;
 	}
-	const indexMs = performance.now() - t0; let total = root ? countElements(root) : 0; let plan = null;
+	const indexMs = performance.now() - t0;
+	// the number of elements only changes by insertions and removals: a pass whose log has none keeps the count of the previous pass (0.2 s of the sandbox's 11 s of actions, 2 % of the laptop's)
+	let total; { const cached = doc.__elCount; const structural = !log || log.some(e => e[1] === 'ins' || e[1] === 'rem');
+		total = cached !== undefined && cached.root === root && !structural && !doc.__logOverflow ? cached.n : (root ? countElements(root) : 0);
+		if (cached !== undefined && cached.root === root && !structural && !doc.__logOverflow && globalThis.__verifyCount98) { const g = globalThis.__verifyCount98; g.checked++; if (total !== countElements(root)) { g.bad++; } }
+		doc.__elCount = { root, n: total }; }
+	let plan = null;
 	if (!full && root) { plan = planRestyle(doc, log, planInv || index.inv, delta, total); if (plan.full) { full = plan.full; plan = null; } }
 	const info = { mode: full ? 'full' : 'incremental', reason: full || '', total, recomputed: 0, rematched: 0, marked: plan ? plan.marks.size : 0, planMs: 0, indexMs, sheets: !!delta || undefined };
 	if (plan) { for (const el of plan.marks.keys()) { for (let a = el; a && a.nodeType === 1 && a.__dd !== passId; a = a.parentNode) { a.__dd = passId; } } }
