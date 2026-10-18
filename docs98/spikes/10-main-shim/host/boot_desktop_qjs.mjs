@@ -52,6 +52,8 @@ const timelineDir = opt('timeline'); const t00Epoch = Date.now() - t00; let time
 // --code-cache <dir> (default <user-data-dir>/code-cache; 0 = off): bytecode of the large ES modules (05-child-process/host/esm.c), for this process and every one it starts
 const codeCacheDir = opt('code-cache', opt('user-data-dir') ? nodePath.join(opt('user-data-dir'), 'code-cache') : '0');
 if (codeCacheDir !== '0' && globalThis.__codeCacheDir) { try { os.mkdir(nodePath.dirname(codeCacheDir)); } catch { /* exists */ } os.mkdir(codeCacheDir); globalThis.__codeCacheDir(codeCacheDir); nodeProcess.env.QJS98_CODE_CACHE = codeCacheDir; }
+// --gc-idle 0: the collector as stock QuickJS runs it (inside whatever allocation finds the heap 50 % larger); default: at idle moments (07-native-render/host/gc98.h)
+const gcIdle = opt('gc-idle', '1') === '1' && typeof globalThis.__gcIdle === 'function'; if (gcIdle) { globalThis.__gcIdle(true); }
 // the style engine's first full analysis of the rules is saved next to the bytecode (style-<key>.json; the key names the rule set): later starts read it
 if (codeCacheDir !== '0') { setAnalysisStore({ get: (k) => std.loadFile(`${codeCacheDir}/style-${k}.json`), put: (k, v) => { const f = `${codeCacheDir}/style-${k}.json`, t = f + '.tmp'; const h = std.open(t, 'w'); if (!h) { return; } h.puts(v); h.close(); os.rename(t, f); } }); }
 // ---- vscode-file://vscode-app/<abs path> -> file path, for import()
@@ -138,7 +140,7 @@ const tImport = performance.now();
 log('[harness] page scripts: ' + JSON.stringify(scripts));
 for (const s of scripts) { try { await import(s); log('[harness] imported ' + s + ' after ' + Math.round(performance.now() - t00) + ' ms (' + Math.round(performance.now() - tImport) + ' ms for the import)'); } catch (e) { log('[harness] import failed ' + s + ': ' + (e && e.stack || e)); note('import ' + s, e); } }
 const tLoaded = performance.now(); const rssAfterImport = rss();
-const ctx = { env, doc, note, rss, layoutTiming, styleNative, opt, log, W, H, consoleLog, timelineMark: timelineDir ? timelineMark : null };
+const ctx = { env, doc, note, rss, layoutTiming, styleNative, opt, log, W, H, consoleLog, gcIdle, timelineMark: timelineDir ? timelineMark : null };
 // the BrowserWindow's backgroundColor (main: the theme's background, #1E1E1E by default): what Electron shows before the page paints and where it sets no background
 const windowBackground = (() => { try { const c = createOpts?.options?.backgroundColor; return c ? parseColor(String(c)) : null; } catch { return null; } })(); if (windowBackground) { doc.__baseBackground = windowBackground; }
 let winHost = null;
@@ -168,6 +170,7 @@ const done = performance.now();
 if (globalThis.__packVerify) { log('pack verify: ' + JSON.stringify(globalThis.__packStats)); }
 log('style-only passes (previous layout kept): ' + (doc.__styleOnlyPasses || 0) + ' of ' + (doc.__passStats || []).length + (doc.__verifyStyleOnly ? '; verified ' + (doc.__styleOnlyChecked || 0) + ' boxes, mismatches ' + JSON.stringify(doc.__styleOnlyMismatches || []) : ''));
 summarizeRun(ctx, { tImport, tLoaded, done, t00, errors, consoleLog, rssAfterImport, missing, unsupported });
+if (globalThis.__gcStats) { const g = globalThis.__gcStats(), w = winHost ? winHost.stats() : { gcRuns: 0, gcMs: 0 }; log(`garbage collector (${gcIdle ? 'at idle moments' : 'stock schedule'}): ${w.gcRuns} collections at idle moments (${Math.round(w.gcMs)} ms), ${g[1]} forced from inside an allocation, heap ${Math.round(g[2] / 1048576)} MB (soft limit ${Math.round(g[3] / 1048576)} MB, hard ${Math.round(g[4] / 1048576)} MB)`); }
 if (globalThis.__codeCacheDir) { const c = globalThis.__codeCacheDir(); log(`code cache: ${c.dir ?? 'off'}; this process: ${c.hits} modules read from the cache (${c.renamed} compiled under another path), ${c.writes} written`); }
 if (timelineDir) { timelineMark('harness: workbench stable'); timelineReport(timelineDir, log, t00Epoch); timelinePrinted = true; }
 if (opt('scenario')) { const sc = await import(opt('scenario')); await sc.run(ctx); }

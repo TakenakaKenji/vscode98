@@ -99,6 +99,19 @@ export function anonStyle(v) { return Object.assign({}, v, { display: 'block', '
 const isBlockLevel = (d) => d === 'block' || d === 'list-item' || d === 'flex' || d === 'table' || d === 'flow-root' || d === 'grid' || d === 'table-row' || d === 'table-row-group' || d === 'table-header-group' || d === 'table-cell';
 const REPLACED = new Set(['img', 'canvas', 'video', 'svg', 'iframe', 'input', 'select', 'textarea', 'button']);
 
+/**
+ * A Box tree is a reference cycle (parent <-> children, box <-> its rect list): reference counting cannot free it, only the cycle collector can, which in QuickJS stops
+ * everything for ~0.8 s on the workbench's heap, and every layout pass makes a new tree of ~1,500 boxes (the garbage of 13 actions was ~190 MB, almost all box trees: see
+ * 07-native-render/host/gc98.h, QJS98_GC_CENSUS). Taking a retired layout apart cuts the cycles (parent pointers, rect lists' back references, the fragments a box holds for the text boxes that point back at it), so that counting frees the
+ * boxes, fragments and styles that only the layout kept alive. The children arrays are emptied too: local recursive closures (`const walk = (b) => { ... walk(c) ... }`) are cycles themselves and keep what they captured until the collector runs, and with it the root of a tree.
+ */
+export function disposeLayout(lay) {
+	if (!globalThis.__noDispose98 && lay.rootBox) {
+		const stack = [lay.rootBox];
+		while (stack.length) { const b = stack.pop(); const ch = b.children; for (let i = 0; i < ch.length; i++) { stack.push(ch[i]); } ch.length = 0; b.parent = null; if (b.__rects) { b.__rects = null; } if (b.frags) { b.frags = null; } }
+	}
+	lay.boxOf.clear(); lay.fragsByText.clear(); lay.__ctxItems = null; lay.rootBox = null;
+}
 export class Layout {
 	constructor(doc, env) { this.doc = doc; this.env = env; this.boxOf = new Map(); this.oofList = []; }
 	run() {

@@ -1,6 +1,6 @@
 // Control comparison, QuickJS host side: the same actions as docs98/spikes/12-control/host/electron_lat.mjs (Electron), each timed from the input event to the
 // DOM state that shows the result, the way the window host drives the document (timers, frames, layout, paint per tick). Prints per-round values and medians.
-// Usage: boot_desktop_qjs.mjs ... --workspace <dir> --scenario scenario_ctl.mjs [--rounds 3] [--split 1: style/layout/paint split of each action]
+// Usage: boot_desktop_qjs.mjs ... --workspace <dir> --scenario scenario_ctl.mjs [--rounds 3] [--split 1: style/layout/paint split of each action] [--marks 1: the epoch time of each action, to select its samples from a profile]
 import { runScenario } from '../../08-workbench-boot/host/boot_common.js';
 import { paintDocument } from '../../06-rendering/host/dom/paint.js';
 import { NativeBackend } from '../../07-native-render/host/native_backend.js';
@@ -9,17 +9,22 @@ import * as std from 'qjs:std';
 const sleep = (ms) => new Promise((r) => os.setTimeout(r, ms));
 export async function run(ctx) { try { await run0(ctx); } catch (e) { ctx.log('ctl: failed ' + (e && e.stack || e)); } }
 async function run0(ctx) {
-	const { doc, log, env } = ctx; const W = ctx.W, H = ctx.H; const ws = ctx.opt('workspace', '/tmp/claude-0/ws98'); const rounds = Number(ctx.opt('rounds', 3)); const split = ctx.opt('split', '0') === '1';
+	const { doc, log, env } = ctx; const W = ctx.W, H = ctx.H; const ws = ctx.opt('workspace', '/tmp/claude-0/ws98'); const rounds = Number(ctx.opt('rounds', 3)); const split = ctx.opt('split', '0') === '1'; const marks = ctx.opt('marks', '0') === '1';
 	const settle = (s = 20) => runScenario(ctx, { seconds: s, stableRounds: 40 });
 	const backend = new NativeBackend(W, H, {}); let painted = -1;
 	const MouseEvent = env.window.MouseEvent, PointerEvent = env.window.PointerEvent, KeyboardEvent = env.window.KeyboardEvent, InputEvent = env.window.InputEvent;
 	const acc = { frames: 0, layout: 0, paint: 0 };
 	const tick = () => { let t = performance.now(); env.flushFrames?.(); acc.frames += performance.now() - t; if (doc.__dirty || doc.__passStats.length !== painted) { t = performance.now(); doc.__ensureLayout(); acc.layout += performance.now() - t; painted = doc.__passStats.length; t = performance.now(); backend.reset(); paintDocument(doc, W, H, backend); acc.paint += performance.now() - t; } };
 	const splits = {};
+	// between two actions a user pauses: with the idle collector (07-native-render/host/gc98.h) that is where a pending collection runs; its count and time are reported
+	let idleGcRuns = 0, idleGcMs = 0; const idleGc = (before) => { if (ctx.gcIdle && globalThis.__gcWanted?.()) { const h0 = globalThis.__gcStats()[2]; const t = performance.now(); globalThis.__gcNow(); idleGcRuns++; idleGcMs += performance.now() - t; log(`ctl: idle collection before ${before}: ${Math.round(performance.now() - t)} ms, heap ${Math.round(h0 / 1048576)} -> ${Math.round(globalThis.__gcStats()[2] / 1048576)} MB`); } };
+	if (ctx.opt('no-dispose', '0') === '1') { globalThis.__noDispose98 = true; }
 	async function timed(name, act, pred, maxMs = 60000) {
-		const a0 = { ...acc }; const p0 = doc.__passStats.length; const t0 = performance.now(); act(); const tEvent = performance.now() - t0;
+		idleGc(name); const f0 = globalThis.__gcStats?.()[1] ?? 0; const a0 = { ...acc }; const p0 = doc.__passStats.length; const e0 = Date.now(); const t0 = performance.now(); act(); const tEvent = performance.now() - t0;
 		for (;;) { await sleep(1); tick(); let ok = false; try { ok = pred(); } catch { } if (ok) { break; } if (performance.now() - t0 > maxMs) { log('ctl: timeout ' + name); return -1; } }
 		const ms = Math.round(performance.now() - t0);
+		const forced = (globalThis.__gcStats?.()[1] ?? 0) - f0; if (forced) { log(`ctl: ${name} ${ms} ms contained ${forced} collection(s) forced from inside an allocation`); }
+		if (marks) { log(`ctl: mark ${name} ${e0} ${Date.now()}`); }   // epoch ms of the action, for selecting its samples from a profile (14-launch/tests/profile_actions.mjs)
 		if (split) { const ps = doc.__passStats.slice(p0); const style = ps.reduce((a, x) => a + x.styleMs, 0), lay = ps.reduce((a, x) => a + x.layoutMs, 0); (splits[name] ??= []).push({ ms, event: Math.round(tEvent), frames: Math.round(acc.frames - a0.frames), style: Math.round(style), layout: Math.round(lay), paint: Math.round(acc.paint - a0.paint), passes: ps.length }); }
 		return ms;
 	}
@@ -76,5 +81,6 @@ async function run0(ctx) {
 	const med = {}; for (const k of Object.keys(results[0])) { const v = results.map((r) => r[k]).sort((a, b) => a - b); med[k] = v[Math.floor(v.length / 2)]; }
 	log('ctl: median ' + JSON.stringify(med));
 	if (split) { for (const [k, list] of Object.entries(splits)) { const m = list[Math.floor(list.length / 2)]; log('ctl: split ' + k + ' ' + JSON.stringify(m)); } }
+	{ const st = globalThis.__gcStats?.(); log(`ctl: gc ${ctx.gcIdle ? 'idle' : 'stock'}: ${idleGcRuns} runs between actions (${Math.round(idleGcMs)} ms), ${st ? st[0] : '?'} idle-scheduled in total, ${st ? st[1] : '?'} forced from inside an allocation, heap ${st ? Math.round(st[2] / 1048576) : '?'} MB`); }
 	log('ctl: done');
 }

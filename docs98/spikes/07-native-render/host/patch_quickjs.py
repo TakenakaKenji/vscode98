@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Writes a copy of QuickJS-ng's quickjs.c with the hooks of the sampling profiler (prof98.h, included at the end). Usage: patch_quickjs.py <in> <out>
+"""Writes a copy of QuickJS-ng's quickjs.c with the hooks of the sampling profiler (prof98.h, included at the end) and the collector's schedule (gc98.h). Usage: patch_quickjs.py <in> <out>
 - the C call paths link a frame into rt->current_stack_frame only after its cur_func is set (stock QuickJS links it first), behind a compiler barrier, so a
   sample never reads a frame that is half set up;
 - C function names are recorded where C functions are created, and the names methods and anonymous functions get at run time; bytecode about to be freed is reported (samples naming it are resolved first);
@@ -33,7 +33,10 @@ decl = ('#include "dtoa.h"\n'
         'static void pf_runtime_freed(JSRuntime *rt);\n'
         'static inline void pf_barrier(void);\n'
         'int js98_pf_tag_push(const char *label);\n'
-        'void js98_pf_tag_pop(int pushed);\n')
+        'void js98_pf_tag_pop(int pushed);\n'
+        'static void gc98_after(JSRuntime *rt);\n'
+        'static void gc98_forced_run(void);\n'
+        'static void gc98_census(JSRuntime *rt);\n')
 assert src.count('#include "dtoa.h"\n') == 1
 src = src.replace('#include "dtoa.h"\n', decl)
 # the three C call paths: link the frame after cur_func and arg_count are set
@@ -57,9 +60,11 @@ sub("{\n    if (name != JS_ATOM_NULL\n", "{\n    pf_name_hint(ctx, obj, name, 0)
 sub("{\n    int i;\n\n", "{\n    int i;\n\n    pf_bytecode_freed(rt, b);\n", "static void free_function_bytecode(JSRuntime *rt, JSFunctionBytecode *b)\n{")
 sub("    ctx->interrupt_counter = JS_INTERRUPT_COUNTER_INIT;\n", "    ctx->interrupt_counter = JS_INTERRUPT_COUNTER_INIT;\n    pf_poll(ctx);\n", "static no_inline __exception int __js_poll_interrupts(")
 sub("    gc_decref(rt);\n", "    int pf_t = js98_pf_tag_push(\"[gc]\");\n    gc_decref(rt);\n", "void JS_RunGC(JSRuntime *rt)\n{")
-sub("    gc_free_cycles(rt);\n}\n", "    gc_free_cycles(rt);\n    js98_pf_tag_pop(pf_t);\n}\n", "void JS_RunGC(JSRuntime *rt)\n{")
+sub("    gc_free_cycles(rt);\n}\n", "    gc98_census(rt);\n    gc_free_cycles(rt);\n    js98_pf_tag_pop(pf_t);\n}\n", "void JS_RunGC(JSRuntime *rt)\n{")
 sub("    err = js_parse_program(s);\n", "    { int pf_t = js98_pf_tag_push(\"[compile]\"); err = js_parse_program(s); js98_pf_tag_pop(pf_t); }\n", "static JSValue __JS_EvalInternal(")
 sub("    fun_obj = js_create_function(ctx, fd);\n", "    { int pf_t = js98_pf_tag_push(\"[compile]\"); fun_obj = js_create_function(ctx, fd); js98_pf_tag_pop(pf_t); }\n", "static JSValue __JS_EvalInternal(")
 sub("    rt->in_free = true;\n", "    pf_runtime_freed(rt);\n    rt->in_free = true;\n", "void JS_FreeRuntime(JSRuntime *rt)\n{")
-src += '\n#include "prof98.h"\n'
+# the collector's schedule (gc98.h): the threshold after a collection is set by gc98_after (stock: 1.5 x the heap)
+sub("        JS_RunGC(rt);\n        rt->malloc_gc_threshold = rt->malloc_state.malloc_size +\n            (rt->malloc_state.malloc_size >> 1);\n", "        gc98_forced_run();\n        JS_RunGC(rt);\n        gc98_after(rt);\n", "static void js_trigger_gc(")
+src += '\n#include "prof98.h"\n#include "gc98.h"\n'
 open(sys.argv[2], "w").write(src)

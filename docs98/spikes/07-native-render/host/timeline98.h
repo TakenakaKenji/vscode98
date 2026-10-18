@@ -90,9 +90,17 @@ static void tl_wait_done(uint64_t a) { js98_pf_tag_pop(tl_pf_idle); tl_pf_idle =
 /* __timelineStart(dir): start recording in this process (the harness, which cannot have set its own environment before it started); __timelineDump(): write now */
 static JSValue js98_tl_start_js(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { const char *d = JS_ToCString(ctx, argv[0]); if (d) { if (tl_on <= 0) { tl_start(d); } JS_FreeCString(ctx, d); } return JS_UNDEFINED; }
 static JSValue js98_tl_dump_js(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { tl_init(); if (tl_on > 0) { tl_dump(ctx, 1); } return JS_NewBool(ctx, tl_on > 0); }
+/* the collector's schedule (gc98.h in quickjs.c) */
+void js98_gc_idle(JSRuntime *rt, int on); int js98_gc_wanted(JSRuntime *rt); void js98_gc_now(JSRuntime *rt); void js98_gc_stats(JSRuntime *rt, double *out);
+static JSValue js98_gc_idle_js(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { js98_gc_idle(JS_GetRuntime(ctx), argc > 0 && JS_ToBool(ctx, argv[0])); return JS_UNDEFINED; }
+static JSValue js98_gc_wanted_js(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { return JS_NewBool(ctx, js98_gc_wanted(JS_GetRuntime(ctx))); }
+static JSValue js98_gc_now_js(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { js98_gc_now(JS_GetRuntime(ctx)); return JS_UNDEFINED; }
+static JSValue js98_gc_stats_js(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) { double o[5]; js98_gc_stats(JS_GetRuntime(ctx), o); JSValue a = JS_NewArray(ctx); for (int i = 0; i < 5; i++) { JS_SetPropertyUint32(ctx, a, (uint32_t)i, JS_NewFloat64(ctx, o[i])); } return a; }
 void js98_tl_install(JSContext *ctx) {
 	JSValue g = JS_GetGlobalObject(ctx);
 	JS_SetPropertyStr(ctx, g, "__timelineStart", JS_NewCFunction(ctx, js98_tl_start_js, "__timelineStart", 1));
 	JS_SetPropertyStr(ctx, g, "__timelineDump", JS_NewCFunction(ctx, js98_tl_dump_js, "__timelineDump", 0));
+	JS_SetPropertyStr(ctx, g, "__gcIdle", JS_NewCFunction(ctx, js98_gc_idle_js, "__gcIdle", 1)); JS_SetPropertyStr(ctx, g, "__gcWanted", JS_NewCFunction(ctx, js98_gc_wanted_js, "__gcWanted", 0));
+	JS_SetPropertyStr(ctx, g, "__gcNow", JS_NewCFunction(ctx, js98_gc_now_js, "__gcNow", 0)); JS_SetPropertyStr(ctx, g, "__gcStats", JS_NewCFunction(ctx, js98_gc_stats_js, "__gcStats", 0));
 	JS_FreeValue(ctx, g);
 }

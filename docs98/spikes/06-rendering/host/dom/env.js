@@ -5,7 +5,7 @@ import * as D from './dom.js';
 import { NodeFilter, NodeIterator, TreeWalker } from './dom_extra.js';
 import { isHoisted, itemsOf } from './stacking.js';
 import { CSSStyleSheet, serializeValue, parseColor, PROPS, resolveLen } from './css.js';
-import { Layout } from './layout.js';
+import { Layout, disposeLayout } from './layout.js';
 import { iframeProps, syncFrames, deepHit, splitHtml, mountMarkup } from './frames.js';
 import { decodeImage } from './images.js';
 import { resolveFont, fontMetrics, advance, registerFontFace, setOpentype } from './fonts.js';
@@ -138,7 +138,8 @@ export class Document extends Node {
 		const t0 = performance.now(); const dirty = this.__dirtyLog || []; this.__dirtyLog = []; let lay = this.__layout, reused = false;
 		if (lay && !this.__noStyleOnly) { const ts = performance.now(); const r = Layout.styleOnly(this, env, lay, dirty); if (r === true) { reused = true; lay.styleMs = performance.now() - ts; lay.layoutMs = 0; lay.styleInfo = this.__styleInfo; if (this.__verifyStyleOnly) { this.__checkStyleOnly(lay); } } else { lay = null; this.__stylesResolved = r === null; this.__preStyleMs = r === null ? performance.now() - ts : 0; } } else { lay = null; }
 		if (!reused) { lay = new Layout(this, env); lay.dirtyLog = dirty; lay.skipStyle = this.__stylesResolved === true; lay.preStyleMs = this.__preStyleMs || 0; this.__stylesResolved = false; this.__preStyleMs = 0; lay.run(); }
-		if (this.__passStats) { this.__passStats.push(summarizeDirty(dirty, this, lay, t0)); } this.__layout = lay; if (lay) { lay.__ctxItems = null; } this.__dirty = false; this.__styleDirty = false; this.__layoutCount++; this.__layoutMs += performance.now() - t0; if (!reused) { this.__applyTransforms(lay); } else { this.__styleOnlyPasses = (this.__styleOnlyPasses || 0) + 1; }
+		if (this.__passStats) { this.__passStats.push(summarizeDirty(dirty, this, lay, t0)); } { const prevLay = this.__layout; this.__layout = lay; if (prevLay && prevLay !== lay) { if (this.__retiredLayout) { disposeLayout(this.__retiredLayout); } this.__retiredLayout = prevLay; } }   // the layout of the pass before the previous one is taken apart (layout.js disposeLayout)
+		if (lay) { lay.__ctxItems = null; } this.__dirty = false; this.__styleDirty = false; this.__layoutCount++; this.__layoutMs += performance.now() - t0; if (!reused) { this.__applyTransforms(lay); } else { this.__styleOnlyPasses = (this.__styleOnlyPasses || 0) + 1; }
 		if (this.__scrollClampPending) { this.__scrollClampPending = false; }
 		if (this.__hasAnchors && !this.__resolvingAnchors) { this.__resolvingAnchors = true; try { for (let i = 0; i < 3 && resolveAnchors(this); i++) { this.__dirty = true; this.__ensureLayout(); } } finally { this.__resolvingAnchors = false; } }
 		syncFrames(this);

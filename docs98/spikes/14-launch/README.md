@@ -140,6 +140,26 @@ v25:
 
 Wine, plain starts, profiler off (v24 → v25): 21.8 → 19.6 s until stable (first start), 17.4 → 16.7 s and 15.9 → 15.4 s (later starts); window busy 14.7 → 12.7, 11.7 → 11.1, 10.3 → 9.9 s; restyling 1,100/857/708 → 459/383/373 ms. The 11 feature scenarios pass; no process left after Alt+F4.
 
+## Interaction speed (v26)
+
+The owner asked to switch from launch to interactions, after the laptop control (stock VS Code 1.70.2 4 s / 8 s, v25 7 s / 15 to 16 s) and the sandbox control benchmark (clicks and menus 3 to 12 times slower than stock). Method: `scenario_ctl.mjs --marks 1` marks every action in the profile and `14-launch/tests/profile_actions.mjs` prints self and inclusive time per action.
+
+**Where an interaction goes (v25, sandbox):** the layout pipeline is 65 % (`resolveStyles` with `computeNative` about 9 % and `planRestyle` helpers about 5 %, `build` and the `Box` constructor about 13 %, the `packTree` walk about 9 % and its allocations, `countElements` about 3 %, paint about 10 %), plus a tail of garbage collections. The profiler caps a sample at 100 ms, so it understates the collections; timing `__gcNow` directly shows **one collection takes 0.75 to 1 s** (heap about 340 MB, about 1 M objects in the renderer), and QuickJS runs it inside whatever allocation crosses the threshold, i.e. inside a click or a menu.
+
+**What v26 changed (all with oracles or A/B runs):**
+- **One shared `Pack`** for `packTree` (`layout_pack.js` `reset()`): the 80-field records were reallocated each pass. The unused `pk.index` map is gone. Same typed arrays, same layout.
+- **Box-tree disposal** (`dom/layout.js` `disposeLayout`, called from `env.js __ensureLayout`, one pass late because the previous layout can still be read during the pass). Every full pass builds a new `Layout` and a tree of about 1,500 boxes whose parent/children, box/`__rects` and frag/box cycles only the cycle collector can free. Disposal cuts them. Garbage from boxes dropped about 4 times. `__noDispose98` turns it off for A/B runs (`scenario_ctl.mjs --no-dispose 1`).
+- **Collection at idle moments** (`07-native-render/host/gc98.h`, hooked into `js_trigger_gc` by `patch_quickjs.py`). Soft threshold: stock 1.5 x the heap after a collection; the host collects when it is reached, at an idle moment (nothing dirty, 800 ms since the last paint or input, `window_host98.mjs tick`). Hard threshold: `QJS98_GC_HARD`, default +150 % (2.5 x), the only one that still forces a collection inside an allocation. Only the window process opts in (`__gcIdle(true)`); `QJS98_GC=0` is the stock behaviour. New globals `__gcIdle/__gcWanted/__gcNow/__gcStats`; the harness prints `garbage collector (...)` at the end of `desktop.txt` (runs, ms, forced).
+- **Census** (`gc98_census`, mode 1 garbage with referrer tally, mode 2 live objects): what is left is VS Code's own cyclic closures and arrays (about 85 K arrays and 65 K closures per collection), not ours.
+
+**Results.** Linux, `scenario_ctl` against v25, 20 rounds: sum of the means of the 12 actions -10 %, worst single actions much lower because no collection lands inside them. Windows build under Wine (same 20 rounds): same direction. Single Wine runs of the control scenario vary more than that (`context` 372 to 454 ms between two runs of one build), so the A/B means over many rounds are the evidence, not one table. The idle collection itself was exercised through `scenario_ctl` only: in a real window with xdotool the heap stayed under the soft limit (186 of 203 MB), so no idle collection ran there.
+
+**Open: memory growth of the window process during use.** Driving the File and Edit menus 25 x 2 under Wine: RSS 266 to 405 to 409 MB (v25) and 251 to 386 MB (v26) between 15 s and 120 s, layout passes 48 to about 440, JS heap constant at 186 MB. So it is outside the JS heap, present in v25 as well, and similar to the laptop's v22 growth (349 to 880 MB total). Candidates: a native buffer per layout pass (`layout.c`), the allocator under Wine. To be measured with a pass counter against `mallinfo` / `GetProcessMemoryInfo` before any change.
+
+**Still per pass, not yet done:** `computeNative` wrapper, `build` and `Box`, the `packTree` walk, `countElements`, `planRestyle`, paint. The structural win is an incremental layout (only the changed subtrees), not another constant factor.
+
+**What to look for on the laptop (v26):** `QJS98_PROFILE=0` in `run-desktop.cmd` (line 21) for the feel of menus and clicks; the `garbage collector (...)` line at the end of `desktop.txt` (runs and total ms, forced collections should be few after boot).
+
 ## How the Wine runs compare with the laptop
 
 The same metrics from the harness log of each start. The laptop runs are with the profiler on (`run-desktop.cmd`); the Wine runs without it, because under Wine the profiler costs about 25 %. Laptop: second start. Wine: later starts of a fresh copy (n2, n3). "Full paint" is the first paint of about 400 elements (the workbench visible). "Busy" is the window process's busy time.
@@ -163,3 +183,4 @@ The same metrics from the harness log of each start. The laptop runs are with th
 - `06-rendering/tests/font_lazy_oracle.mjs`, `07-native-render/host/svg98.h` (SVG scanlines in C), `06-rendering/tests/svg_native_oracle.mjs`, `09-incremental-style/tests/analyze_oracle.mjs`.
 - `05-child-process/host/b64_98.h` (base64 in C), `10-main-shim/tests/b64_oracle.mjs`, `10-main-shim/host/scenario_openfile.mjs` (opens a file so that the next start restores it).
 - `07-native-render/host/prof98.h`, `07-native-render/host/patch_quickjs.py` (the profiler; the `[idle]` label and the file writes from `timeline98.h`), `10-main-shim/host/profile_report98.js`, `14-launch/tests/prof_oracle.mjs`.
+- `07-native-render/host/gc98.h` (idle collection schedule, census), `14-launch/tests/profile_actions.mjs` (per-action profile), `06-rendering/host/dom/layout.js` `disposeLayout`.

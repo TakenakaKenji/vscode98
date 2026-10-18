@@ -28,12 +28,16 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 		if (paints <= 40 && ctx.timelineMark) { ctx.timelineMark(`harness: paint ${paints} (${doc.getElementsByTagName('*').length} elements, ${Math.round(performance.now() - t0)} ms)`); }   // the launch timeline: when the window first showed something, and what
 	}
 	// any layout pass since the last paint counts: code that reads geometry runs layout itself and clears doc.__dirty, so `__dirty` alone misses most changes
+	// the collector runs at idle moments (07-native-render/host/gc98.h): nothing painted and no input for 800 ms (a collection blocks for ~0.8 s on the sandbox, probably 2 s on the laptop: the user must have paused), and the heap has passed the soft threshold
+	let lastActive = performance.now(), gcRuns = 0, gcMs = 0;
 	const tick = () => {
 		if (win.size(id)[0] === 0) { return; }
-		try { env.flushFrames?.(); const passes = (doc.__passStats || []).length; const dirty = doc.__dirty || forced || passes !== paintedPasses || (doc.__paintGen | 0) !== paintedGen; if (dirty && performance.now() - lastPaint >= 1000 / fps) { forced = false; paintNow(); } } catch (e) { ctx.note?.('paint', e); }
+		try { env.flushFrames?.(); const passes = (doc.__passStats || []).length; const dirty = doc.__dirty || forced || passes !== paintedPasses || (doc.__paintGen | 0) !== paintedGen; if (dirty && performance.now() - lastPaint >= 1000 / fps) { forced = false; paintNow(); lastActive = performance.now(); }
+			else if (!dirty && ctx.gcIdle && performance.now() - lastActive >= 800 && globalThis.__gcWanted?.()) { const t = performance.now(); globalThis.__gcNow(); gcRuns++; gcMs += performance.now() - t; lastActive = performance.now(); } } catch (e) { ctx.note?.('paint', e); }
 		os.setTimeout(tick, 1000 / fps / 2);
 	};
 	win.setHandler((wid, type, a, b, c, d, mods) => {
+		if (type !== 'paint') { lastActive = performance.now(); }
 		if (type !== 'mousemove' && type !== 'paint' && ctx.opt?.('debug-input', '0') === '1') { ctx.log?.('[input] event ' + type + ' ' + a + ' ' + b + ' ' + c + ' ' + d); }
 		if (zoom.factor !== 1 && (type === 'mousemove' || type === 'mousedown' || type === 'mouseup' || type === 'dblclick' || type === 'wheel')) { a = Math.round(a / zoom.factor); b = Math.round(b / zoom.factor); }   // window pixels -> CSS pixels
 		if (driver.handle(type, a, b, c, d, mods)) { return; }
@@ -45,5 +49,5 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 		}
 	});
 	tick();
-	return { id, repaint, stats: () => ({ paints, paintMs }), close: () => win.destroy(id) };
+	return { id, repaint, stats: () => ({ paints, paintMs, gcRuns, gcMs }), close: () => win.destroy(id) };
 }

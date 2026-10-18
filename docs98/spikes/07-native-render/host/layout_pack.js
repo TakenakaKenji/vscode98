@@ -22,7 +22,9 @@ const TTR = { none: 0, uppercase: 1, lowercase: 2, capitalize: 3 };
 
 /** Growable pools shared by one packing pass. */
 export class Pack {
-	constructor() { this.boxes = new Float64Array(1024 * F.STRIDE); this.n = 0; this.calc = new Float64Array(1024); this.nc = 0; this.text = new Uint16Array(1 << 15); this.nt = 0; this.index = new Map(); this.list = []; }
+	constructor() { this.boxes = new Float64Array(1024 * F.STRIDE); this.n = 0; this.calc = new Float64Array(1024); this.nc = 0; this.text = new Uint16Array(1 << 15); this.nt = 0; this.list = []; }
+	/** empties the pools, keeping their (grown) buffers: records are zeroed per box in packTree, calc nodes and text are written before they are read */
+	reset() { this.n = 0; this.nc = 0; this.nt = 0; this.list = []; }
 	allocBox() { if ((this.n + 1) * F.STRIDE > this.boxes.length) { const nb = new Float64Array(this.boxes.length * 2); nb.set(this.boxes); this.boxes = nb; } return this.n++; }
 	calcNode(a, b, c, d) { if (this.nc + 4 > this.calc.length) { const nb = new Float64Array(this.calc.length * 2); nb.set(this.calc); this.calc = nb; } const i = this.nc; this.calc[i] = a; this.calc[i + 1] = b; this.calc[i + 2] = c; this.calc[i + 3] = d; this.nc += 4; return i; }
 	addText(s) { const n = s.length; if (this.nt + n > this.text.length) { let len = this.text.length; while (len < this.nt + n) { len *= 2; } const nb = new Uint16Array(len); nb.set(this.text); this.text = nb; } const o = this.nt; for (let i = 0; i < n; i++) { this.text[o + i] = s.charCodeAt(i); } this.nt += n; return o; }
@@ -44,10 +46,14 @@ function putLen(pk, a, o, x, autoVal = 0) {
 const num = (x, d = 0) => (typeof x === 'number' ? x : d);
 
 const recCache = new WeakMap();   // computed style values -> packed style record (see packTree)
+// One pack for every pass: a new one allocated ~2.5 MB of zeroed buffers per layout pass, and in QuickJS allocations of that size set off the cycle collector over the whole
+// heap while packTree ran (3.0 of its 6.4 s over the 90 actions of the control scenario, 10 % of all interaction time on the sandbox). The C layout only reads the arrays during its call.
+const sharedPack = new Pack();
 /** Packs `box` (a Layout.build result) and its descendants in pre-order. Returns the Pack; pk.list[i] is the Box at index i. */
-export function packTree(lay, rootBox, pk = new Pack()) {
+export function packTree(lay, rootBox, pk = sharedPack) {
+	pk.reset();
 	const walk = (b, parentIdx) => {
-		const i = pk.allocBox(); pk.list.push(b); pk.index.set(b, i); const a = pk.boxes, o = i * F.STRIDE; a.fill(0, o, o + F.STRIDE);
+		const i = pk.allocBox(); pk.list.push(b); const a = pk.boxes, o = i * F.STRIDE; a.fill(0, o, o + F.STRIDE);
 		a[o + F.KIND] = KIND[b.kind]; a[o + F.PARENT] = parentIdx;
 		if (b.kind === 'text') {
 			// style comes from the parent record in the native engine
