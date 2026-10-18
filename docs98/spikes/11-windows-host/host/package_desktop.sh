@@ -27,6 +27,7 @@ cp /usr/share/fonts/truetype/dejavu/DejaVu*.ttf "$OUT/fonts/truetype/dejavu/"; c
 for d in fonts-inter fonts-dejavu-core fonts-liberation; do [ -f /usr/share/doc/$d/copyright ] && cp /usr/share/doc/$d/copyright "$OUT/fonts/LICENSES/$d.txt"; done
 mkdir -p "$OUT/sample" && printf 'hello vscode98\nline two\n' > "$OUT/sample/hello.txt" && printf '# sample\n' > "$OUT/sample/README.md"
 sed 's/\r$//; s/$/\r/' "$S/11-windows-host/package/run-desktop.cmd" > "$OUT/run-desktop.cmd"
+sed 's/\r$//; s/$/\r/' "$S/11-windows-host/package/reset-state.cmd" > "$OUT/reset-state.cmd"
 sed 's/\r$//; s/$/\r/' "$S/11-windows-host/package/run-bench.cmd" > "$OUT/run-bench.cmd"; cp "$S/11-windows-host/package/bench.js" "$OUT/bench.js"
 # the bytecode cache (05-child-process/host/esm.c, spike 14): boot the package once, headless, under Wine with the executable that ships, and keep only userdata/code-cache,
 # so that the first start on the target reads the large bundles instead of compiling them (the cache renames the module paths to wherever the package is unpacked).

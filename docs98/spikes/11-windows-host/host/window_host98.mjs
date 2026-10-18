@@ -24,7 +24,7 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 		const t0 = performance.now(); doc.__ensureLayout(); paintedPasses = (doc.__passStats || []).length; paintedGen = doc.__paintGen | 0;
 		if (!backend || backend.w !== W || backend.h !== H) { backend = new NativeBackend(W, H, { exact }); } else { backend.reset(); }
 		const z = zoom.factor; const r = paintDocument(doc, z === 1 ? W : Math.round(W / z), z === 1 ? H : Math.round(H / z), z === 1 ? backend : new ScaledBackend(backend, z));
-		win.present(id, r.px, W, H, 0, 0, W, H); paints++; paintMs += performance.now() - t0; lastPaint = performance.now();
+		win.present(id, r.px, W, H, 0, 0, W, H); paints++; paintMs += performance.now() - t0; lastPaint = performance.now(); lastCost = lastPaint - t0;
 		if (paints <= 40 && ctx.timelineMark) { ctx.timelineMark(`harness: paint ${paints} (${doc.getElementsByTagName('*').length} elements, ${Math.round(performance.now() - t0)} ms)`); }   // the launch timeline: when the window first showed something, and what
 	}
 	// any layout pass since the last paint counts: code that reads geometry runs layout itself and clears doc.__dirty, so `__dirty` alone misses most changes
@@ -40,9 +40,11 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 	const probe = () => { let x = 0, ms = Infinity; for (let r = 0; r < 3; r++) { const t = performance.now(); for (let i = 0; i < 1500000; i++) { x = (x + i * 7) | 0; } ms = Math.min(ms, (performance.now() - t) * 2); }   // the fastest of three: a preemption in one of them does not count
 		if (!probeFirst) { probeFirst = ms; } const g = gcNow();
 		log?.(`[probe] fixed loop ${ms.toFixed(0)} ms (first ${probeFirst.toFixed(0)} ms), ${(ms / probeFirst).toFixed(2)}x, collections idle ${gcRuns} (${Math.round(gcMs)} ms) forced ${g.forced}, heap ${g.heap} MB${x === 12345 ? ' ' : ''}`); };
+	// frames while the program is busy: a paint costs ~40 ms on the laptop (more with the layout it forces), so painting every 33 ms left half of a burst of work to painting; the gap is now at least twice the last paint's cost (at most 250 ms), `--paint-pace 0` = the old fixed 30 fps
+	const pace = ctx.opt?.('paint-pace', '1') !== '0'; let lastCost = 0;
 	const tick = () => {
 		if (win.size(id)[0] === 0) { return; }
-		try { env.flushFrames?.(); const passes = (doc.__passStats || []).length; const dirty = doc.__dirty || forced || passes !== paintedPasses || (doc.__paintGen | 0) !== paintedGen; if (dirty && performance.now() - lastPaint >= 1000 / fps) { forced = false; paintNow(); lastActive = performance.now(); if (pend) { const el = lastPaint - pend.t0; if (pend.first === null) { pend.first = el; } pend.last = el; pend.lastAt = lastPaint; } }
+		try { env.flushFrames?.(); const passes = (doc.__passStats || []).length; const dirty = doc.__dirty || forced || passes !== paintedPasses || (doc.__paintGen | 0) !== paintedGen; if (dirty && performance.now() - lastPaint >= (pace ? Math.max(1000 / fps, Math.min(250, lastCost * 2)) : 1000 / fps)) { forced = false; paintNow(); lastActive = performance.now(); if (pend) { const el = lastPaint - pend.t0; if (pend.first === null) { pend.first = el; } pend.last = el; pend.lastAt = lastPaint; } }
 			else if (!dirty && pend && performance.now() - Math.max(pend.lastAt || pend.t0, pend.quietFrom || 0) >= (pend.first === null ? 600 : 250)) { finishAct(''); }
 			else if (!dirty && !pend && performance.now() - probeAt >= 15000 && performance.now() - lastActive >= 400) { probeAt = performance.now(); probe(); }
 			else if (!dirty && ctx.gcIdle && performance.now() - lastActive >= 800 && globalThis.__gcWanted?.()) { const t = performance.now(); globalThis.__gcNow(); gcRuns++; gcMs += performance.now() - t; lastActive = performance.now(); } } catch (e) { ctx.note?.('paint', e); }
@@ -61,7 +63,7 @@ export function openWindow(ctx, { width, height, title = 'vscode98', exact = fal
 			case 'resize': W = a; H = b; log?.(`[window] resize ${a}x${b}`); env.resize?.(Math.round(a / zoom.factor), Math.round(b / zoom.factor)); repaint(); break;
 			case 'focus': { if (a) { env.window.dispatchEvent(new env.window.Event('focus')); } else { env.window.dispatchEvent(new env.window.Event('blur')); } break; }
 			case 'close': finishAct('window closed'); probe(); { const g = gcNow(); { const v = lats.filter(x => x > 0).sort((p, q) => p - q); const q = (f) => v.length ? v[Math.min(v.length - 1, Math.floor(v.length * f))].toFixed(0) : '-'; log?.(`[window] response time of ${v.length} inputs that changed the screen (input to last paint): median ${q(0.5)} ms, 90th percentile ${q(0.9)} ms, slowest ${q(1)} ms, over 1 s: ${v.filter(x => x > 1000).length}, over 3 s: ${v.filter(x => x > 3000).length}`); }
-			log?.(`[window] closing: ${nAct} inputs, ${paints} paints, collections at idle moments ${gcRuns} (${Math.round(gcMs)} ms), forced ${g.forced}, heap ${g.heap} MB`); } ctx.useProfile?.(spans); win.destroy(wid); log?.('[window] closed'); try { onClose?.(); } finally { std.exit(0); } break;
+			log?.(`[window] closing: ${nAct} inputs, ${paints} paints, collections at idle moments ${gcRuns} (${Math.round(gcMs)} ms), forced ${g.forced}, heap ${g.heap} MB`); } win.destroy(wid); log?.('[window] closed'); ctx.useProfile?.(spans); try { onClose?.(); } finally { std.exit(0); } break;
 			case 'paint': break;   // the echo of our own present(): repainting on it is an endless loop (found on Windows 7: 12 frames/s of an idle workbench)
 		}
 	});
