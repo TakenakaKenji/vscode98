@@ -428,7 +428,7 @@ static JSValue js_rename(JSContext *ctx, JSValueConst this_val, int argc, JSValu
 	BOOL ok = MoveFileExW(wa, wb, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED); DWORD e = ok ? 0 : GetLastError(); free(wa); free(wb);
 	return JS_NewInt32(ctx, ok ? 0 : -errno_from_win(e));
 }
-/* processTree(rootPid) -> [{ pid, ppid, name, mb, peakMb }] for the process and its descendants (Toolhelp snapshot + working set from psapi): memory numbers without a task manager */
+/* processTree(rootPid) -> [{ pid, ppid, name, mb, peakMb, cpuMs }] for the process and its descendants (Toolhelp snapshot + working set from psapi): memory numbers without a task manager */
 static JSValue js_process_tree(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv) {
 	int root = argc > 0 ? arg_fd(ctx, argv[0]) : (int)GetCurrentProcessId(); JSValue arr = JS_NewArray(ctx);
 	HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0); if (snap == INVALID_HANDLE_VALUE) { return arr; }
@@ -443,6 +443,7 @@ static JSValue js_process_tree(JSContext *ctx, JSValueConst this_val, int argc, 
 		PROCESS_MEMORY_COUNTERS pmc; memset(&pmc, 0, sizeof pmc); HANDLE h = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, want[i]); if (h) { GetProcessMemoryInfo(h, &pmc, sizeof pmc); CloseHandle(h); }
 		JSValue o = JS_NewObject(ctx); char *nm = narrow(names[j]);
 		JS_SetPropertyStr(ctx, o, "pid", JS_NewInt32(ctx, (int)pids[j])); JS_SetPropertyStr(ctx, o, "ppid", JS_NewInt32(ctx, (int)par[j])); JS_SetPropertyStr(ctx, o, "name", JS_NewString(ctx, nm)); free(nm);
+		{ FILETIME ct, et, kt, ut; double cpu = 0; HANDLE ht = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, want[i]); if (ht) { if (GetProcessTimes(ht, &ct, &et, &kt, &ut)) { cpu = (((uint64_t)kt.dwHighDateTime << 32 | kt.dwLowDateTime) + ((uint64_t)ut.dwHighDateTime << 32 | ut.dwLowDateTime)) / 10000.0; } CloseHandle(ht); } JS_SetPropertyStr(ctx, o, "cpuMs", JS_NewFloat64(ctx, cpu)); }   /* CPU time (kernel + user) so far */
 		JS_SetPropertyStr(ctx, o, "mb", JS_NewFloat64(ctx, pmc.WorkingSetSize / 1048576.0)); JS_SetPropertyStr(ctx, o, "peakMb", JS_NewFloat64(ctx, pmc.PeakWorkingSetSize / 1048576.0));
 		JS_SetPropertyUint32(ctx, arr, idx++, o);
 	}

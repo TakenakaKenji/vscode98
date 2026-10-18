@@ -160,6 +160,20 @@ The owner asked to switch from launch to interactions, after the laptop control 
 
 **What to look for on the laptop (v26):** `QJS98_PROFILE=0` in `run-desktop.cmd` (line 21) for the feel of menus and clicks; the `garbage collector (...)` line at the end of `desktop.txt` (runs and total ms, forced collections should be few after boot).
 
+## The laptop's v26 run (three starts) and what v27 measures
+
+The owner's three starts of v26: the first felt decently usable once loaded, each later one felt slower, the third the slowest. Only the last two logs survive (`desktop-prev.txt`, `desktop.txt`; the first was overwritten). In them:
+- **Startup is identical**: 22.0 and 21.9 s until stable, `didStartWorkbench` 10.8 and 11.5 s, window busy 21.0 and 20.2 s. So the slowdown is in use, not in the launch, and the logs hold no per-action times (the layout statistics are printed at the stable moment, before the owner's clicks). The v26 collector line is also printed at that moment (0 idle collections, 9 forced during boot, heap 220/224 MB against a soft limit of 204 MB), so it says nothing about the collections during use.
+- **Memory**: the window process grows from 250 to 390 MB over 90 s of use in the second start (252 to 344 MB in the third), the total of all processes from 359 to 811 MB. Two ~118 MB processes (the TypeScript server's pair, started when a `.js` file is opened) appear a few seconds after the owner opens `test.js`; they are the largest part of the growth in the total.
+- **Hypotheses for "slower each time"**, none testable from these logs: the laptop's CPU slowing down after repeated 100 % runs (thermal or power limits); the TypeScript servers competing for the CPU (opening a `.js` file starts two of them; under QuickJS they are about 8 x slower than under V8); programs from the previous start still ending (the third start began 5 s after the second was closed); state kept in `userdata` growing (the storage file has 49 to 50 items, so unlikely).
+
+v27 changes only what is logged (no behaviour change), so that the next logs separate these:
+- `[latency]` line per click, key or wheel step: what was hit (`div.menubar-menu-title "File"`), time in the handler, to the first paint, to the last paint of the burst that follows (the burst ends 250 ms after the last paint and after the mouse-up, which is when a file opens or a menu item runs), layout passes, paints, collections during it (forced, idle) and the heap. A summary at close: median, 90th percentile, slowest, and the counts over 1 s and over 3 s.
+- `[probe]` line every 15 s of idle time (and at open and close): a fixed loop of JavaScript arithmetic, the fastest of three runs, as a multiple of the first; if it grows from start to start, the machine is slowing down, not the program.
+- the status line every 5 s lists each process as `name:pid<parent pid:working set:CPU % over the interval` (new `cpuMs` in `processTree`; under Wine it returns the caller's time for every process, on Windows it is the process's own), so a process that works while the window waits shows.
+- `[window] closing` lists inputs, paints, collections at idle moments and forced ones; `run-desktop.cmd` keeps every start as `results\run-1.txt`, `run-2.txt`, ... (the third start's predecessor was lost before).
+Checked under Wine in a window: the lines appear for a menu click, a file click and Escape; an idle collection (309 ms) ran during the session.
+
 ## How the Wine runs compare with the laptop
 
 The same metrics from the harness log of each start. The laptop runs are with the profiler on (`run-desktop.cmd`); the Wine runs without it, because under Wine the profiler costs about 25 %. Laptop: second start. Wine: later starts of a fresh copy (n2, n3). "Full paint" is the first paint of about 400 elements (the workbench visible). "Busy" is the window process's busy time.
