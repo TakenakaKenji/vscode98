@@ -57,7 +57,23 @@ export class Document extends Node {
 	/** the elements whose rectangle contains the point, innermost and last-painted first; stops after `limit` hits */
 	__hitTest(x, y, limit) {
 		this.__ensureLayout(); const out = []; const lay = this.__layout; if (!lay || !lay.rootBox) { return out; }
-		const hit = (b) => { if (!b.el || b.v.visibility === 'hidden' || b.v['pointer-events'] === 'none') { return false; } const r = this.__rect(b.el); if (x >= r.left && x < r.right && y >= r.top && y < r.bottom && !clippedOut(b)) { out.push(b.el); return out.length >= limit; } return false; };
+		// the rectangle of a box as __rect(b.el) gives it, without the DOMRect and without walking up the box chain for every box visited (4 ms per mouse move on the laptop): whether a chain is free of transforms and scrolled ancestors is remembered per box for this call
+		const stamp = (this.__hitStamp = (this.__hitStamp | 0) + 1);
+		const simpleOf = (b) => { if (b.__hs === stamp) { return b.__hv; } const p = b.parent; const v = (b.matrix && b.el) || (p && p.el && b.el && (p.el.__scrollTop || p.el.__scrollLeft)) ? false : p ? simpleOf(p) : true; b.__hs = stamp; b.__hv = v; return v; };
+		const R = { left: 0, top: 0, right: 0, bottom: 0 };
+		const rectOf = (b) => {
+			let r = null;
+			if (globalThis.__oldHit98 || !simpleOf(b)) { r = this.__rect(b.el); }   // __oldHit98: the previous way, for the comparison of scenario_ctl --bench-hit 1
+			else {
+				let x, y, w, h;
+				if (b.kind === 'inline' && b.__rects) { const raw = this.__rawRect(b.el, b); if (!raw) { R.left = R.top = R.right = R.bottom = 0; return R; } x = raw.x; y = raw.y; w = raw.w; h = raw.h; } else { x = b.ax; y = b.ay; w = b.w; h = b.h; }
+				const dw = (x + w) - x, dh = (y + h) - y; R.left = dw < 0 ? x + dw : x; R.top = dh < 0 ? y + dh : y; R.right = Math.max(x, x + dw); R.bottom = Math.max(y, y + dh);
+			}
+			if (r) { R.left = r.left; R.top = r.top; R.right = r.right; R.bottom = r.bottom; }
+			if (globalThis.__verifyHit98) { const o = this.__rect(b.el); const st = globalThis.__verifyHit98; st.checked++; if (o.left !== R.left || o.top !== R.top || o.right !== R.right || o.bottom !== R.bottom) { st.bad++; if (st.bad <= 5) { st.first.push(`${b.el.localName}.${String(b.el.className).slice(0, 40)} ${o.left},${o.top},${o.right},${o.bottom} vs ${R.left},${R.top},${R.right},${R.bottom}`); } } }
+			return R;
+		};
+		const hit = (b) => { if (!b.el || b.v.visibility === 'hidden' || b.v['pointer-events'] === 'none') { return false; } const r = rectOf(b); if (x >= r.left && x < r.right && y >= r.top && y < r.bottom && !clippedOut(b)) { out.push(b.el); return out.length >= limit; } return false; };
 		/** reverse paint order (front to back): positive z-index contexts, z-index 0/auto positioned boxes, in-flow content, negative z-index contexts; then the box itself */
 		const walk = (b) => {
 			const items = itemsOf(lay, b);
@@ -72,7 +88,7 @@ export class Document extends Node {
 			if (b.pos === 'fixed') { return false; } let passedCB = b.pos !== 'absolute';
 			for (let a = b.parent; a; a = a.parent) {
 				if (!a.el || !a.v) { continue; } if (!passedCB) { if (a.pos === 'static' && !a.matrix) { continue; } passedCB = true; }
-				if (a.v['overflow-x'] !== 'visible' || a.v['overflow-y'] !== 'visible') { const r = this.__rect(a.el); if (x < r.left + a.bl || x >= r.right - a.br || y < r.top + a.bt || y >= r.bottom - a.bb) { return true; } }
+				if (a.v['overflow-x'] !== 'visible' || a.v['overflow-y'] !== 'visible') { const r = rectOf(a); if (x < r.left + a.bl || x >= r.right - a.br || y < r.top + a.bt || y >= r.bottom - a.bb) { return true; } }
 				if (a.pos === 'fixed') { break; }   // nothing above a fixed box clips it or what is inside it
 			}
 			return false;

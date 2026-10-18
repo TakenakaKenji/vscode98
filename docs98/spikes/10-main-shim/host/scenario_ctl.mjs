@@ -21,6 +21,7 @@ async function run0(ctx) {
 	if (ctx.opt('no-dispose', '0') === '1') { globalThis.__noDispose98 = true; }
 	// --geo 1: after each action a hash of the geometry of every box (the oracle of changes that must not change what is laid out: the same hashes with and without them)
 	const geo = ctx.opt('geo', '0') === '1';
+	if (ctx.opt('verify-hit', '0') === '1') { globalThis.__verifyHit98 = { checked: 0, bad: 0, first: [] }; }
 	const geoHash = () => { doc.__ensureLayout(); let h = 2166136261 >>> 0; const mix = (v) => { h = Math.imul(h ^ (Math.round(v * 64) | 0), 16777619) >>> 0; }; let n = 0; for (const el of doc.getElementsByTagName('*')) { const b = doc.__layout.boxOf.get(el); if (!b) { continue; } n++; mix(b.ax); mix(b.ay); mix(b.w); mix(b.h); } return h.toString(16) + '/' + n; };
 	const why = ctx.opt('why', '0') === '1'; const whyAll = {}; if (why) { globalThis.__whyPasses98 = new Map(); }
 	async function timed(name, act, pred, maxMs = 60000) {
@@ -87,6 +88,13 @@ async function run0(ctx) {
 	}
 	const med = {}; for (const k of Object.keys(results[0])) { const v = results.map((r) => r[k]).sort((a, b) => a - b); med[k] = v[Math.floor(v.length / 2)]; }
 	log('ctl: median ' + JSON.stringify(med));
+	if (globalThis.__verifyHit98) { const v = globalThis.__verifyHit98; log(`ctl: hit-test rectangles checked against __rect: ${v.checked}, different: ${v.bad}${v.first.length ? ' ' + v.first.join(' | ') : ''}`); }
+	if (ctx.opt('bench-hit', '0') === '1') {   // the hit test on the loaded workbench: the same 400 points with the previous rectangle code and with the new
+		const v = globalThis.__verifyHit98; globalThis.__verifyHit98 = null; doc.__ensureLayout(); const pts = []; for (let i = 0; i < 400; i++) { pts.push([(i * 97) % W, (i * 53) % H]); }
+		const run = () => { const t = performance.now(); const out = []; for (const [x, y] of pts) { out.push(doc.__hitTest(x, y, 1)[0]); } return [performance.now() - t, out]; };
+		let ref = null; for (const mode of [true, false, true, false]) { globalThis.__oldHit98 = mode; run(); const [ms, out] = run(); ref ??= out; log(`ctl: bench-hit ${mode ? 'previous' : 'new'}: ${ms.toFixed(0)} ms for ${pts.length} points (${(ms / pts.length).toFixed(2)} ms each), the same element as the first run at ${out.filter((e, i) => e === ref[i]).length} of ${pts.length} points`); }
+		globalThis.__oldHit98 = false; globalThis.__verifyHit98 = v;
+	}
 	if (why) { for (const [name, m] of Object.entries(whyAll)) { const tot = [...m.values()].reduce((a, b) => a + b, 0); log(`ctl: why ${name}: ${tot} layout passes over ${rounds} rounds`); for (const [k, v] of [...m].sort((a, b) => b[1] - a[1]).slice(0, 5)) { log(`ctl:   ${v} x ${k.slice(0, 300)}`); } } }
 	if (split) { for (const [k, list] of Object.entries(splits)) { const m = list[Math.floor(list.length / 2)]; log('ctl: split ' + k + ' ' + JSON.stringify(m)); } }
 	{ const st = globalThis.__gcStats?.(); log(`ctl: gc ${ctx.gcIdle ? 'idle' : 'stock'}: ${idleGcRuns} runs between actions (${Math.round(idleGcMs)} ms), ${st ? st[0] : '?'} idle-scheduled in total, ${st ? st[1] : '?'} forced from inside an allocation, heap ${st ? Math.round(st[2] / 1048576) : '?'} MB`); }
