@@ -66,5 +66,14 @@ sub("    fun_obj = js_create_function(ctx, fd);\n", "    { int pf_t = js98_pf_ta
 sub("    rt->in_free = true;\n", "    pf_runtime_freed(rt);\n    rt->in_free = true;\n", "void JS_FreeRuntime(JSRuntime *rt)\n{")
 # the collector's schedule (gc98.h): the threshold after a collection is set by gc98_after (stock: 1.5 x the heap)
 sub("        JS_RunGC(rt);\n        rt->malloc_gc_threshold = rt->malloc_state.malloc_size +\n            (rt->malloc_state.malloc_size >> 1);\n", "        gc98_forced_run();\n        JS_RunGC(rt);\n        gc98_after(rt);\n", "static void js_trigger_gc(")
+# mimalloc (https://github.com/microsoft/mimalloc, MIT) as the runtime's allocator when built with -DUSE_MIMALLOC98: txiki.js does the same; on the laptop's Windows heap (HeapAlloc behind msvcrt's malloc)
+# every JS object, string and buffer is one call. Only the runtime's allocations go through it (JS_NewRuntime's default functions): the host's own malloc/free pairs stay on the C library.
+a = "static const JSMallocFunctions def_malloc_funcs = {\n    js_def_calloc,\n    js_def_malloc,\n    js_def_free,\n    js_def_realloc,\n    js__malloc_usable_size\n};\n"
+assert src.count(a) == 1
+src = src.replace(a, "#ifdef USE_MIMALLOC98\n#include <mimalloc.h>\n"
+    "static void *mi98_calloc(void *o, size_t c, size_t n) { return mi_calloc(c, n); }\nstatic void *mi98_malloc(void *o, size_t n) { return mi_malloc(n); }\n"
+    "static void mi98_free(void *o, void *p) { mi_free(p); }\nstatic void *mi98_realloc(void *o, void *p, size_t n) { return mi_realloc(p, n); }\n"
+    "static size_t mi98_usable(const void *p) { return mi_malloc_usable_size(p); }\n"
+    "static const JSMallocFunctions def_malloc_funcs = { mi98_calloc, mi98_malloc, mi98_free, mi98_realloc, mi98_usable };\n#else\n" + a + "#endif\n")
 src += '\n#include "prof98.h"\n#include "gc98.h"\n'
 open(sys.argv[2], "w").write(src)
