@@ -28,6 +28,9 @@ for d in fonts-inter fonts-dejavu-core fonts-liberation; do [ -f /usr/share/doc/
 mkdir -p "$OUT/sample" && printf 'hello vscode98\nline two\n' > "$OUT/sample/hello.txt" && printf '# sample\n' > "$OUT/sample/README.md"
 sed 's/\r$//; s/$/\r/' "$S/11-windows-host/package/run-desktop.cmd" > "$OUT/run-desktop.cmd"
 sed 's/\r$//; s/$/\r/' "$S/11-windows-host/package/reset-state.cmd" > "$OUT/reset-state.cmd"
+# the same start with mimalloc as the JavaScript allocator (QJS98_MI=1), to compare the two on one machine
+sed 's/\r$//; s/^set "QJS98_PROFILE=2"$/&\nset "QJS98_MI=1"/; s/$/\r/' "$S/11-windows-host/package/run-desktop.cmd" > "$OUT/run-desktop-mi.cmd"
+grep -q QJS98_MI=1 "$OUT/run-desktop-mi.cmd"
 sed 's/\r$//; s/$/\r/' "$S/11-windows-host/package/run-bench.cmd" > "$OUT/run-bench.cmd"; cp "$S/11-windows-host/package/bench.js" "$OUT/bench.js"
 # the bytecode cache (05-child-process/host/esm.c, spike 14): boot the package once, headless, under Wine with the executable that ships, and keep only userdata/code-cache,
 # so that the first start on the target reads the large bundles instead of compiling them (the cache renames the module paths to wherever the package is unpacked).
